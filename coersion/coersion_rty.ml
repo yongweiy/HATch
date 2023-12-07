@@ -37,11 +37,9 @@ and besome_rty = function
 
 and besome_hty = function
   | Rty rty -> Raw.Rty (besome_rty rty)
-  | Htriple { pre; resrty; post } ->
-      Raw.Htriple
-        {
-          pre = SRL.besome pre;
-          resrty = besome_rty resrty;
-          post = SRL.besome post;
-        }
+  | Htriple htriple -> besome_htriple htriple
   | Inter (hty1, hty2) -> Raw.Inter (besome_hty hty1, besome_hty hty2)
+
+and besome_htriple { pre; resrty; post } =
+  Raw.Htriple
+    { pre = SRL.besome pre; resrty = besome_rty resrty; post = SRL.besome post }

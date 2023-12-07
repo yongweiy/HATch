@@ -12,12 +12,10 @@ module SyntaxF (A : Sfa.SFA) (L : Lit.T) = struct
     | ArrArr of rty
   [@@deriving sexp]
 
-  and hty =
-    | Rty of rty
-    | Htriple of { pre : A.sfa; resrty : rty; post : A.sfa }
-    | Inter of hty * hty
+  and hty = Rty of rty | Htriple of htriple | Inter of hty * hty
   [@@deriving sexp]
 
+  and htriple = { pre : A.sfa; resrty : rty; post : A.sfa } [@@deriving sexp]
   and 'a rtyped = { rx : 'a; rty : rty } [@@deriving sexp]
 
   type 'a htyped = { hx : 'a; hty : hty } [@@deriving sexp]
@@ -76,6 +74,11 @@ module SyntaxF (A : Sfa.SFA) (L : Lit.T) = struct
   let rty_to_cty rty =
     match rty with
     | BaseRty { cty } -> cty
+    | _ -> _failatwith __FILE__ __LINE__ "die"
+
+  let hty_to_htriple hty =
+    match hty with
+    | Htriple htriple -> htriple
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
   let htyped_force_to_rtyped file line { hx; hty } =
