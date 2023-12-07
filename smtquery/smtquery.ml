@@ -12,6 +12,7 @@ let _check q = Check.(handle_check_res (fun () -> smt_neg_and_solve ctx q))
 
 let check_implies_with_pre a b = _check Language.Rty.P.(Implies (a, b))
 let check vc = _check vc
+let check_sat vc = Check.(handle_check_res (fun () -> smt_sat_solve ctx vc))
 let cache_size = 600
 let check_bool_cache = Hashtbl.create cache_size
 
@@ -46,6 +47,15 @@ let check_bool vc =
       (* ( Env.show_debug_queries @@ fun _ -> *)
       (*   Printf.printf "model:\n%s\n" (Z3.Model.to_string model) ); *)
       false
+
+let check_sat_bool vc =
+  let runtime, res = Sugar.clock (fun () -> check_sat vc) in
+  let () =
+    Env.show_debug_stat @@ fun _ -> Printf.printf "check_sat_bool: %f\n" runtime
+  in
+  match res with
+  | None -> false
+  | Some _ -> true
 
 let cached_check_bool vc = cached check_bool_cache check_bool vc
 let check_implies a b = check_implies_with_pre a b

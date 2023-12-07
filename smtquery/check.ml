@@ -94,6 +94,18 @@ let smt_solve ctx assertions =
   let () = Stat.numQueryPlus1 () in
   res
 
+let smt_sat_solve ctx vc =
+  let uninterops = Language.Rty.get_uninterops vc in
+  let pre = Language.Rty.Ax.get_related_assumption uninterops in
+  let assertions =
+    List.map (Propencoding.to_z3 ctx) [ pre; vc ]
+  in
+  let time_t, res = Sugar.clock (fun () -> smt_solve ctx assertions) in
+  let () =
+    Env.show_debug_stat @@ fun _ -> Pp.printf "Z3 solving time: %0.4fs\n" time_t
+  in
+  res
+
 let smt_neg_and_solve ctx vc =
   (* let () = *)
   (*   Env.show_debug_queries @@ fun _ -> *)
