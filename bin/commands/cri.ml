@@ -219,6 +219,17 @@ let type_check_ (ri_input, s) source_file =
   (* let () = Printf.printf "%s\n" @@ Smtquery.(layout_cache check_bool_cache) in *)
   interfaceStaic
 
+let symb_exec_ (ri_input, s) source_file =
+  let setting, code, normalized, interfaceStaic =
+    normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
+  in
+  (* let () = *)
+  (*   Printf.printf "\n>>>>Top Operation Rty Context:\n"; *)
+  (*   ROpTypectx.pretty_print_lines setting.oprctx *)
+  (* in *)
+  let () = Stat.init_interfaceDynamic ri_input.interface_file in
+  Symbexec.check (setting.oprctx, setting.rctx) code normalized
+
 let subtype_check_ (ri_input, s) source_file =
   let setting, code, normalized, _ =
     normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
@@ -338,6 +349,13 @@ let typecheck_cmds =
           in
           let dt_stat = { dt_stat with interfaceStatStatic } in
           let () = update_dt_static_stat dt_stat in
+          ()) );
+    ( "symb-exec",
+      cmd_config_source "symbolic execution" (fun meta_config_file source_file () ->
+          let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
+          let _ =
+            symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ]
+          in
           ()) );
     ( "type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->

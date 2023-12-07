@@ -11,6 +11,7 @@
             ntypecheck normalization
             subtyping
             typecheck
+            symbexec
  )
  (modules
    caux
