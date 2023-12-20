@@ -13,6 +13,11 @@ module F (L : Lit.T) = struct
       }
   [@@deriving sexp]
 
+  let is_effevent = function EffEvent _ -> true | _ -> false
+  let is_effevent_with_op op = function
+    | EffEvent { op = op'; _ } -> String.equal op op'
+    | _ -> false
+
   open Sugar
   open Common
 

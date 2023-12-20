@@ -1,7 +1,7 @@
 (library
  (name symbexec)
  (wrapped true)
- (libraries utils language core env subtyping normalization choice)
+ (libraries language core env subtyping normalization choice)
  (preprocess (pps ppx_deriving.show))
  (modules
    baux
