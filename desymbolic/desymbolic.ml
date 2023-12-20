@@ -216,7 +216,8 @@ let print_global_fv features l =
       ())
     l
 
-let mk_mt_tab sub_rty_bool { global_features; local_features } =
+let mk_mt_tab (checker : ?vs:string typed list -> prop -> bool)
+    { global_features; local_features } =
   (* let local_features_array = *)
   (*   StrMap.map (fun (_, features) -> Array.of_list features) local_features *)
   (* in *)
@@ -225,11 +226,7 @@ let mk_mt_tab sub_rty_bool { global_features; local_features } =
     Printf.printf "[Global DT]:\n";
     Head.pprint_tab global_features
   in
-  let test_num, global_dt =
-    DT.dynamic_classify
-      (fun prop -> model_verify_bool sub_rty_bool ([], prop))
-      global_features
-  in
+  let test_num, global_dt = DT.dynamic_classify checker global_features in
   let global_tab = DT.dt_to_tab (global_features, global_dt) in
   let () =
     Env.show_log "desymbolic" @@ fun _ ->
@@ -248,11 +245,7 @@ let mk_mt_tab sub_rty_bool { global_features; local_features } =
           Printf.printf "[%s DT]:\n" op;
           Head.pprint_tab features
         in
-        let test_num, dt =
-          DT.dynamic_classify
-            (fun prop -> model_verify_bool sub_rty_bool (vs, prop))
-            features
-        in
+        let test_num, dt = DT.dynamic_classify (checker ~vs) features in
         let () =
           Env.show_log "desymbolic" @@ fun _ ->
           Printf.printf "[%s DT]\n" op;
@@ -276,9 +269,7 @@ let mk_mt_tab sub_rty_bool { global_features; local_features } =
                 Head.pprint_tab features
               in
               let test_num, dt =
-                DT.refine_dt_under_prop
-                  (fun prop -> model_verify_bool sub_rty_bool (vs, prop))
-                  prop (features, dt)
+                DT.refine_dt_under_prop (checker ~vs) prop (features, dt)
               in
               let dt = DT.dt_to_tab (features, dt) in
               let () =

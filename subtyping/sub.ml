@@ -5,6 +5,40 @@ open Rty
 
 let debug_counter = ref 0
 
+let check_srl ~tTrans (srl1, srl2) =
+  (* let sizeA = 1 + NRegex.stat_size srl1 + NRegex.stat_size srl1 in *)
+  let () =
+    Env.show_debug_info @@ fun _ ->
+    Pp.printf "@{<bold>Symbolic Automton 1:@} %s\n" (NRegex.reg_to_string srl1)
+  in
+  let () =
+    Env.show_debug_info @@ fun _ ->
+    Pp.printf "@{<bold>Symbolic Automton 2:@} %s\n" (NRegex.reg_to_string srl2)
+  in
+  let tInclusion, (sizeRawA, res) =
+    Sugar.clock (fun () -> Smtquery.check_inclusion_counterexample (srl1, srl2))
+  in
+  let res =
+    match res with
+    | None -> true
+    | Some _ ->
+        (* let () = *)
+        (*   Env.show_log "smt_regex" @@ fun _ -> *)
+        (*   Printf.printf "sub_srl_bool_aux R: %s\n" *)
+        (*     (RTypectx.layout_typed_l rctx) *)
+        (* in *)
+        (* ( Env.show_debug_debug @@ fun _ -> *)
+        (*   Desymbolic.display_trace rctx ctx mt_list ); *)
+        false
+  in
+  let () =
+    Env.show_debug_queries @@ fun _ ->
+    Pp.printf "@{<bold>Inclusion Check Result:@} %b\n" res
+  in
+  let stat = Stat.{ sizeA = sizeRawA; tTrans; tInclusion } in
+  let () = Stat.appendInclusionStat stat in
+  res
+
 let rec sub_rty_bool rctx (rty1, rty2) =
   (* let () = *)
   (*   Printf.printf "R[%s]: %s\n" __FUNCTION__ *)
@@ -96,51 +130,51 @@ and sub_srl_bool_aux rctx (srl1, srl2) =
     Env.show_debug_info @@ fun _ ->
     Printf.printf "sub_srl_bool_aux R: %s\n" (RTypectx.layout_typed_l rctx)
   in
-  let checker bindings (tau1, tau2) =
+  let sub_rty_bool' bindings (tau1, tau2) =
     sub_rty_bool (RTypectx.new_to_rights rctx bindings) (tau1, tau2)
+  in
+  let checker ?(vs = []) prop =
+    Desymbolic.model_verify_bool sub_rty_bool' (vs, prop)
   in
   let tTrans, res =
     Sugar.clock (fun () -> Desymbolic.do_desymbolic checker (srl1, srl2))
   in
   let tTrans = tTrans /. float_of_int (List.length res) in
-  let check (srl1, srl2) =
-    (* let sizeA = 1 + NRegex.stat_size srl1 + NRegex.stat_size srl1 in *)
-    let () =
-      Env.show_debug_info @@ fun _ ->
-      Pp.printf "@{<bold>Symbolic Automton 1:@} %s\n"
-        (NRegex.reg_to_string srl1)
-    in
-    let () =
-      Env.show_debug_info @@ fun _ ->
-      Pp.printf "@{<bold>Symbolic Automton 2:@} %s\n"
-        (NRegex.reg_to_string srl2)
-    in
-    let tInclusion, (sizeRawA, res) =
-      Sugar.clock (fun () ->
-          Smtquery.check_inclusion_counterexample (srl1, srl2))
-    in
-    let res =
-      match res with
-      | None -> true
-      | Some _ ->
-          let () =
-            Env.show_log "smt_regex" @@ fun _ ->
-            Printf.printf "sub_srl_bool_aux R: %s\n"
-              (RTypectx.layout_typed_l rctx)
-          in
-          (* ( Env.show_debug_debug @@ fun _ -> *)
-          (*   Desymbolic.display_trace rctx ctx mt_list ); *)
-          false
-    in
-    let () =
-      Env.show_debug_queries @@ fun _ ->
-      Pp.printf "@{<bold>Inclusion Check Result:@} %b\n" res
-    in
-    let stat = Stat.{ sizeA = sizeRawA; tTrans; tInclusion } in
-    let () = Stat.appendInclusionStat stat in
-    res
+  let res = List.for_all (check_srl ~tTrans ) res in
+  res
+
+let sub_srl_under_constr_aux ~constr (srl1, srl2) =
+  let () =
+    Env.show_debug_info @@ fun _ ->
+    Printf.printf "sub_srl_under_constr_aux R: %s\n"
+      (RTypectx.layout_prop constr)
   in
-  let res = List.for_all check res in
+  let checker ?(vs = []) prop =
+    Smtquery.check_sat_bool @@ smart_and [constr; prop]
+  in
+  let tTrans, res =
+    Sugar.clock (fun () -> Desymbolic.do_desymbolic checker (srl1, srl2))
+  in
+  let tTrans = tTrans /. float_of_int (List.length res) in
+  let res = List.for_all (check_srl ~tTrans) res in
+  res
+
+let sub_srl_under_constr ~constr (srl1, srl2) =
+  let srl1' = simpl srl1 in
+  let srl2' = simpl srl2 in
+  let res =
+    match (srl1', srl2') with
+    | EmptyA, _ | _, StarA AnyA -> true
+    (* | _, EmptyA -> *)
+    (*     (\* let () = Printf.printf "sdsd\n" in *\) *)
+    (*     false *)
+    | EpsilonA, EpsilonA -> true
+    | srl1, srl2 -> sub_srl_under_constr_aux ~constr (srl1, srl2)
+  in
+  let () =
+    Env.show_debug_queries @@ fun _ ->
+    Printf.printf "R: %s\nResult:%b\n" (RTypectx.layout_prop constr) res
+  in
   res
 
 let is_bot_hty rctx = function
