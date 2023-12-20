@@ -37,6 +37,16 @@ type pc = {
   constr : prop list;
 }
 
+let print_sfa_constr (sfa1, rel, sfa2) =
+  Pp.printf "%s %s %s\n" (layout_regex sfa1) (string_of_sfa_rel rel)
+    (layout_regex sfa2)
+
+let print_constr constr =
+  List.iter
+    (fun prop ->
+      Env.show_debug_debug @@ fun _ -> Pp.printf "%s\n" @@ layout_prop prop)
+    constr
+
 let print_pc { sfa; heap; vctx; lctx; sfa_constr; constr } =
   List.iter
     (fun prop ->
@@ -95,6 +105,7 @@ let pc_assert_sfa pc sfa : unit res Choice.t =
 
 let pc_abort pc = Choice.return { pc; opt = None }
 let pc_append_sfa pc sfa = { pc with sfa = SeqA (pc.sfa, sfa) }
+let pc_conjunct_sfa pc sfa = { pc with sfa = LandA (pc.sfa, sfa) }
 
 let pc_append_sfa_slow pc sfa =
   { pc with sfa = LandA (SeqA (pc.sfa, StarA AnyA), sfa) }
@@ -229,23 +240,31 @@ let rec exec (typectx : typectx) (pc : pc) (unrolled : comp typed) :
       let lvar = Rename.unique_with_prefix lhs.x "l" in
       let pc = pc_bind_var (lhs.x, AVar lvar) pc in
       (* pc |> pc_add_constr phi |> pc_intro_lvar lvar |> Option.some *)
-      let rec branch : hty -> unit res Choice.t = function
-        | Rty (BaseRty { cty }) ->
+      let enforce_rty pc = function
+        | BaseRty { cty } ->
             let lvar, phi = cty_typed_to_prop lvar #::: cty in
-            let pc = pc |> pc_intro_lvar lvar |> pc_assume phi in
-            ret pc ()
-        | Rty (ArrRty _ as rty) ->
+            pc |> pc_intro_lvar lvar |> pc_assume phi
+        | ArrRty _ as rty ->
             Env.show_debug_debug (fun _ -> Pp.printf "%s\n" (layout_rty rty));
             _failatwith __FILE__ __LINE__ @@ "higher-order unimp"
-        | Htriple { pre; resrty; post } -> (
-            let*+ pc, () = branch (Rty resrty) in
-            let*+ pc, () = pc_assert_sfa pc pre in
-            match is_new_adding (pre, post) with
-            | Some post -> ret (pc_append_sfa pc post) ()
-            | None -> ret (pc_append_sfa_slow pc post) ())
-        | Inter (hty1, hty2) -> Choice.(branch hty1 <|> branch hty2)
       in
-      let*+ pc, () = branch hty in
+      let enforce_htriple pc (pre, resrty, post) =
+        let pc = enforce_rty pc resrty in
+        let*+ pc, () = pc_assert_sfa pc pre in
+        match is_new_adding (pre, post) with
+        | Some post -> ret (pc_append_sfa (pc_conjunct_sfa pc pre) post) ()
+        | None -> ret (pc_append_sfa_slow pc post) ()
+      in
+      let htriples = hty_to_triples hty in
+      let*+ pc, () =
+        if List.length htriples == 0 then
+          ret (enforce_rty pc (hty_force_rty hty)) ()
+        else
+          let*+ pc, () =
+            Choice.of_list htriples |> Choice.fair_bind (enforce_htriple pc)
+          in
+          ret pc ()
+      in
       exec typectx pc letbody
   | CMatch
       {
@@ -255,9 +274,8 @@ let rec exec (typectx : typectx) (pc : pc) (unrolled : comp typed) :
             { constructor = ctrue; args = _; exp = branch_true };
             { constructor = cfalse; args = _; exp = branch_false };
           ];
-      } ->
-      assert (String.equal ctrue.x "True");
-      assert (String.equal cfalse.x "False");
+      }
+    when String.equal ctrue.x "True" && String.equal cfalse.x "False" ->
       let matched_lit = value_to_lit __FILE__ __LINE__ pc.vctx matched in
       let phi_true =
         Lit (mk_lit_eq_lit matched_lit.ty matched_lit.x mk_lit_true)
@@ -336,8 +354,33 @@ let check (opctx', rctx') structure normalized_structure =
                      Choice.filter (fun { pc; opt } -> pc_is_feasible pc) paths
                    in
                    Choice.iter paths (fun { pc; opt } ->
-                       print_pc pc;
-                       Pp.printf "--------\n";
+                       Pp.printf "---------------";
+                       if Option.is_some opt then (
+                         Pp.printf "✓ %s\n" @@ layout_value @@ Option.get opt;
+                         print_pc pc)
+                       else (
+                         Pp.printf "✗\n";
+                         print_constr pc.constr;
+                         let reachable =
+                           pc.sfa_constr
+                           |> List.map (fun ((sfa1, rel, sfa2) as sfa_constr) ->
+                                  let is_sub =
+                                    Subtyping.sub_srl_under_constr
+                                      ~constr:(smart_and pc.constr) (sfa1, sfa2)
+                                  in
+                                  (match (is_sub, rel) with
+                                  | true, `NotSub | false, `Sub ->
+                                      Pp.printf "✗ "
+                                  | true, `Sub | false, `NotSub ->
+                                      Pp.printf "✓ ");
+                                  print_sfa_constr sfa_constr;
+                                  match rel with
+                                  | `NotSub -> not is_sub
+                                  | `Sub -> false)
+                           |> List.exists Fun.id
+                         in
+                         if reachable then Pp.printf "✗ (reachable)\n"
+                         else Pp.printf "✗ (unreachable)\n");
                        true))
         (* let if_type_checked = *)
         (*   match res with Some () -> true | None -> false *)
