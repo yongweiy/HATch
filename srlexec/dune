@@ -1,6 +1,6 @@
 (library
- (name derivative)
+ (name srlexec)
  (wrapped true)
  (inline_tests)
  (preprocess (pps ppx_jane ppx_let ppx_inline_test))
- (libraries language core env smtquery))
+ (libraries language core env smtquery choice))

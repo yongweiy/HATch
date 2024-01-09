@@ -3,17 +3,21 @@ module F (L : Lit.T) = struct
   module Cty = Cty.F (L)
   include Cty
 
-  type sevent =
-    | GuardEvent of prop
-    | EffEvent of {
-        op : string;
-        vs : string typed list;
-        v : string typed;
-        phi : prop;
-      }
+  type eff_event = {
+    op : string;
+    vs : string typed list;
+    v : string typed;
+    phi : prop;
+  }
   [@@deriving sexp]
 
+  include Cty
+  (** just a hack to make sure cty's field name won't be overwritten *)
+
+  type sevent = GuardEvent of prop | EffEvent of eff_event [@@deriving sexp]
+
   let is_effevent = function EffEvent _ -> true | _ -> false
+
   let is_effevent_with_op op = function
     | EffEvent { op = op'; _ } -> String.equal op op'
     | _ -> false
