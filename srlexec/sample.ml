@@ -6,6 +6,7 @@
 
 open Zzdatatype.Datatype
 open Language
+
 (* open Syntax *)
 open Sugar
 open Rty
@@ -14,28 +15,34 @@ open Deriv
 
 let def_tr_len_bound = 2
 
-let sample_regex ?(constr = P.mk_true) ?(bound = def_tr_len_bound) r =
+let uncons_regex ~rctx ~gvars r =
+  let open Choice in
+  next_literal ~rctx ~gvars r
+  |> lift (fun lit -> (lit, fst @@ symb_deriv_over_lit ~rctx ~gvars r lit))
+(* |> filter (fun (_, r) -> not @@ SRL.is_empty r) *)
+
+let sample_regex ~rctx ~gvars ?(bound = def_tr_len_bound) r =
   let rec loop bound tr_rev regex =
     let open Choice in
     if bound = 0 then return tr_rev
     else
-      next_literal ~constr regex >>= fun lit ->
-      match symb_deriv_over_lit ~constr regex lit with
-      | EmptyA -> fail
-      | regex' -> loop (bound - 1) (lit :: tr_rev) regex'
+      next_literal ~rctx ~gvars regex >>= fun lit ->
+      match symb_deriv_over_lit ~rctx ~gvars regex lit with
+      | EmptyA, _ -> fail
+      | regex', _ -> loop (bound - 1) (lit :: tr_rev) regex'
   in
   loop bound [] r
 
-let sample_regex' ?(constr = P.mk_true) ?(bound = def_tr_len_bound) r =
+let sample_regex' ~rctx ~gvars ?(bound = def_tr_len_bound) r =
   let open Choice in
   let lifted_deriv tr_r_pairs =
     (* Pp.printf "lifted_deriv:\n"; *)
     tr_r_pairs >>= fun (tr, r) ->
     (* print_trace tr; *)
-    next_literal ~constr r >>= fun lit ->
-    match symb_deriv_over_lit ~constr r lit with
-    | EmptyA -> fail
-    | r' -> return (lit :: tr, r')
+    next_literal ~rctx ~gvars r >>= fun lit ->
+    match symb_deriv_over_lit ~rctx ~gvars r lit with
+    | EmptyA, _ -> fail
+    | r', _ -> return (lit :: tr, r')
   in
   let rec loop bound res =
     Pp.printf "loop: %d\n" bound;

@@ -12,6 +12,7 @@
             subtyping
             typecheck
             symbexec
+            srlexec
  )
  (modules
    caux
