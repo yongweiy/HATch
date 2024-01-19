@@ -73,10 +73,10 @@ let print_query ~rctx ~gvars phi =
 
 let check_prop ~rctx ~gvars phi =
   (* print_query ~rctx ~gvars phi; *)
-  let rctx =
-    RTypectx.new_to_rights rctx
-    @@ List.map (fun { x; ty } -> { rx = x; rty = Rty.mk_top ty }) gvars
-  in
+  (* let rctx = *)
+  (*   RTypectx.new_to_rights rctx *)
+  (*   @@ List.map (fun { x; ty } -> { rx = x; rty = Rty.mk_top ty }) gvars *)
+  (* in *)
   (* let rctx = *)
   (*   RTypectx.new_to_right rctx *)
   (*     { rx = Rename.unique "a"; rty = Rty.mk_unit_rty_from_prop phi } *)
