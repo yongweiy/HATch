@@ -57,7 +57,13 @@ type mstate = state C.t
 
 let init_state tr post = { tr; post; rctx = []; gvars = [] }
 let bind_var binding st = { st with rctx = RCtx.new_to_right st.rctx binding }
-let intro_gvar gvar st = { st with gvars = gvar :: st.gvars }
+
+let intro_gvar gvar st =
+  {
+    st with
+    rctx = RCtx.new_to_right st.rctx @@ (gvar.x #:: (mk_top gvar.ty));
+    gvars = gvar :: st.gvars;
+  }
 
 let add_prop_to_rctx phi rctx =
   let fvs = fv_prop phi in
@@ -286,9 +292,12 @@ let rec exec_typed_unrolled opctx (st : state) comp =
 let exec_htyped_func opctx comp =
   Pp.printf "prog:\n%s\n" @@ layout_comp @@ (comp.hx #: (erase_hty comp.hty));
   let gvars, hty = collect_ghosts comp.hty in
-  let rctx, hbody = collect_args [] { hx = comp.hx; hty } in
+  let rctx =
+    RTypectx.(
+      new_to_rights empty @@ List.map (fun g -> g.x #:: (mk_top g.ty)) gvars)
+  in
+  let rctx, hbody = collect_args rctx { hx = comp.hx; hty } in
   let body = hbody.hx #: (erase_hty hbody.hty) in
-  (* TODO: check `resrty` *)
   let* pre, resrty, post = Choice.of_list @@ Rty.hty_to_triples hbody.hty in
   let* st = absorb_pre pre { tr = []; post; rctx; gvars } in
   L.print_trace st.tr;
