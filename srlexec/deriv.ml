@@ -1,8 +1,12 @@
 open Zzdatatype.Datatype
 open Language
-open Syntax
 open Sugar
 open Rty
+open Literal
+module C = Choice
+
+let ( let* ) x f = C.bind f x
+let ( let+ ) x f = C.map f x
 
 let rec is_nullable = function
   | EmptyA -> false
@@ -19,45 +23,34 @@ let rec is_nullable = function
 
 (** TODO: as its computation is expensive and the same (sub-)regex may
     appear multiple times, shall we memoize it in some way? *)
-let rec next_literal ?(constr = P.mk_true) = function
+let rec next_literal ~rctx ~gvars ?(ghosts = []) = function
   | EmptyA | EpsilonA -> Choice.fail
   | AnyA -> Choice.return @@ Literal.mk_true
-  | EventA sev -> Choice.return @@ Literal.of_sevent sev
+  | EventA sev -> Choice.return @@ Literal.of_sevent ~ghosts sev
   | LorA (r, s) ->
-      Literal.join ~constr (next_literal ~constr r) (next_literal ~constr s)
+      Literal.join ~rctx ~gvars
+        (next_literal ~rctx ~gvars ~ghosts r)
+        (next_literal ~rctx ~gvars ~ghosts s)
   | LandA (r, s) ->
-      Choice.product (next_literal ~constr r) (next_literal ~constr s)
+      Choice.product
+        (next_literal ~rctx ~gvars ~ghosts r)
+        (next_literal ~rctx ~gvars ~ghosts s)
       |> Choice.map (fun (l1, l2) -> Literal.mk_and l1 l2)
   | SeqA (r, s) when is_nullable r ->
-      Literal.join ~constr (next_literal ~constr r) (next_literal ~constr s)
-  | SeqA (r, s) -> next_literal ~constr r
-  | StarA r -> next_literal ~constr r
+      Literal.join ~rctx ~gvars
+        (next_literal ~rctx ~gvars ~ghosts r)
+        (next_literal ~rctx ~gvars ~ghosts s)
+  | SeqA (r, s) -> next_literal ~rctx ~gvars ~ghosts r
+  | StarA r -> next_literal ~rctx ~gvars ~ghosts r
   (* TODO: can we do better? pruning? ordering? *)
   | ComplementA r ->
-      let lits = next_literal ~constr r in
+      let lits = next_literal ~rctx ~gvars ~ghosts r in
       Choice.(lits ++ delay (fun () -> return @@ Literal.neg_literals lits))
-  | SetMinusA (r, s) -> _failatwith __FILE__ __LINE__ "next_literal: SetMinusA"
-
-let prop_entail_prop ~constr phi1 phi2 =
-  Smtquery.check_bool @@ smart_implies (smart_and [ constr; phi1 ]) phi2
-
-let lit_entails_sev ~constr lit sev =
-  let open Literal in
-  (* TODO: guard event *)
-  let ev =
-    match sev with
-    | EffEvent ev -> ev
-    | GuardEvent _ ->
-        _failatwith __FILE__ __LINE__ "lit_entails_sev: GuardEvent"
-  in
-  match lit with
-  | { events = [ ev' ]; op_filter = `Whitelist [] }
-    when ev.op = ev'.op && prop_entail_prop ~constr ev'.phi ev.phi ->
-      true
-  | { events = []; op_filter = `Whitelist [ op ] } when ev.op = op -> true
-  | { events = []; op_filter = `Blacklist ops } when not (List.mem ev.op ops) ->
-      true
-  | _ -> false
+  | SetMinusA (r, s) ->
+      (* TODO: specialization when SetMinusA is simply the negation of a literal *)
+      next_literal ~rctx ~gvars ~ghosts @@ LandA (r, ComplementA s)
+(* _failatwith __FILE__ __LINE__ *)
+(* @@ spf "next_literal: %s" @@ Rty.layout_regex r *)
 
 let mk_orA r s =
   if r = s then r
@@ -71,49 +64,75 @@ let mk_andA r s =
   else if s = EmptyA then EmptyA
   else LandA (r, s)
 
-let mk_seqA r s = if r = EpsilonA then s else SeqA (r, s)
+let mk_seqA r s =
+  if r = EpsilonA then s else if r = EmptyA then EmptyA else SeqA (r, s)
 
-let symb_deriv_over_lit ?(constr = P.mk_true) r lit =
+(* TODO: simplification of other mk_*A *)
+
+let symb_deriv_over_lit ~rctx ~gvars ?(ghosts = []) r lit =
+  let rxs = ref [] in
   let rec aux = function
     | EmptyA | EpsilonA -> EmptyA
-    | AnyA -> AnyA
-    | EventA sev when lit_entails_sev ~constr lit sev -> EpsilonA
-    | EventA _ -> EmptyA
+    | AnyA -> EpsilonA
+    | EventA sev -> (
+        match lit_entails_sev ~rctx ~gvars ~ghosts lit sev with
+        | Some rxs' ->
+            rxs := !rxs @ rxs';
+            EpsilonA
+        | None -> EmptyA)
     | LorA (r, s) -> mk_orA (aux r) (aux s)
     | LandA (r, s) -> mk_andA (aux r) (aux s)
     | SeqA (r, s) when is_nullable r -> mk_orA (mk_seqA (aux r) s) (aux s)
     | SeqA (r, s) -> mk_seqA (aux r) s
     | StarA r -> mk_seqA (aux r) (StarA r)
     | ComplementA r -> ComplementA (aux r)
-    | SetMinusA (r, s) -> _failatwith __FILE__ __LINE__ "symb_deriv: SetMinusA"
+    | SetMinusA (r, s) -> aux @@ LandA (r, ComplementA s)
   in
-  aux r
+  (* TODO: see if simplify the result helps performance *)
+  let r = aux r in
+  (r, !rxs)
 
-let symb_deriv ?(constr = P.mk_true) lit r =
-  let open Choice in
+let symb_deriv ~rctx ~gvars lit r =
   let open Literal in
-  (* TODO: as only disjoint subsets of `lit` are of our interest, we
-     shall specialize/optimize `left_join` for this purpose *)
-  let time_t, lits =
-    clock (fun () -> left_join ~constr (return lit) (next_literal ~constr r))
-  in
-  (* Pp.printf "left_join time: %f\n" time_t; *)
-  lits
-  |> bind (fun l ->
-         let time_t, r_choice =
-           clock (fun () -> return @@ symb_deriv_over_lit ~constr r l)
-         in
-         (* Pp.printf "symb_deriv_over_lit time: %f\n" time_t; *)
-         r_choice >>= fun r ->
-         guard (not @@ SRL.is_empty r) >>= fun () -> return r)
+  if SRL.is_empty r then C.return (lit, r)
+  else
+    (* TODO: as only disjoint subsets of `lit` are of our interest,
+       shall we combine `left_join` and `next_literal` together
+       here? *)
+    let* lit' =
+      left_join ~rctx ~gvars (C.return lit) (next_literal ~rctx ~gvars r)
+    in
+    let* () = C.guard @@ not @@ is_bot_literal ~rctx ~gvars lit' in
+    let r', _ = symb_deriv_over_lit ~rctx ~gvars r lit' in
+    C.return (lit', r')
 
-let symb_quot ?(constr = P.mk_true) trace regex =
+(** TODO: since pre-condition SFA often begins with .*, will right
+    deriv makes more sense here? *)
+let symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit r =
+  let open Literal in
+  if SRL.is_empty r then C.return (lit, r, [])
+  else
+    let* lit' =
+      left_join ~rctx ~gvars (C.return lit)
+        (next_literal ~rctx ~gvars ~ghosts r)
+    in
+    let* () = C.guard @@ not @@ is_bot_literal ~rctx ~gvars lit' in
+    let r', rxs = symb_deriv_over_lit ~rctx ~gvars ~ghosts r lit' in
+    C.return (lit', r', rxs)
+
+let symb_quot ~rctx ~gvars trace regex =
   List.fold_left
-    (fun r_choice lit -> Choice.(r_choice >>= symb_deriv ~constr lit))
-    (Choice.return regex) trace
+    (fun ress lit ->
+      let* tr_rev, regex = ress in
+      let+ lit', regex' = symb_deriv ~rctx ~gvars lit regex in
+      (lit' :: tr_rev, regex'))
+    (Choice.return ([], regex))
+    trace
 
-let symb_match ?(constr = P.mk_true) trace regex =
-  symb_quot ~constr trace regex |> Choice.map is_nullable |> Choice.forall
+let symb_match ?(rctx = []) ?(gvars = []) trace regex =
+  symb_quot ~rctx ~gvars trace regex
+  |> Choice.map (fun (_, r) -> is_nullable r)
+  |> Choice.forall
 
 type ghost_constr = (prop * prop) list
 (** Say `unzip ghost_constr = (phi, psi)` where

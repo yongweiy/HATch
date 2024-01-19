@@ -112,8 +112,6 @@ let pc_append_sfa_slow pc sfa =
 
 let ret pc v = Choice.return { pc; opt = Some v }
 let ( let** ) x f = Choice.fair_bind f x
-let ( let++ ) x f = Choice.fmap f x
-
 let ( let*+ ) x f =
   Choice.fair_bind
     (function
