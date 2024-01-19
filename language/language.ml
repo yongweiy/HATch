@@ -107,9 +107,14 @@ module Rty = struct
     let v = Nt.{ x = v_name; ty } in
     { v; phi = mk_prop_var_eq_lit v c }
 
+  let mk_cty_var_sat_prop v0 prop =
+    let v = Nt.{ x = v_name; ty = v0.ty } in
+    { v; phi = subst_prop_id (v0.x, v_name) prop }
+
   let mk_rty_var_eq_lit ty c = BaseRty { cty = mk_cty_var_eq_lit ty c }
   let mk_rty_var_eq_c ty c = mk_rty_var_eq_lit ty L.(AC c)
   let mk_rty_var_eq_var var = mk_rty_var_eq_lit var.L.ty L.(AVar var.L.x)
+  let mk_rty_var_sat_prop v0 prop = BaseRty { cty = mk_cty_var_sat_prop v0 prop }
 
   let find_lit_assignment_from_prop prop x =
     match x.Nt.ty with

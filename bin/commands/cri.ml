@@ -228,7 +228,11 @@ let symb_exec_ (ri_input, s) source_file =
   (*   ROpTypectx.pretty_print_lines setting.oprctx *)
   (* in *)
   let () = Stat.init_interfaceDynamic ri_input.interface_file in
-  Symbexec.check (setting.oprctx, setting.rctx) code normalized
+  Env.show_log "result" @@ fun _ ->
+  List.iter ~f:(fun res ->
+      Printf.printf "DT(%s)  " ri_input.dt;
+      Typecheck.pprint_res_one res)
+  @@ Srlexec.Symexec.check (setting.oprctx, setting.rctx) code normalized
 
 let subtype_check_ (ri_input, s) source_file =
   let setting, code, normalized, _ =
@@ -351,11 +355,10 @@ let typecheck_cmds =
           let () = update_dt_static_stat dt_stat in
           ()) );
     ( "symb-exec",
-      cmd_config_source "symbolic execution" (fun meta_config_file source_file () ->
+      cmd_config_source "symbolic execution"
+        (fun meta_config_file source_file () ->
           let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
-          let _ =
-            symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ]
-          in
+          let _ = symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ] in
           ()) );
     ( "type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->

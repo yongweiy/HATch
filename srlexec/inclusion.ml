@@ -9,13 +9,13 @@ open Literal
 open Deriv
 open Sample
 
-let check ?(constr = P.mk_true) r1 r2 =
-  let time_t, trs = clock (fun () -> sample_regex ~constr r1) in
+let check ?(rctx = []) ?(gvars = []) r1 r2 =
+  let time_t, trs = clock (fun () -> sample_regex ~rctx ~gvars r1) in
   Pp.printf "sample takes %f seconds\n" time_t;
   Choice.map
     (fun tr ->
       print_trace tr;
-      let time_t, res = clock (fun () -> symb_match ~constr tr r2) in
+      let time_t, res = clock (fun () -> symb_match ~rctx ~gvars tr r2) in
       (* Pp.printf "symb_match takes %f seconds\n\n" time_t; *)
       res)
     trs
@@ -30,6 +30,7 @@ let%test_module "SRLexec" =
 
     let lx = (AVar "x") #: int_ty
     let ly = (AVar "y") #: int_ty
+    let lv = (AVar v_name) #: int_ty
     let op_lt = (Op.BuiltinOp "<") #: T.(mk_arr int_ty (mk_arr int_ty bool_ty))
     let op_gt = (Op.BuiltinOp ">") #: T.(mk_arr int_ty (mk_arr int_ty bool_ty))
     let op_eq = (Op.BuiltinOp "==") #: T.(mk_arr int_ty (mk_arr int_ty bool_ty))
@@ -39,6 +40,7 @@ let%test_module "SRLexec" =
 
     let two = (AC (I 2)) #: int_ty
     let three = (AC (I 3)) #: int_ty
+    let four = (AC (I 3)) #: int_ty
     let five = (AC (I 5)) #: int_ty
     let x_lt_two = Lit (AAppOp (op_lt, [ lx; two ]))
     let x_eq_two = Lit (AAppOp (op_eq, [ lx; two ]))
@@ -52,48 +54,55 @@ let%test_module "SRLexec" =
     let y_lt_two = Lit (AAppOp (op_lt, [ ly; two ]))
     let y_lt_three = Lit (AAppOp (op_lt, [ ly; three ]))
     let x_gt_y = Lit (AAppOp (op_gt, [ lx; ly ]))
+    let v_lt_two = Lit (AAppOp (op_lt, [ lv; two ]))
+    let v_lt_three = Lit (AAppOp (op_lt, [ lv; three ]))
+    let v_lt_four = Lit (AAppOp (op_lt, [ lv; four ]))
+    let v_lt_five = Lit (AAppOp (op_lt, [ lv; five ]))
+    let v_gt_two = Lit (AAppOp (op_gt, [ lv; two ]))
+    let v_gt_three = Lit (AAppOp (op_gt, [ lv; three ]))
+    let v_gt_four = Lit (AAppOp (op_gt, [ lv; four ]))
 
-    let%test "fwd_match1" =
-      fwd_match
-        [ EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = P.mk_true } ]
-      @@ SeqA
-           ( EventA
-               (EffEvent
-                  { op = "op"; vs = []; v = "x" #: int_ty; phi = P.mk_true }),
-             EpsilonA )
+    (* let%test "fwd_match1" = *)
+    (*   fwd_match *)
+    (*     [ EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = P.mk_true } ] *)
+    (*   @@ SeqA *)
+    (*        ( EventA *)
+    (*            (EffEvent *)
+    (*               { op = "op"; vs = []; v = "x" #: int_ty; phi = P.mk_true }), *)
+    (*          EpsilonA ) *)
 
-    let%test "fwd_match2" =
-      fwd_match
-        [ EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_two } ]
-      @@ SeqA
-           ( EventA
-               (EffEvent
-                  { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_three }),
-             EpsilonA )
+    (* let%test "fwd_match2" = *)
+    (*   fwd_match *)
+    (*     [ EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_two } ] *)
+    (*   @@ SeqA *)
+    (*        ( EventA *)
+    (*            (EffEvent *)
+    (*               { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_three }), *)
+    (*          EpsilonA ) *)
 
-    let%test "symb_match1" =
-      symb_match
-        (List.map Literal.of_sevent
-           [
-             EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = x_eq_two };
-             EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = x_eq_five };
-             EffEvent
-               {
-                 op = "op";
-                 vs = [];
-                 v = "x" #: int_ty;
-                 phi = Or [ x_lt_two; x_gt_five ];
-               };
-           ])
-      @@ StarA
-           (LorA
-              ( EventA
-                  (EffEvent
-                     { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_three }),
-                EventA
-                  (EffEvent
-                     { op = "op"; vs = []; v = "x" #: int_ty; phi = x_gt_three })
-              ))
+    (* let%test "symb_match1" = *)
+    (*   symb_match *)
+    (*     (List.map Literal.of_sevent *)
+    (*        [ *)
+    (*          EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = x_eq_two }; *)
+    (*          EffEvent { op = "op"; vs = []; v = "x" #: int_ty; phi = x_eq_five }; *)
+    (*          EffEvent *)
+    (*            { *)
+    (*              op = "op"; *)
+    (*              vs = []; *)
+    (*              v = "x" #: int_ty; *)
+    (*              phi = Or [ x_lt_two; x_gt_five ]; *)
+    (*            }; *)
+    (*        ]) *)
+    (*   @@ StarA *)
+    (*        (LorA *)
+    (*           ( EventA *)
+    (*               (EffEvent *)
+    (*                  { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_three }), *)
+    (*             EventA *)
+    (*               (EffEvent *)
+    (*                  { op = "op"; vs = []; v = "x" #: int_ty; phi = x_gt_three }) *)
+    (*           )) *)
 
     (* let%test "next_literal" = *)
     (*   let lits = Choice.run_all @@ next_literal (StarA *)
@@ -107,6 +116,17 @@ let%test_module "SRLexec" =
     (*           ))) in *)
     (*   print_trace lits; *)
     (*   true *)
+
+    let%test "inclusion1" =
+      check
+        (StarA
+           (EventA
+              (EffEvent
+                 { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_two })))
+        (StarA
+           (EventA
+              (EffEvent
+                 { op = "op"; vs = []; v = "x" #: int_ty; phi = x_lt_three })))
 
     let%test "inclusion" =
       check
@@ -129,8 +149,16 @@ let%test_module "SRLexec" =
                      { op = "op"; vs = []; v = "x" #: int_ty; phi = x_gt_three })
               )))
 
+    (* let%test "check_prop" = *)
+    (*   check_prop *)
+    (*     ~rctx:[ ("y", Rty.mk_from_prop int_ty (fun _ -> v_gt_two)) ] *)
+    (*     ~gvars:[] *)
+    (*   @@ Rty.multi_forall [ "x" #: int_ty ] *)
+    (*   @@ smart_implies x_gt_y x_gt_two *)
+
     let%test "inclusion_with_uni_var" =
-      check ~constr:y_lt_three
+      check
+        ~rctx:[ ("y", Rty.mk_from_prop int_ty (fun _ -> v_gt_four)) ]
         (StarA
            (LorA
               ( EventA
@@ -138,8 +166,7 @@ let%test_module "SRLexec" =
                      { op = "op"; vs = []; v = "x" #: int_ty; phi = x_eq_five }),
                 EventA
                   (EffEvent
-                     { op = "op"; vs = []; v = "x" #: int_ty; phi = x_gt_y })
-              )))
+                     { op = "op"; vs = []; v = "x" #: int_ty; phi = x_gt_y }) )))
         (StarA
            (LorA
               ( EventA

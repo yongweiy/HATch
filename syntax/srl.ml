@@ -45,6 +45,8 @@ module F (L : Lit.T) = struct
     | ComplementA _ -> false
     | SetMinusA (a1, a2) -> eq a1 a2
 
+  let empty_if_empty a = if is_empty a then EmptyA else a
+
   type sfa_len = EmptySet | HasUniqLen of int | MayNoUniqLen [@@deriving sexp]
 
   let compare_sfa_len l1 l2 =
