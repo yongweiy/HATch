@@ -1,6 +1,7 @@
 {
   "mode": "debug",
   "max_printing_size": 1000,
+  "exec_max_pre_length": 1,
   "debug_tags": [
     // "preprocess",
     // "ntyping",

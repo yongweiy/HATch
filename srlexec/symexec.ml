@@ -94,7 +94,14 @@ let assert_prop phi st res =
   let true_branch = ret (assume_prop phi st) res in
   C.mplus false_branch true_branch
 
-let absorb_pre ?(bound = 1) pre st =
+let absorb_pre pre st =
+  let bound = Env.get_exec_max_pre_length () in
+  let bound =
+    (* TODO: is `get_len` expensive? *)
+    match Rty.get_len_opt pre with
+    | Some len when len < bound -> len
+    | _ -> bound
+  in
   let rctx, gvars = (st.rctx, st.gvars) in
   let aux res =
     let* pre, st = res in
