@@ -65,6 +65,40 @@ let of_sevent ~ghosts = function
           _failatwith __FILE__ __LINE__
             "more than one ghost involved in a qualifier")
 
+(** separate out events whose qualifier reference to variables in
+    `rctx`, and impose constraint from the qualifier *)
+let refine (rctx, { events; op_filter }) =
+  let events, refined =
+    List.partition_map
+      (fun ({ op; vs; v; phi } as ev) ->
+        let fvs = fv_prop phi in
+        let fvs' = List.substract (fun x v -> x = v.x) fvs (v :: vs) in
+        if not @@ List.exists (RTypectx.exists rctx) fvs' then Left ev
+        else
+          let vs = List.interset (fun v x -> v.x = x) (v :: vs) fvs in
+          let rxs =
+            List.map
+              (fun v ->
+                { rx = Rename.unique_with_prefix op v.x; rty = Rty.mk_top v.ty })
+              vs
+          in
+          let rctx = RTypectx.new_to_rights rctx rxs in
+          let phi =
+            List.fold_left
+              (fun phi (v, rx) -> subst_prop_id (v.x, rx.rx) phi)
+              phi
+            @@ List.combine vs rxs
+          in
+          let rctx =
+            RTypectx.new_to_right rctx
+            @@ ((Rename.unique "a") #:: (mk_unit_rty_from_prop phi))
+          in
+          (* Pp.printf "rctx:\n%s\n" @@ RTypectx.layout_typed_l rctx; *)
+          Right (rctx, of_sevent ~ghosts:[] @@ EffEvent ev))
+      events
+  in
+  Choice.(of_list refined ++ return (rctx, { events; op_filter }))
+
 let print_query ~rctx ~gvars phi =
   Pp.printf "%s, %s ⊢ %s\n"
     (RTypectx.layout_typed_l rctx)

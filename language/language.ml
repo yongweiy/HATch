@@ -114,7 +114,14 @@ module Rty = struct
   let mk_rty_var_eq_lit ty c = BaseRty { cty = mk_cty_var_eq_lit ty c }
   let mk_rty_var_eq_c ty c = mk_rty_var_eq_lit ty L.(AC c)
   let mk_rty_var_eq_var var = mk_rty_var_eq_lit var.L.ty L.(AVar var.L.x)
-  let mk_rty_var_sat_prop v0 prop = BaseRty { cty = mk_cty_var_sat_prop v0 prop }
+
+  let mk_rty_var_sat_prop v0 prop =
+    BaseRty { cty = mk_cty_var_sat_prop v0 prop }
+
+  let join_rty rty1 rty2 =
+    match (rty1, rty2) with
+    | BaseRty rty1, BaseRty rty2 -> BaseRty { cty = join_cty rty1.cty rty2.cty }
+    | _ -> _failatwith __FILE__ __LINE__ "die"
 
   let find_lit_assignment_from_prop prop x =
     match x.Nt.ty with
