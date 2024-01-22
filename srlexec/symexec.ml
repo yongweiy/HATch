@@ -31,8 +31,8 @@ let layout_state { tr; post; rctx; gvars } =
       Rty.layout_regex post;
       "rctx:";
       RTypectx.layout_typed_l rctx;
-      "gvars:";
-      String.concat ", " @@ List.map (layout_typed Fun.id) gvars;
+      (* "gvars:"; *)
+      (* String.concat ", " @@ List.map (layout_typed Fun.id) gvars; *)
     ]
 
 type 'a result = { st : state; res : 'a option }
@@ -99,9 +99,10 @@ let absorb_pre ?(bound = 1) pre st =
   let aux res =
     let* pre, st = res in
     let* l, pre = S.uncons_regex ~rctx ~gvars pre in
-    let+ l, post = D.symb_deriv ~rctx ~gvars l st.post in
+    let* l, post = D.symb_deriv ~rctx ~gvars l st.post in
+    let* rctx, l = L.refine (rctx, l) in
     (* no guard to ensure post is nullable since it is unlikely *)
-    (pre, { st with tr = l :: st.tr; post })
+    C.return (pre, { st with tr = l :: st.tr; post; rctx })
   in
   let rec loop bound (res : (sfa * state) C.t) =
     (* Pp.printf "loop: %d\n" bound; *)
@@ -116,6 +117,31 @@ let absorb_pre ?(bound = 1) pre st =
   let* () = C.guard @@ D.is_nullable pre in
   C.return st
 
+let join_rxs rxs rys =
+  let rec aux rxs = function
+    | [] -> rxs
+    | ry :: rys ->
+        let rxs =
+          match List.find_opt (fun rx -> String.equal rx.rx ry.rx) rxs with
+          | Some rx -> (rx.rx #:: (Rty.join_rty rx.rty ry.rty)) :: rxs
+          | None -> ry :: rxs
+        in
+        aux rxs rys
+  in
+  (* aux rxs rys *)
+  let rzx, ryx =
+    List.intersect_and_subtract (fun ry rx -> String.equal ry.rx rx.rx) rys rxs
+  in
+  match rzx with
+  | [] -> rxs @ rys
+  | rzx ->
+      List.fold_right
+        (fun rx rxs ->
+          match List.find_opt (fun rz -> String.equal rz.rx rx.rx) rzx with
+          | None -> rx :: rxs
+          | Some rz -> (rz.rx #:: (Rty.join_rty rz.rty rx.rty)) :: rxs)
+        rxs []
+
 (** check pre-condition SFA of method calls against current program
     state, i.e., `tr` and `rctx`.
 
@@ -126,17 +152,26 @@ let absorb_pre ?(bound = 1) pre st =
 *)
 let check_pre ghosts pre st =
   let rctx, gvars = (st.rctx, st.gvars) in
-  List.fold_right
-    (fun lit ress ->
-      let* tr_rev, regex, rxs = ress in
-      let* lit', regex', rxs' =
-        D.symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit regex
-      in
-      (* TODO: try pushing guard to the end *)
-      let* () = C.guard @@ D.is_nullable regex' in
-      C.return (lit' :: tr_rev, regex', rxs @ rxs'))
-    st.tr
-    (Choice.return ([], pre, []))
+  let+ tr, regex, rxs =
+    List.fold_right
+      (fun lit ress ->
+        let* tr_rev, regex, rxs = ress in
+        (* Pp.printf "check_pre:\n%s\n" @@ Rty.layout_regex regex; *)
+        (* L.print_trace @@ List.rev tr_rev; *)
+        let* lit', regex', rxs' =
+          D.symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit regex
+        in
+        let rxs' = join_rxs rxs rxs' in
+        (* TODO: try guard away trivially false rxs *)
+        (* Pp.printf "+ %s\n" @@ String.concat ", " *)
+        (* @@ List.map (fun { rx; rty } -> rx ^ ":" ^ layout_rty rty) rxs'; *)
+        (* TODO: try pushing guard to the end *)
+        let* () = C.guard @@ D.is_nullable regex' in
+        C.return (lit' :: tr_rev, regex', rxs'))
+      st.tr
+      (Choice.return ([], pre, []))
+  in
+  { st with tr; rctx = RCtx.new_to_rights rctx rxs }
 
 let is_new_adding (pre, post) =
   match post with
@@ -231,8 +266,10 @@ let exec_appop opctx st (op, args) : rty result C.t =
       let ghosts = List.map (fun g -> g.x) ghosts in
       let* pre, resrty, post = C.of_list @@ hty_to_triples hty in
       (* TODO: what if all pre-condition fails *)
-      let* tr, _pre, rxs = check_pre ghosts pre st in
-      let st = { st with tr; rctx = RTypectx.new_to_rights st.rctx rxs } in
+      let* st = check_pre ghosts pre st in
+      (* Pp.printf "+ %s\n" @@ String.concat ", " *)
+      (* @@ List.map (fun { rx; rty } -> rx ^ ":" ^ layout_rty rty) rxs; *)
+      (* let st = { st with tr; rctx = RTypectx.new_to_rights st.rctx rxs } in *)
       (* Pp.printf "%s\n" @@ RTypectx.layout_typed_l st.rctx; *)
       (* TODO: collect constraint on ghost varibles from `pre` and `st.tr` *)
       match is_new_adding (pre, post) with
@@ -300,8 +337,8 @@ let exec_htyped_func opctx comp =
   let body = hbody.hx #: (erase_hty hbody.hty) in
   let* pre, resrty, post = Choice.of_list @@ Rty.hty_to_triples hbody.hty in
   let* st = absorb_pre pre { tr = []; post; rctx; gvars } in
-  L.print_trace st.tr;
-  Pp.printf "before:\n%s\n" (layout_regex st.post);
+  (* L.print_trace st.tr; *)
+  (* Pp.printf "before:\n%s\n" (layout_regex st.post); *)
   let+ { st; res } = exec_typed_unrolled opctx st body in
   Pp.printf "\n%s\n" @@ layout_state st;
   Option.iter (fun value -> Pp.printf "value: %s\n" @@ layout_value value) res;
