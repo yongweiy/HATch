@@ -52,4 +52,11 @@ module F (L : Lit.T) = struct
   let mk_unit_from_prop phi = Nt.{ v = v_name #: Ty_unit; phi }
   let mk_bot nt = Nt.{ v = v_name #: nt; phi = mk_false }
   let mk_top nt = Nt.{ v = v_name #: nt; phi = mk_true }
+
+  let join_cty cty1 cty2 =
+    let { v = v1; phi = phi1 } = cty1 in
+    let { v = v2; phi = phi2 } = cty2 in
+    assert (String.equal v1.x v2.x);
+    assert (Nt.eq v1.ty v2.ty);
+    { v = v1; phi = smart_and [ phi1; phi2 ] }
 end
