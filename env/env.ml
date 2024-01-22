@@ -17,6 +17,7 @@ type meta_config = {
   uninterops : string list;
   mode : mode;
   max_printing_size : int;
+  exec_max_pre_length : int;
   logfile : string;
   resfile : string;
   statfile : string;
@@ -35,6 +36,7 @@ let get_meta () =
 
 let get_mode () = (get_meta ()).mode
 let get_max_printing_size () = (get_meta ()).max_printing_size
+let get_exec_max_pre_length () = (get_meta ()).exec_max_pre_length
 
 let show_log kw (f : unit -> unit) =
   match get_mode () with
@@ -86,6 +88,7 @@ let load_meta meta_fname =
     | _ -> failwith "config: unknown mode"
   in
   let max_printing_size = metaj |> member "max_printing_size" |> to_int in
+  let exec_max_pre_length = metaj |> member "exec_max_pre_length" |> to_int in
   let resfile = metaj |> member "resfile" |> to_string in
   let statfile = metaj |> member "statfile" |> to_string in
   let logfile = metaj |> member "logfile" |> to_string in
@@ -109,6 +112,7 @@ let load_meta meta_fname =
       {
         mode;
         max_printing_size;
+        exec_max_pre_length;
         prim_path;
         logfile;
         resfile;

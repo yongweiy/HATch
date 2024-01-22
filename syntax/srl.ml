@@ -94,6 +94,9 @@ module F (L : Lit.T) = struct
   let has_len a n =
     match has_len_aux a with HasUniqLen m -> n == m | _ -> false
 
+  let get_len_opt a =
+    match has_len_aux a with HasUniqLen m -> Some m | _ -> None
+
   let rec be_singleton a =
     match a with
     | EmptyA -> EmptyA
