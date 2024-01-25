@@ -84,14 +84,38 @@ let add_prop_to_rctx phi rctx =
       RTypectx.new_to_right rctx
       @@ ((Rename.unique "a") #:: (mk_unit_rty_from_prop phi))
 
-let assume_prop phi st =
-  if is_true phi then st else { st with rctx = add_prop_to_rctx phi st.rctx }
+(** Eagerly prune away infeasible branch, otherwise it may make the
+    current trace infeasible.
 
+    TODO: try postoning pruning and see how `symb_deriv_with_ghosts`
+    plays out with bottom literal emitted from infeasible trace
+*)
+let assume_prop phi st =
+  if is_true phi then C.return st
+  else if is_false phi then C.fail
+  else
+    let rctx = add_prop_to_rctx phi st.rctx in
+    let* () =
+      C.guard @@ not
+      @@ Subtyping.is_bot_cty rctx
+      @@ mk_unit_from_prop mk_true
+    in
+    C.return { st with rctx }
+
+(** `assert phi` is simply `(assume !phi; abort) + (assume phi)`
+
+    TODO: would it make sense to place success branch in front of
+    failure branch as we are more interested in violation of HAT
+*)
 let assert_prop phi st res =
   let false_branch =
-    if is_true phi then C.fail else abort (assume_prop (mk_not phi) st)
+    let* st = assume_prop (mk_not phi) st in
+    abort st
   in
-  let true_branch = ret (assume_prop phi st) res in
+  let true_branch =
+    let* st = assume_prop phi st in
+    ret st res
+  in
   C.mplus false_branch true_branch
 
 let absorb_pre pre st =
@@ -109,6 +133,9 @@ let absorb_pre pre st =
     let* l, post = D.symb_deriv ~rctx ~gvars l st.post in
     let* rctx, l = L.refine (rctx, l) in
     (* no guard to ensure post is nullable since it is unlikely *)
+    _assert __FILE__ __LINE__ "symb_deriv: lit is not bot"
+    @@ not
+    @@ L.is_bot_literal ~rctx ~gvars l;
     C.return (pre, { st with tr = l :: st.tr; post; rctx })
   in
   let rec loop bound (res : (sfa * state) C.t) =
@@ -159,12 +186,12 @@ let join_rxs rxs rys =
 *)
 let check_pre ghosts pre st =
   let rctx, gvars = (st.rctx, st.gvars) in
-  let+ tr, regex, rxs =
+  let* tr, regex, rxs =
     List.fold_right
       (fun lit ress ->
         let* tr_rev, regex, rxs = ress in
         (* Pp.printf "check_pre:\n%s\n" @@ Rty.layout_regex regex; *)
-        (* L.print_trace @@ List.rev tr_rev; *)
+        (* Pp.printf "trace:\n%s\n" @@ L.layout_trace tr_rev; *)
         let* lit', regex', rxs' =
           D.symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit regex
         in
@@ -172,13 +199,13 @@ let check_pre ghosts pre st =
         (* TODO: try guard away trivially false rxs *)
         (* Pp.printf "+ %s\n" @@ String.concat ", " *)
         (* @@ List.map (fun { rx; rty } -> rx ^ ":" ^ layout_rty rty) rxs'; *)
-        (* TODO: try pushing guard to the end *)
-        let* () = C.guard @@ D.is_nullable regex' in
+        (* TODO: try checking emptiness of regex' *)
         C.return (lit' :: tr_rev, regex', rxs'))
       st.tr
-      (Choice.return ([], pre, []))
+      (C.return ([], pre, []))
   in
-  { st with tr; rctx = RCtx.new_to_rights rctx rxs }
+  let* () = C.guard @@ D.is_nullable regex in
+  C.return { st with tr; rctx = RCtx.new_to_rights rctx rxs }
 
 let is_new_adding (pre, post) =
   match post with
@@ -322,7 +349,9 @@ let rec exec_typed_unrolled opctx (st : state) comp =
       let* phi, branch =
         C.of_list [ (Lit lit, branch_true); (Not (Lit lit), branch_false) ]
       in
-      exec_typed_unrolled opctx (assume_prop phi st) branch
+      let* st = assume_prop phi st in
+      Pp.printf "branching %s:\n%s\n" (layout_prop phi) @@ layout_state st;
+      exec_typed_unrolled opctx st branch
   | CMatch { matched; match_cases } ->
       (* Env.show_debug_debug (fun _ -> Pp.printf "%s\n" (layout_comp unrolled)); *)
       assert (List.length match_cases == 2);
