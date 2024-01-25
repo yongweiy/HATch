@@ -7,7 +7,8 @@ open Sugar
 open Syntax
 
 (* module Q = Qualifier *)
-
+let ( let* ) x f = Choice.bind f x
+let ( let+ ) x f = Choice.map f x
 let with_same_op ev1 ev2 = String.equal ev1.op ev2.op
 
 type literal = {
