@@ -35,7 +35,9 @@ let layout_literal { events; op_filter } =
   (* in *)
   (* if op_filter_str = "" then events_str else events_str ^ " | " ^ op_filter_str *)
   match op_filter with
-  | `Whitelist ops_include when List.is_empty ops_include -> events_str
+  | `Whitelist ops_include
+    when List.is_empty ops_include && List.is_empty events ->
+      "⊥"
   | `Whitelist ops_include -> String.concat " | " @@ (events_str :: ops_include)
   | `Blacklist ops_exclude
     when List.is_empty ops_exclude && List.is_empty events ->
