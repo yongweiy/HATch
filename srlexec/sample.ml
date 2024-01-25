@@ -13,6 +13,8 @@ open Rty
 open Literal
 open Deriv
 
+let ( let* ) x f = C.bind f x
+let ( let+ ) x f = C.map f x
 let def_tr_len_bound = 2
 
 let uncons_regex ~rctx ~gvars r =
