@@ -102,6 +102,9 @@ let symb_deriv_over_lit ~rctx ~gvars ?(ghosts = []) r lit =
 
 let symb_deriv ~rctx ~gvars lit r =
   let open Literal in
+  _assert __FILE__ __LINE__ "symb_deriv: lit is not bot"
+  @@ not
+  @@ is_bot_literal ~rctx ~gvars lit;
   if SRL.is_empty r then C.return (lit, r)
   else
     (* TODO: as only disjoint subsets of `lit` are of our interest,
@@ -118,6 +121,9 @@ let symb_deriv ~rctx ~gvars lit r =
     deriv makes more sense here? *)
 let symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit r =
   let open Literal in
+  _assert __FILE__ __LINE__ (spf "bottom literal: %s" @@ layout_literal lit)
+  @@ not
+  @@ is_bot_literal ~rctx ~gvars lit;
   if SRL.is_empty r then C.return (lit, r, [])
   else
     let* lit' =
