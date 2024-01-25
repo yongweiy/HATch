@@ -16,9 +16,9 @@ open Deriv
 let def_tr_len_bound = 2
 
 let uncons_regex ~rctx ~gvars r =
-  let open Choice in
-  next_literal ~rctx ~gvars r
-  |> lift (fun lit -> (lit, fst @@ symb_deriv_over_lit ~rctx ~gvars r lit))
+  let* l = next_literal ~rctx ~gvars r in
+  let* () = Choice.guard @@ not @@ Literal.is_bot_literal ~rctx ~gvars l in
+  Choice.return (l, fst @@ symb_deriv_over_lit ~rctx ~gvars r l)
 (* |> filter (fun (_, r) -> not @@ SRL.is_empty r) *)
 
 let sample_regex ~rctx ~gvars ?(bound = def_tr_len_bound) r =
