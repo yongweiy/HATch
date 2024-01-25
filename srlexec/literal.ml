@@ -44,6 +44,9 @@ let layout_literal { events; op_filter } =
   | `Blacklist ops_exclude ->
       events_str ^ " | ¬(" ^ String.concat " | " ops_exclude ^ ")"
 
+let layout_trace tr =
+  String.concat " -> " @@ List.map layout_literal @@ List.rev tr
+
 let print_trace tr =
   List.iter (fun l -> Pp.printf "%s; " @@ layout_literal l) tr;
   print_newline ()

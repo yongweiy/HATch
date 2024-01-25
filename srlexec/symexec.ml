@@ -26,7 +26,7 @@ let layout_state { tr; post; rctx; gvars } =
   String.concat "\n"
     [
       "trace:";
-      String.concat " -> " @@ List.map L.layout_literal @@ List.rev tr;
+      L.layout_trace tr;
       "post:";
       Rty.layout_regex post;
       "rctx:";
