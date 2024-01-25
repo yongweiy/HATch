@@ -19,7 +19,7 @@ let rec is_nullable = function
   | SeqA (r, s) -> is_nullable r && is_nullable s
   | StarA _ -> true
   | ComplementA r -> not (is_nullable r)
-  | SetMinusA (r, s) -> _failatwith __FILE__ __LINE__ "is_nullable: SetMinusA"
+  | SetMinusA (r, s) -> is_nullable r && not (is_nullable s)
 
 (** TODO: as its computation is expensive and the same (sub-)regex may
     appear multiple times, shall we memoize it in some way? *)
@@ -52,22 +52,30 @@ let rec next_literal ~rctx ~gvars ?(ghosts = []) = function
 (* _failatwith __FILE__ __LINE__ *)
 (* @@ spf "next_literal: %s" @@ Rty.layout_regex r *)
 
+let mk_complementA = function
+  | EmptyA -> StarA AnyA
+  | StarA AnyA -> EmptyA
+  | r -> ComplementA r
+
 let mk_orA r s =
-  if r = s then r
-  else if r = EmptyA then s
+  if r = EmptyA then s
   else if s = EmptyA then r
+  else if r = StarA AnyA || s = StarA AnyA then StarA AnyA
+  else if r = s then r
   else LorA (r, s)
 
 let mk_andA r s =
-  if r = s then r
-  else if r = EmptyA then EmptyA
+  if r = EmptyA then EmptyA
   else if s = EmptyA then EmptyA
-  else LandA (r, s)
+  else if r = StarA AnyA then s
+  else if s = StarA AnyA then r
+  else if (r = EpsilonA && is_nullable s) || (s = EpsilonA && is_nullable r)
+  then EpsilonA
+  else if r = s then r
+  else match s with ComplementA s' when r = s' -> EmptyA | _ -> LandA (r, s)
 
 let mk_seqA r s =
   if r = EpsilonA then s else if r = EmptyA then EmptyA else SeqA (r, s)
-
-(* TODO: simplification of other mk_*A *)
 
 let symb_deriv_over_lit ~rctx ~gvars ?(ghosts = []) r lit =
   let rxs = ref [] in
@@ -85,7 +93,7 @@ let symb_deriv_over_lit ~rctx ~gvars ?(ghosts = []) r lit =
     | SeqA (r, s) when is_nullable r -> mk_orA (mk_seqA (aux r) s) (aux s)
     | SeqA (r, s) -> mk_seqA (aux r) s
     | StarA r -> mk_seqA (aux r) (StarA r)
-    | ComplementA r -> ComplementA (aux r)
+    | ComplementA r -> mk_complementA (aux r)
     | SetMinusA (r, s) -> aux @@ LandA (r, ComplementA s)
   in
   (* TODO: see if simplify the result helps performance *)
