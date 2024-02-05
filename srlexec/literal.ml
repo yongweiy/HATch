@@ -93,13 +93,19 @@ let check_prop ~rctx ~gvars phi =
   Subtyping.sub_rty_bool rctx (lhs_rty, rhs_rty)
 
 let forall_ignore_unit us prop =
+  let fvs = fv_prop prop in
   List.fold_left
-    (fun prop u -> if u.ty = Nt.unit_ty then prop else Forall (u, prop))
+    (fun prop u ->
+      if u.ty = Nt.unit_ty || (not @@ StrList.exists u.x fvs) then prop
+      else Forall (u, prop))
     prop us
 
 let exists_ignore_unit us prop =
+  let fvs = fv_prop prop in
   List.fold_left
-    (fun prop u -> if u.ty = Nt.unit_ty then prop else Exists (u, prop))
+    (fun prop u ->
+      if u.ty = Nt.unit_ty || (not @@ StrList.exists u.x fvs) then prop
+      else Exists (u, prop))
     prop us
 
 let is_bot_literal ~rctx ~gvars { events; op_filter } =
