@@ -188,7 +188,7 @@ let refine (rctx, { events; op_filter }) =
           in
           let rctx =
             RTypectx.new_to_right rctx
-            @@ ((Rename.unique "a") #:: (mk_unit_rty_from_prop phi))
+            @@ ((Rename.unique "u") #:: (mk_unit_rty_from_prop phi))
           in
           (* Pp.printf "rctx:\n%s\n" @@ RTypectx.layout_typed_l rctx; *)
           Right (rctx, of_sevent ~ghosts:[] @@ EffEvent ev))
