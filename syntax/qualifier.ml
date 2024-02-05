@@ -28,6 +28,7 @@ module F (L : Lit.T) = struct
       match List.filter (fun p -> not (is_true p)) l with
       | [] -> mk_true
       | [ x ] -> x
+      | [ x; y ] when x = y -> x
       | l -> And l
 
   let smart_or l =
