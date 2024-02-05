@@ -82,7 +82,7 @@ let add_prop_to_rctx phi rctx =
         rctx []
   | None ->
       RTypectx.new_to_right rctx
-      @@ ((Rename.unique "a") #:: (mk_unit_rty_from_prop phi))
+      @@ ((Rename.unique "u") #:: (mk_unit_rty_from_prop phi))
 
 (** Eagerly prune away infeasible branch, otherwise it may make the
     current trace infeasible.
