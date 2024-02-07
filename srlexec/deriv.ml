@@ -46,8 +46,9 @@ let rec next_literal ~rctx ~gvars ?(ghosts = []) = function
   | ComplementA r ->
       let lits = next_literal ~rctx ~gvars ~ghosts r in
       Choice.(lits ++ delay (fun () -> return @@ Literal.neg_literals lits))
+  | SetMinusA (AnyA, EventA sev) ->
+      Choice.return @@ Literal.mk_not @@ Literal.of_sevent ~ghosts sev
   | SetMinusA (r, s) ->
-      (* TODO: specialization when SetMinusA is simply the negation of a literal *)
       next_literal ~rctx ~gvars ~ghosts @@ LandA (r, ComplementA s)
 (* _failatwith __FILE__ __LINE__ *)
 (* @@ spf "next_literal: %s" @@ Rty.layout_regex r *)
