@@ -78,28 +78,60 @@ let mk_andA r s =
 let mk_seqA r s =
   if r = EpsilonA then s else if r = EmptyA then EmptyA else SeqA (r, s)
 
-let symb_deriv_over_lit ~rctx ~gvars ?(ghosts = []) r lit =
-  let rxs = ref [] in
+(** when `ghost = []`, it returns singleton choice *)
+let symb_deriv_over_lit ~rctx ~gvars ?(ghosts = []) ?(index = 0) r lit =
+  let ret sfa = [ ([], [], sfa) ] in
+  let lit_match sev =
+    match lit_entails_sev ~rctx ~gvars ~ghosts ~index lit sev with
+    | Some (local, ghost) -> [ (local, ghost, EpsilonA) ]
+    | None -> ret EmptyA
+  in
+  let lifted_complement = function
+    | [ ([], [], r) ] -> ret @@ mk_complementA r
+    | [ (local, [ rx ], r) ] ->
+        let rx_neg = rx.rx #:: (neg_rty __FILE__ __LINE__ rx.rty) in
+        [ (local, [ rx_neg ], mk_complementA r) ]
+    | _ ->
+        _failatwith __FILE__ __LINE__
+          "symb_deriv_over_lit: complement corner case UNIMP"
+  in
+  (* TODO: join rxs appropriately
+     the program logic here should be unified with how `rxs`
+     are accumulated during repetivie derivative computation *)
+  let lifted_and res_r res_s =
+    List.cartesian_map
+      (fun (local_r, ghost_r, r) (local_s, ghost_s, s) ->
+        (local_r @ local_s, ghost_r @ ghost_s, mk_andA r s))
+      res_r res_s
+  in
+  let lifted_or res_r res_s =
+    match (res_r, res_s) with
+    | [ ([], [], r) ], [ ([], [], s) ] -> ret @@ mk_orA r s
+    (* TODO: this only covers simple case *)
+    | _ -> res_r @ res_s
+  in
+  let lifted_seq res_r s =
+    List.map
+      (fun (local_r, ghost_r, r) -> (local_r, ghost_r, mk_seqA r s))
+      res_r
+  in
   let rec aux = function
-    | EmptyA | EpsilonA -> EmptyA
-    | AnyA -> EpsilonA
-    | EventA sev -> (
-        match lit_entails_sev ~rctx ~gvars ~ghosts lit sev with
-        | Some rxs' ->
-            rxs := !rxs @ rxs';
-            EpsilonA
-        | None -> EmptyA)
-    | LorA (r, s) -> mk_orA (aux r) (aux s)
-    | LandA (r, s) -> mk_andA (aux r) (aux s)
-    | SeqA (r, s) when is_nullable r -> mk_orA (mk_seqA (aux r) s) (aux s)
-    | SeqA (r, s) -> mk_seqA (aux r) s
-    | StarA r -> mk_seqA (aux r) (StarA r)
-    | ComplementA r -> mk_complementA (aux r)
+    | EmptyA | EpsilonA -> ret EmptyA
+    | AnyA -> ret EpsilonA
+    | EventA sev -> lit_match sev
+    | LorA (r, s) -> lifted_or (aux r) (aux s)
+    | LandA (r, s) -> lifted_and (aux r) (aux s)
+    | SeqA (r, s) when is_nullable r -> lifted_or (lifted_seq (aux r) s) (aux s)
+    | SeqA (r, s) -> lifted_seq (aux r) s
+    | StarA r -> lifted_seq (aux r) (StarA r)
+    | ComplementA r -> lifted_complement (aux r)
     | SetMinusA (r, s) -> aux @@ LandA (r, ComplementA s)
   in
   (* TODO: see if simplify the result helps performance *)
-  let r = aux r in
-  (r, !rxs)
+  (* TODO: is the guard expensive? *)
+  let* local, ghost, r = Choice.of_list @@ aux r in
+  let* () = Choice.guard @@ not @@ is_empty r in
+  Choice.return (r, local @ ghost)
 
 let symb_deriv ~rctx ~gvars lit r =
   let open Literal in
@@ -115,12 +147,12 @@ let symb_deriv ~rctx ~gvars lit r =
       left_join ~rctx ~gvars (C.return lit) (next_literal ~rctx ~gvars r)
     in
     let* () = C.guard @@ not @@ is_bot_literal ~rctx ~gvars lit' in
-    let r', _ = symb_deriv_over_lit ~rctx ~gvars r lit' in
+    let* r', _ = symb_deriv_over_lit ~rctx ~gvars r lit' in
     C.return (lit', r')
 
 (** TODO: since pre-condition SFA often begins with .*, will right
     deriv makes more sense here? *)
-let symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit r =
+let symb_deriv_with_ghosts ~rctx ~gvars ~ghosts ~index lit r =
   let open Literal in
   _assert __FILE__ __LINE__ (spf "bottom literal: %s" @@ layout_literal lit)
   @@ not
@@ -132,7 +164,7 @@ let symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit r =
         (next_literal ~rctx ~gvars ~ghosts r)
     in
     let* () = C.guard @@ not @@ is_bot_literal ~rctx ~gvars lit' in
-    let r', rxs = symb_deriv_over_lit ~rctx ~gvars ~ghosts r lit' in
+    let* r', rxs = symb_deriv_over_lit ~rctx ~gvars ~ghosts ~index r lit' in
     C.return (lit', r', rxs)
 
 let symb_quot ~rctx ~gvars trace regex =

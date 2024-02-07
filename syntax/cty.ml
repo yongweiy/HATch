@@ -18,6 +18,8 @@ module F (L : Lit.T) = struct
 
   let add_prop_to_cty phi cty = { cty with phi = smart_and [ cty.phi; phi ] }
 
+  let neg_cty { v; phi } = { v; phi = P.mk_not phi }
+
   (* subst *)
   let subst (y, replacable) { v; phi } =
     if String.equal y v.Nt.x then { v; phi }
