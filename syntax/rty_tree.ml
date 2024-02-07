@@ -89,4 +89,8 @@ module SyntaxF (A : Sfa.SFA) (L : Lit.T) = struct
   let rty_destruct_arr file line = function
     | ArrRty { arr; rethty } -> (arr, rethty)
     | _ -> _failatwith file line "die"
+
+  let neg_rty file line = function
+    | BaseRty { cty } -> BaseRty { cty = Cty.neg_cty cty }
+    | _ -> _failatwith __FILE__ __LINE__ "die"
 end

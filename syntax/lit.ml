@@ -13,6 +13,7 @@ module type T = sig
   val typed_force_to_id_list : lit typed list -> string list
   val mk_lit_true : lit
   val mk_lit_false : lit
+  val get_var_opt : lit -> string option
   val get_op_args : lit -> lit typed list
   val mk_lit_eq_lit : t -> lit -> lit -> lit
   val mk_var_eq_var : t -> string -> string -> lit
