@@ -96,9 +96,7 @@ let assume_prop phi st =
   else
     let rctx = add_prop_to_rctx phi st.rctx in
     let* () =
-      C.guard @@ not
-      @@ Subtyping.is_bot_cty rctx
-      @@ mk_unit_from_prop mk_true
+      C.guard @@ not @@ Subtyping.is_bot_cty rctx @@ mk_unit_from_prop mk_true
     in
     C.return { st with rctx }
 
@@ -131,8 +129,7 @@ let absorb_pre pre st =
     let* pre, st = res in
     let* l, pre = S.uncons_regex ~rctx ~gvars pre in
     let* l, post = D.symb_deriv ~rctx ~gvars l st.post in
-    let* rctx, l = L.refine (rctx, l) in
-    (* no guard to ensure post is nullable since it is unlikely *)
+    let* rctx, l = L.refine ~index:(List.length st.tr) (rctx, l) in
     _assert __FILE__ __LINE__ "symb_deriv: lit is not bot"
     @@ not
     @@ L.is_bot_literal ~rctx ~gvars l;
@@ -187,18 +184,22 @@ let join_rxs rxs rys =
 let check_pre ghosts pre st =
   let rctx, gvars = (st.rctx, st.gvars) in
   let* tr, regex, rxs =
-    List.fold_right
-      (fun lit ress ->
+    List.fold_righti
+      (fun index lit ress ->
         let* tr_rev, regex, rxs = ress in
+        (* Pp.printf "rxs: %s\n" @@ String.concat ", " *)
+        (* @@ List.map (fun { rx; rty } -> rx ^ ":" ^ layout_rty rty) rxs; *)
+        (* Pp.printf "lit: %s\n" @@ L.layout_literal lit; *)
+        (* Pp.printf "tr: %s\n" @@ L.layout_trace tr_rev; *)
         (* Pp.printf "check_pre:\n%s\n" @@ Rty.layout_regex regex; *)
-        (* Pp.printf "trace:\n%s\n" @@ L.layout_trace tr_rev; *)
+        (* print_endline "----------------"; *)
         let* lit', regex', rxs' =
-          D.symb_deriv_with_ghosts ~rctx ~gvars ~ghosts lit regex
+          D.symb_deriv_with_ghosts ~rctx ~gvars ~ghosts ~index lit regex
         in
+        (* print_endline "----------------"; *)
+        let* () = C.guard @@ not @@ is_empty regex' in
         let rxs' = join_rxs rxs rxs' in
         (* TODO: try guard away trivially false rxs *)
-        (* Pp.printf "+ %s\n" @@ String.concat ", " *)
-        (* @@ List.map (fun { rx; rty } -> rx ^ ":" ^ layout_rty rty) rxs'; *)
         (* TODO: try checking emptiness of regex' *)
         C.return (lit' :: tr_rev, regex', rxs'))
       st.tr
@@ -297,7 +298,6 @@ let exec_appop opctx st (op, args) : rty result C.t =
       _assert __FILE__ __LINE__ "base rty" @@ is_base_rty rty;
       ret st rty
   | _ -> (
-      let ghosts = List.map (fun g -> g.x) ghosts in
       let* pre, resrty, post = C.of_list @@ hty_to_triples hty in
       (* TODO: what if all pre-condition fails *)
       let* st = check_pre ghosts pre st in

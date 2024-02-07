@@ -116,8 +116,26 @@ module F (L : Lit.T) = struct
     in
     aux e
 
+  let typed_fv_prop e =
+    let rec aux e =
+      match e with
+      | Lit lit -> typed_fv_lit lit #: bool_ty
+      | Implies (e1, e2) -> aux e1 @ aux e2
+      | Ite (e1, e2, e3) -> aux e1 @ aux e2 @ aux e3
+      | Not e -> aux e
+      | And es -> List.concat_map aux es
+      | Or es -> List.concat_map aux es
+      | Iff (e1, e2) -> aux e1 @ aux e2
+      | Forall (u, body) ->
+          List.filter (fun x -> not (String.equal x.x u.x)) @@ aux body
+      | Exists (u, body) ->
+          List.filter (fun x -> not (String.equal x.x u.x)) @@ aux body
+    in
+    aux e
+
   let prop_multisubst = List.fold_right subst_prop
   let subst_prop_id (y, z) e = subst_prop (y, AVar z) e
+  let multisubst_prop_id l e = List.fold_right subst_prop_id l e
 
   let get_eqprop_by_name prop x =
     match prop with Lit lit -> get_eqlit_by_name lit x | _ -> None

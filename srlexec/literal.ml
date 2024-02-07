@@ -7,9 +7,20 @@ open Sugar
 open Syntax
 
 (* module Q = Qualifier *)
-let ( let* ) x f = Choice.bind f x
-let ( let+ ) x f = Choice.map f x
 let with_same_op ev1 ev2 = String.equal ev1.op ev2.op
+let typed_eq_untyped x y = String.equal x.x y
+let untyped_eq_typed x y = String.equal x y.x
+let compare_typed x y = String.compare x.x y.x
+
+let typed_eq_typed x y =
+  if String.equal x.x y.x then (
+    _assert __FILE__ __LINE__
+      (spf "%s = %s"
+         (layout_typed (fun x -> x) x)
+         (layout_typed (fun x -> x) y))
+      (x.ty = y.ty);
+    true)
+  else false
 
 type literal = {
   events : eff_event list;
@@ -54,22 +65,33 @@ let print_trace tr =
   List.iter (fun l -> Pp.printf "%s; " @@ layout_literal l) tr;
   print_newline ()
 
-let fv_event { op; vs; v; phi } =
+let ghosteqs_of_event ~ghosts { op; vs; v; phi } =
   let vs = List.map (fun typed -> typed.x) (v :: vs) in
-  let fvs = fv_prop phi in
-  List.filter (fun v0 -> not (List.mem v0 vs)) fvs
+  let rec aux acc phi =
+    match phi with
+    | Lit (AAppOp (eqsym, [ vl; vr ])) when Op.id_eq_op eqsym.x ->
+        let* eqs = acc in
+        let ty = vl.ty in
+        let* vr = L.get_var_opt vr.x in
+        let* vl = L.get_var_opt vl.x in
+        if StrList.exists vr ghosts && StrList.exists vl vs then
+          Some ((vl, vr, ty) :: eqs)
+        else None
+    | And phis -> List.fold_left aux acc phis
+    | _ -> None
+  in
+  aux (Some []) phi
 
-let of_sevent ~ghosts = function
+let of_sevent ?(ghosts = []) = function
   | GuardEvent _ -> _failatwith __FILE__ __LINE__ "guard event literal unimp"
-  | EffEvent ev -> (
-      match StrList.intersect ghosts @@ fv_event ev with
-      | [] -> { events = [ ev ]; op_filter = `Whitelist [] }
-      | [ ghost ] ->
-          (* TODO: assert the form of qualifier *)
-          { events = [ { ev with phi = mk_true } ]; op_filter = `Whitelist [] }
-      | _ ->
-          _failatwith __FILE__ __LINE__
-            "more than one ghost involved in a qualifier")
+  | EffEvent ev ->
+      let ev =
+        match List.interset typed_eq_untyped ghosts @@ fv_prop ev.phi with
+        | [] -> ev
+        (* TODO: in which condition is this sound *)
+        | _ -> { ev with phi = mk_true }
+      in
+      { events = [ ev ]; op_filter = `Whitelist [] }
 
 let print_query ~rctx ~gvars phi =
   Pp.printf "%s, %s ⊢ %s\n"
@@ -114,7 +136,23 @@ let is_bot_literal ~rctx ~gvars { events; op_filter } =
   in
   match op_filter with `Whitelist [] -> List.for_all aux events | _ -> false
 
-let lit_entails_sev ~rctx ~gvars ~ghosts lit sev =
+let rename ~op ~index arg =
+  String.sub op 0 1 ^ "_" ^ Int.to_string index ^ "!" ^ arg
+
+let rename_xs ~rename xs =
+  let ys = List.map (fun x -> rename #-> x) xs in
+  let substs = List.map2 (fun x y -> (x.x, y.x)) xs ys in
+  (ys, substs)
+
+(* TODO: split prop if possible *)
+let rxs_of_xs prop xs =
+  match List.last_destruct_opt xs with
+  | None -> []
+  | Some (xs, x) ->
+      List.map (fun x -> x.x #:: (mk_rty_var_sat_prop x mk_true)) xs
+      @ [ x.x #:: (mk_rty_var_sat_prop x prop) ]
+
+let lit_entails_sev ~rctx ~gvars ~ghosts ~index lit sev =
   (* TODO: guard event *)
   let ev =
     match sev with
@@ -122,7 +160,6 @@ let lit_entails_sev ~rctx ~gvars ~ghosts lit sev =
     | GuardEvent _ ->
         _failatwith __FILE__ __LINE__ "lit_entails_sev: GuardEvent"
   in
-
   let entails ({ op = op1; vs = vs1; v = v1; phi = phi1 } : eff_event)
       ({ op = op2; vs = vs2; v = v2; phi = phi2 } : eff_event) =
     _assert __FILE__ __LINE__ "sev_entails_sev: op" (op1 = op2);
@@ -133,71 +170,75 @@ let lit_entails_sev ~rctx ~gvars ~ghosts lit sev =
     @@ smart_implies phi1 phi2
   in
   let opt_of_bool elem b = if b then Some elem else None in
+  let res_of_bool b = if b then Some ([], []) else None in
   match lit with
-  | { events = [ ev' ]; op_filter = `Whitelist [] } when ev'.op = ev.op -> (
-      match StrList.intersect ghosts @@ fv_event ev with
-      | [] -> opt_of_bool [] @@ entails ev' ev
-      | [ ghost ] -> (
-          let v_opt =
-            List.find_map
-              (fun v ->
-                if ev.phi = mk_prop_var_eq_lit v @@ AVar ghost then Some v
-                else None)
-              (ev.v :: ev.vs)
-          in
-          match v_opt with
-          | None ->
-              _failatwith __FILE__ __LINE__
-                "non-equality qualifier on ghost variable unimp"
-          | Some v ->
-              let vs =
-                List.substract
-                  (fun { x; _ } { x = y; _ } -> String.equal x y)
-                  ev.vs [ v ]
-              in
-              let rty =
-                mk_rty_var_sat_prop v @@ exists_ignore_unit vs ev'.phi
-              in
-              opt_of_bool [ ghost #:: rty ]
-              @@ entails ev' { ev with phi = mk_true })
-      | _ ->
-          _failatwith __FILE__ __LINE__
-            "more than one ghost involved in a qualifier")
+  | { events = [ ev' ]; op_filter = `Whitelist [] } when with_same_op ev' ev
+    -> (
+      let vs = ev.v :: ev.vs in
+      let fvs = List.sort_uniq compare_typed @@ typed_fv_prop ev.phi in
+      let fvs = List.substract typed_eq_typed fvs gvars in
+      match List.intersect_and_subtract typed_eq_typed fvs ghosts with
+      | [], _ -> res_of_bool @@ entails ev' ev
+      | ghosts, locals ->
+          if not @@ entails ev' { ev with phi = mk_true } then None
+          else
+            let locals, substs =
+              rename_xs ~rename:(rename ~op:ev.op ~index) locals
+            in
+            (* Pp.printf "locals: %s\n" @@ layout_typed_l (fun x -> x) locals; *)
+            let phi' = P.multisubst_prop_id substs ev'.phi in
+            let phi = P.multisubst_prop_id substs ev.phi in
+            if
+              (not (List.is_empty locals))
+              && (RTypectx.exists rctx @@ (List.hd locals).x)
+            then
+              (* ghost state already revealed *)
+              Some ([], rxs_of_xs phi ghosts)
+            else Some (rxs_of_xs phi' locals, rxs_of_xs phi ghosts))
   | { events = []; op_filter = `Whitelist [ op ] } when ev.op = op ->
-      opt_of_bool [] @@ entails { ev with phi = mk_true } ev
-  | { events = []; op_filter = `Blacklist ops } -> opt_of_bool [] false
-  | _ -> opt_of_bool [] false
+      res_of_bool @@ entails { ev with phi = mk_true } ev
+  | { events = []; op_filter = `Blacklist ops } -> res_of_bool false
+  | _ -> res_of_bool false
+
+let ( let* ) x f = Choice.bind f x
+let ( let+ ) x f = Choice.map f x
 
 (** separate out events whose qualifier reference to variables in
-    `rctx`, and impose constraint from the qualifier *)
-let refine (rctx, { events; op_filter }) =
+    `rctx`, and impose constraint from the qualifier
+    TODO: is this only necessary when the constraint comes from SFA being checked?
+*)
+let refine ~index (rctx, { events; op_filter }) =
   let events, refined =
     List.partition_map
       (fun ({ op; vs; v; phi } as ev) ->
-        let fvs = fv_prop phi in
-        let fvs' = List.substract (fun x v -> x = v.x) fvs (v :: vs) in
-        if not @@ List.exists (RTypectx.exists rctx) fvs' then Left ev
+        let fvs = List.sort_uniq compare_typed @@ typed_fv_prop phi in
+        let vs, fvs =
+          List.intersect_and_subtract typed_eq_typed fvs (v :: vs)
+        in
+        if not @@ List.exists (fun fv -> RTypectx.exists rctx fv.x) fvs then
+          Left ev
         else
-          let vs = List.interset (fun v x -> v.x = x) (v :: vs) fvs in
-          let rxs =
-            List.map
-              (fun v ->
-                { rx = Rename.unique_with_prefix op v.x; rty = Rty.mk_top v.ty })
-              vs
-          in
-          let rctx = RTypectx.new_to_rights rctx rxs in
-          let phi =
-            List.fold_left
-              (fun phi (v, rx) -> subst_prop_id (v.x, rx.rx) phi)
-              phi
-            @@ List.combine vs rxs
-          in
-          let rctx =
-            RTypectx.new_to_right rctx
-            @@ ((Rename.unique "u") #:: (mk_unit_rty_from_prop phi))
-          in
-          (* Pp.printf "rctx:\n%s\n" @@ RTypectx.layout_typed_l rctx; *)
-          Right (rctx, of_sevent ~ghosts:[] @@ EffEvent ev))
+          let vs, substs = rename_xs ~rename:(rename ~op ~index) vs in
+          let phi = P.multisubst_prop_id substs phi in
+          let rctx = RTypectx.new_to_rights rctx @@ rxs_of_xs phi vs in
+          Right (rctx, of_sevent @@ EffEvent ev))
+      (* let rxs = *)
+      (*   List.map *)
+      (*     (fun v -> { rx = rename ~op ~index v.x; rty = Rty.mk_top v.ty }) *)
+      (*     vs *)
+      (* in *)
+      (* let rctx = RTypectx.new_to_rights rctx rxs in *)
+      (* let phi = *)
+      (*   List.fold_left *)
+      (*     (fun phi (v, rx) -> subst_prop_id (v.x, rx.rx) phi) *)
+      (*     phi *)
+      (*   @@ List.combine vs rxs *)
+      (* in *)
+      (* let rctx = *)
+      (*   RTypectx.new_to_right rctx *)
+      (*   @@ ((Rename.unique "u") #:: (mk_unit_rty_from_prop phi)) *)
+      (* in *)
+      (* Pp.printf "rctx:\n%s\n" @@ RTypectx.layout_typed_l rctx; *)
       events
   in
   (* _assert __FILE__ __LINE__ "refined event literals not bottom" *)
