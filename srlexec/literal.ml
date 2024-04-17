@@ -180,7 +180,9 @@ let lit_entails_sev ~rctx ~gvars ~ghosts ~index lit sev =
       match List.intersect_and_subtract typed_eq_typed fvs ghosts with
       | [], _ -> res_of_bool @@ entails ev' ev
       | ghosts, locals ->
-          if not @@ entails ev' { ev with phi = mk_true } then None
+          if not @@ entails ev' { ev with phi = mk_true } then
+            (* TODO: is the simple skolemization an over/under approx *)
+            None
           else
             let locals, substs =
               rename_xs ~rename:(rename ~op:ev.op ~index) locals
