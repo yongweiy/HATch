@@ -138,28 +138,18 @@ let main (opctx', rctx') structure normalized_structure =
          | None ->
              failwith "cannot find the implemetation of the given assertion"
          | Some comp ->
-             let exec_time, witnesses =
+             let exec_time, res =
                Sugar.clock (fun () ->
                    let substs, rxs, comp, hty = wrap_client comp rty in
-                   let rec loop_until_hatched = function
-                     | [] -> C.fail
-                     | (sfa_pre, retrty, sfa_post) :: triples ->
-                         let inits =
-                           Config.init ~substs rxs sfa_pre comp sfa_post
-                         in
-                         let witnesses = reduce_repeat ~opctx ~retrty inits in
-                         Pp.printf "nothing is printed yet\n";
-                         if C.is_empty witnesses then loop_until_hatched triples
-                         else (
-                           Pp.printf "about to print\n";
-                           C.iter witnesses (fun w ->
-                               Config.print_witness w;
-                               true);
-                           Pp.printf "done\n";
-                           witnesses)
-                   in
-                   loop_until_hatched @@ hty_to_triples hty)
+                   hty_to_triples hty
+                   |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
+                          let witnesses =
+                            C.to_list
+                            @@ reduce_repeat ~opctx ~retrty
+                            @@ Config.init ~substs rxs sfa_pre comp sfa_post
+                          in
+                          List.iter Config.print_witness witnesses;
+                          List.is_empty witnesses))
              in
              D.G.output @@ open_out @@ name ^ ".dot";
-             let res = if C.is_empty witnesses then Some () else None in
              (id, name, res, exec_time))
