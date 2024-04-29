@@ -103,6 +103,13 @@ module Rty = struct
     | AC (Const.B b) -> if b then Lit (AVar v.x) else Not (Lit (AVar v.x))
     | _ -> P.Lit (mk_lit_var_eq_lit v c)
 
+  let mk_prop_lit_eq_lit ty c1 c2 =
+    let open L in
+    match c2 with
+    | AC Const.U -> mk_true
+    | AC (Const.B b) -> if b then Lit c1 else mk_not (Lit c1)
+    | _ -> P.Lit (mk_lit_eq_lit ty c1 c2)
+
   let mk_cty_var_eq_lit ty c =
     let v = Nt.{ x = v_name; ty } in
     { v; phi = mk_prop_var_eq_lit v c }

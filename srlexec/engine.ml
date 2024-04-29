@@ -16,7 +16,6 @@ module D = Deriv
 module Tr = Trace
 
 let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
-  (* Pp.printf "@{<bold>Inside Reduce...@}\n:%s\n" @@ Config.layout_config cfg; *)
   match cfg.comp.x with
   | CErr | CVal _ -> C.return cfg
   | CLetE { lhs; rhs; letbody } -> (
@@ -68,20 +67,20 @@ let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
   | CMatch { matched; match_cases } ->
       (* ASSUMPTION: let's say patterns are disjoint *)
       let^ { constructor; args; exp } = C.of_list match_cases in
-      (* ASSUMPTION: `matched` is first-order *)
-      let matched =
-        (function
-          | VVar x -> AVar x
-          | VConst c -> AC c
-          | _ -> _failatwith __FILE__ __LINE__ "die")
-        #-> matched
+      let pat, rxs =
+        if String.equal constructor.x "True" then (AC (Const.B true), [])
+        else if String.equal constructor.x "False" then (AC (Const.B false), [])
+        else
+          let ctor = Op.mk_dt_op #-> constructor in
+          let xs = List.map (( #-> ) Rename.unique) args in
+          let rxs = List.map (fun x -> x.x #:: (Rty.mk_top x.ty)) xs in
+          let args = List.map (( #-> ) (fun x -> AVar x)) xs in
+          (AAppOp (ctor, args), rxs)
       in
-      let ctor = Op.mk_dt_op #-> constructor in
-      let xs = List.map (( #-> ) Rename.unique) args in
-      let rxs = List.map (fun x -> x.x #:: (Rty.mk_top x.ty)) xs in
-      let args = List.map (( #-> ) (fun x -> AVar x)) xs in
-      let lit = mk_lit_eq_lit matched.ty matched.x @@ AAppOp (ctor, args) in
-      cfg |> Config.add_rxs rxs |> Config.assume (Lit lit)
+      (* ASSUMPTION: `matched` is first-order *)
+      let matched = _value_to_lit __FILE__ __LINE__ matched in
+      let phi = mk_prop_lit_eq_lit matched.ty matched.x pat in
+      cfg |> Config.with_comp exp |> Config.add_rxs rxs |> Config.assume phi
   | CLetDeTu _ -> _failatwith __FILE__ __LINE__ "unimp"
   | CAppOp _ | CApp _ -> _failatwith __FILE__ __LINE__ "not in MNF"
 
