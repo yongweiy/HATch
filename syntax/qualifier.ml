@@ -1,6 +1,8 @@
 module F (L : Lit.T) = struct
   include L
   open Sexplib.Std
+  open Ppx_compare_lib.Builtin
+  open Ppx_hash_lib.Std.Hash.Builtin
   open Sugar
 
   type prop =
@@ -13,7 +15,7 @@ module F (L : Lit.T) = struct
     | Iff of prop * prop
     | Forall of string Normalty.Ntyped.typed * prop
     | Exists of string Normalty.Ntyped.typed * prop
-  [@@deriving sexp]
+  [@@deriving sexp, compare, equal, hash]
 
   let get_cbool = function Lit (AC (Constant.B b)) -> Some b | _ -> None
   let mk_true = Lit mk_lit_true

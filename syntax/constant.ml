@@ -1,7 +1,9 @@
 open Sexplib.Std
+open Ppx_compare_lib.Builtin
+open Ppx_hash_lib.Std.Hash.Builtin
 
 type t = U | B of bool | I of int | Tu of t list | Dt of string * t list
-[@@deriving sexp]
+[@@deriving sexp, compare, equal, hash]
 
 open Zzdatatype.Datatype
 open Sugar
