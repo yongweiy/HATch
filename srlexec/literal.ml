@@ -136,15 +136,15 @@ let is_bot ~rctx ~substs { guard; events; op_filter } =
    TODO: add an option to enable over-approximation *)
 let notbot_opt ~rctx ~substs ({ guard; events; op_filter } as l) =
   let is_bot_ev ({ op; vs; v; phi } as ev : eff_event) =
-      check_prop ~rctx
-      @@ forall_ignore_unit (v :: vs)
-      @@ mk_not @@ Guard.apply guard
-      @@ List.fold_right subst_prop_id substs phi
+    check_prop ~rctx
+    @@ forall_ignore_unit (v :: vs)
+    @@ mk_not @@ Guard.apply guard
+    @@ List.fold_right subst_prop_id substs phi
   in
   let events = List.filter (not << is_bot_ev) events in
   match op_filter with
   | `Whitelist [] when List.is_empty events -> None
-  | _ -> Some {l with events}
+  | _ -> Some { l with events }
 
 let mk_false = { guard = Pos mk_true; events = []; op_filter = `Whitelist [] }
 let mk_true = { guard = Pos mk_true; events = []; op_filter = `Blacklist [] }
@@ -175,7 +175,7 @@ let mk_and l1 l2 =
     | ev :: evs -> (
         match List.find_opt (with_same_op ev) l2.events with
         | Some ev' ->
-            let ev = { ev with phi = smart_and [ ev.phi; ev'.phi ] } in
+            let ev = { ev with phi = smart_add_to ev'.phi ev.phi } in
             join_and_sub (ev :: inter) diff evs
         | None -> join_and_sub inter (ev :: diff) evs)
   in
