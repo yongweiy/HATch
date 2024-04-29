@@ -7,7 +7,7 @@ module type T = sig
     | ATu of lit typed list
     | AProj of lit typed * int
     | AAppOp of Op.t typed * lit typed list
-  [@@deriving sexp]
+  [@@deriving sexp, compare, equal, hash]
 
   val force_to_id : lit -> string
   val typed_force_to_id_list : lit typed list -> string list
@@ -36,6 +36,8 @@ end
 module F (Ty : Typed.T) : T with type t = Ty.t and type 'a typed = 'a Ty.typed =
 struct
   open Sexplib.Std
+  open Ppx_compare_lib.Builtin
+  open Ppx_hash_lib.Std.Hash.Builtin
   module T = Ty
   include Ty
 
@@ -45,7 +47,7 @@ struct
     | ATu of lit typed list
     | AProj of lit typed * int
     | AAppOp of Op.t typed * lit typed list
-  [@@deriving sexp]
+  [@@deriving sexp, compare, equal, hash]
 
   let get_op_args lit = match lit with AAppOp (_, args) -> args | _ -> []
 

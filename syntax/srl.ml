@@ -14,9 +14,9 @@ module F (L : Lit.T) = struct
     | StarA of regex
     | ComplementA of regex
     | SetMinusA of regex * regex
-  [@@deriving sexp]
+  [@@deriving sexp, compare, equal, hash]
 
-  type sfa = regex [@@deriving sexp]
+  type sfa = regex [@@deriving sexp, compare, equal, hash]
 
   let raw_to_string r = Sexplib.Sexp.to_string @@ sexp_of_regex r
 

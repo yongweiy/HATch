@@ -185,6 +185,8 @@ module RTypectx = struct
 
   type ctx = rty poly_ctx
 
+  let of_rxs rxs = List.map (fun {rx; rty} -> (rx, rty)) rxs
+
   let new_to_right ctx { rx; rty } = new_to_right ctx (rx, rty)
 
   let new_to_rights ctx l =

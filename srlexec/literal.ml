@@ -1,280 +1,170 @@
-(** the equivalence class for computing derivative *)
+(** labels for transitions in SFA *)
 
 open Zzdatatype.Datatype
 open Language
 open Rty
 open Sugar
 open Syntax
+open Utils
 
-(* module Q = Qualifier *)
-let with_same_op ev1 ev2 = String.equal ev1.op ev2.op
-let typed_eq_untyped x y = String.equal x.x y
-let untyped_eq_typed x y = String.equal x y.x
-let compare_typed x y = String.compare x.x y.x
+module Guard = struct
+  type t = Pos of prop | Neg of prop [@@deriving sexp, compare, equal, hash]
 
-let typed_eq_typed x y =
-  if String.equal x.x y.x then (
-    _assert __FILE__ __LINE__
-      (spf "%s = %s"
-         (layout_typed (fun x -> x) x)
-         (layout_typed (fun x -> x) y))
-      (x.ty = y.ty);
-    true)
-  else false
+  let apply guard phi =
+    match guard with
+    | Pos psi -> smart_and [ psi; phi ]
+    | Neg psi -> smart_or [ mk_not psi; phi ]
+
+  let is_trivial = function Pos phi | Neg phi -> is_true phi
+
+  let layout = function
+    | g when is_trivial g -> ""
+    | Pos phi -> layout_prop phi ^ "⩓"
+    | Neg phi -> layout_prop (mk_not phi) ^ "⩔"
+
+  let mk_not = function Pos phi -> Neg phi | Neg phi -> Pos phi
+
+  let mk_and = function
+    | Pos phi1, Pos phi2 -> Pos (smart_and [ phi1; phi2 ])
+    | guard, Neg phi | Neg phi, guard ->
+        _assert __FILE__ __LINE__ "mk_and: non-trivial guard" @@ is_true phi;
+        guard
+
+  let mk_or = function
+    | Neg phi1, Neg phi2 -> Neg (smart_or [ phi1; phi2 ])
+    | guard, Pos phi | Pos phi, guard ->
+        _assert __FILE__ __LINE__ "mk_or: non-trivial guard" @@ is_true phi;
+        guard
+end
+
+open Sexplib.Std
+open Ppx_compare_lib.Builtin
+open Ppx_hash_lib.Std.Hash.Builtin
 
 type literal = {
+  guard : Guard.t;
   events : eff_event list;
   op_filter : [ `Whitelist of string list | `Blacklist of string list ];
 }
-(** the literal denotes the disjunction between event from `events`
-    and other events whose `op` is conditioned by `op_filter`; the
-    disjunction is guaranteed to be disjoint
-    
-    TODO: need to account for guard event
+[@@deriving sexp, compare, equal, hash]
+(** a literal denotes a disjunction of qualified events from `events`
+    and other events whose `op` is conditioned by `op_filter`.
+    `Pos` guard is interpreted as a conjunct to each event qualifier;
+    `Neg` guard is interpreted as a disjunct to each event qualifier.
+    a literal is well-formed if the disjuncted events are disjoint.
 *)
 
-let layout_literal { events; op_filter } =
-  let events_str =
-    String.concat " | "
-    @@ List.map (fun ev -> layout_sevent (EffEvent ev)) events
-  in
-  (* let op_filter_str = *)
-  (*   match op_filter with *)
-  (*   | `Whitelist ops_include -> String.concat " | " ops_include *)
-  (*   | `Blacklist ops_exclude when List.is_empty ops_exclude -> "" *)
-  (*   | `Blacklist ops_exclude -> "¬(" ^ String.concat " | " ops_exclude ^ ")" *)
-  (* in *)
-  (* if op_filter_str = "" then events_str else events_str ^ " | " ^ op_filter_str *)
+let subst yz l = { l with events = List.map (SE.subst_ev yz) l.events }
+
+(** TODO: this is weird, shall we abandon the rctx infrastructure? *)
+let to_rxs ~index { guard; events; op_filter } =
   match op_filter with
-  | `Whitelist ops_include
-    when List.is_empty ops_include && List.is_empty events ->
-      "⊥"
-  | `Whitelist ops_include -> String.concat " | " @@ (events_str :: ops_include)
-  | `Blacklist ops_exclude
-    when List.is_empty ops_exclude && List.is_empty events ->
-      "⊤"
-  | `Blacklist ops_exclude when List.is_empty events ->
-      "¬(" ^ String.concat " | " ops_exclude ^ ")"
-  | `Blacklist ops_exclude ->
-      events_str ^ " | ¬(" ^ String.concat " | " ops_exclude ^ ")"
-
-let layout_trace tr =
-  String.concat " -> " @@ List.map layout_literal @@ List.rev tr
-
-let print_trace tr =
-  List.iter (fun l -> Pp.printf "%s; " @@ layout_literal l) tr;
-  print_newline ()
-
-let ghosteqs_of_event ~ghosts { op; vs; v; phi } =
-  let vs = List.map (fun typed -> typed.x) (v :: vs) in
-  let rec aux acc phi =
-    match phi with
-    | Lit (AAppOp (eqsym, [ vl; vr ])) when Op.id_eq_op eqsym.x ->
-        let* eqs = acc in
-        let ty = vl.ty in
-        let* vr = L.get_var_opt vr.x in
-        let* vl = L.get_var_opt vl.x in
-        if StrList.exists vr ghosts && StrList.exists vl vs then
-          Some ((vl, vr, ty) :: eqs)
-        else None
-    | And phis -> List.fold_left aux acc phis
-    | _ -> None
-  in
-  aux (Some []) phi
-
-let of_sevent ?(ghosts = []) = function
-  | GuardEvent _ -> _failatwith __FILE__ __LINE__ "guard event literal unimp"
-  | EffEvent ev ->
-      let ev =
-        match List.interset typed_eq_untyped ghosts @@ fv_prop ev.phi with
-        | [] -> ev
-        (* TODO: in which condition is this sound *)
-        | _ -> { ev with phi = mk_true }
+  | `Whitelist [] ->
+      let vs, phis =
+        events
+        |> List.map (fun { op; vs; v; phi } ->
+               let vs, substs =
+                 rename_xs ~rename:(rename ~op ~index) @@ (v :: vs)
+               in
+               let phi = P.multisubst_prop_id substs phi in
+               (vs, phi))
+        |> List.fold_left
+             (fun (vss, phis) (vs, phi) -> (vs @ vss, phi :: phis))
+             ([], [])
       in
-      { events = [ ev ]; op_filter = `Whitelist [] }
+      let phi = Guard.apply guard @@ smart_or phis in
+      rxs_of_xs phi vs
+  | `Whitelist _ | `Blacklist _ ->
+      [
+        (Rename.unique "u")
+        #:: (mk_unit_rty_from_prop @@ Guard.apply guard mk_true);
+      ]
 
-let print_query ~rctx ~gvars phi =
-  Pp.printf "%s, %s ⊢ %s\n"
-    (RTypectx.layout_typed_l rctx)
-    (Rty.layout_typed_l Fun.id gvars)
-    (layout_prop phi)
+let layout_literal { guard; events; op_filter } =
+  let event_strs = List.map (fun ev -> layout_sevent (EffEvent ev)) events in
+  Guard.layout guard
+  ^
+  match op_filter with
+  | `Whitelist ops_include ->
+      let strs = event_strs @ ops_include in
+      if List.is_empty strs then "⊥" else String.concat " | " strs
+  | `Blacklist ops_exclude when List.is_empty ops_exclude ->
+      _assert __FILE__ __LINE__ "layout_literal: disjointness"
+      @@ List.is_empty event_strs;
+      "⊤"
+  | `Blacklist ops_exclude ->
+      String.concat " | " @@ event_strs
+      @ [ "¬(" ^ String.concat " | " ops_exclude ^ ")" ]
 
-let check_prop ~rctx ~gvars phi =
-  (* print_query ~rctx ~gvars phi; *)
-  (* let rctx = *)
-  (*   RTypectx.new_to_rights rctx *)
-  (*   @@ List.map (fun { x; ty } -> { rx = x; rty = Rty.mk_top ty }) gvars *)
-  (* in *)
-  (* let rctx = *)
-  (*   RTypectx.new_to_right rctx *)
-  (*     { rx = Rename.unique "a"; rty = Rty.mk_unit_rty_from_prop phi } *)
-  (* in *)
-  let lhs_rty = Rty.mk_top Nt.unit_ty in
-  (* let rhs_rty = Rty.mk_bot Nt.unit_ty in *)
-  let rhs_rty = Rty.mk_unit_rty_from_prop phi in
-  Subtyping.sub_rty_bool rctx (lhs_rty, rhs_rty)
+let of_sevent = function
+  | GuardEvent phi ->
+      { guard = Pos phi; events = []; op_filter = `Whitelist [] }
+  | EffEvent ev ->
+      { guard = Pos mk_true; events = [ ev ]; op_filter = `Whitelist [] }
 
-let forall_ignore_unit us prop =
-  let fvs = fv_prop prop in
-  List.fold_left
-    (fun prop u ->
-      if u.ty = Nt.unit_ty || (not @@ StrList.exists u.x fvs) then prop
-      else Forall (u, prop))
-    prop us
+(** It is sound to only consider either `guard` or `events`
+    because of the way literals are emitted from the SFA.
+   TODO: how much faster using syntactic approach instead of calling solver *)
+let entails_sevent { guard; events; op_filter } = function
+  | GuardEvent phi' -> (
+      match guard with
+      | Pos phi -> Smtquery.check_bool @@ smart_implies phi phi'
+      | Neg _ -> _failatwith __FILE__ __LINE__ "unimp")
+  | EffEvent ev' -> (
+      _assert __FILE__ __LINE__ "unimp"
+        (match guard with
+        | Neg phi when not @@ is_true phi -> false
+        | _ -> true);
+      match (events, op_filter) with
+      | [ ev ], `Whitelist [] when String.equal ev.op ev'.op ->
+          Smtquery.check_bool @@ smart_implies ev.phi ev'.phi
+      | [], `Whitelist [ op ] when String.equal op ev'.op ->
+          Smtquery.check_bool @@ smart_implies mk_true ev'.phi
+      | _ -> false)
 
-let exists_ignore_unit us prop =
-  let fvs = fv_prop prop in
-  List.fold_left
-    (fun prop u ->
-      if u.ty = Nt.unit_ty || (not @@ StrList.exists u.x fvs) then prop
-      else Exists (u, prop))
-    prop us
-
-let is_bot_literal ~rctx ~gvars { events; op_filter } =
+(** determine if a literal is bottom, i.e., no satisfying events *)
+let is_bot ~rctx ~substs { guard; events; op_filter } =
   let aux ({ op; vs; v; phi } : eff_event) =
-    check_prop ~rctx ~gvars @@ forall_ignore_unit (v :: vs) @@ mk_not phi
+    check_prop ~rctx
+    @@ forall_ignore_unit (v :: vs)
+    @@ mk_not @@ Guard.apply guard
+    @@ List.fold_right subst_prop_id substs phi
   in
   match op_filter with `Whitelist [] -> List.for_all aux events | _ -> false
 
-let rename ~op ~index arg =
-  String.sub op 0 1 ^ "_" ^ Int.to_string index ^ "!" ^ arg
-
-let rename_xs ~rename xs =
-  let ys = List.map (fun x -> rename #-> x) xs in
-  let substs = List.map2 (fun x y -> (x.x, y.x)) xs ys in
-  (ys, substs)
-
-(* TODO: split prop if possible *)
-let rxs_of_xs prop xs =
-  match List.last_destruct_opt xs with
-  | None -> []
-  | Some (xs, x) ->
-      List.map (fun x -> x.x #:: (mk_rty_var_sat_prop x mk_true)) xs
-      @ [ x.x #:: (mk_rty_var_sat_prop x prop) ]
-
-let lit_entails_sev ~rctx ~gvars ~ghosts ~index lit sev =
-  (* TODO: guard event *)
-  let ev =
-    match sev with
-    | EffEvent ev -> ev
-    | GuardEvent _ ->
-        _failatwith __FILE__ __LINE__ "lit_entails_sev: GuardEvent"
+(** an enhancement over `is_bot` by pruning out non-satisfiable branches
+   TODO: add an option to enable over-approximation *)
+let notbot_opt ~rctx ~substs ({ guard; events; op_filter } as l) =
+  let is_bot_ev ({ op; vs; v; phi } as ev : eff_event) =
+      check_prop ~rctx
+      @@ forall_ignore_unit (v :: vs)
+      @@ mk_not @@ Guard.apply guard
+      @@ List.fold_right subst_prop_id substs phi
   in
-  let entails ({ op = op1; vs = vs1; v = v1; phi = phi1 } : eff_event)
-      ({ op = op2; vs = vs2; v = v2; phi = phi2 } : eff_event) =
-    _assert __FILE__ __LINE__ "sev_entails_sev: op" (op1 = op2);
-    _assert __FILE__ __LINE__ "sev_entails_sev: vs" (vs1 = vs2);
-    _assert __FILE__ __LINE__ "sev_entails_sev: v" (v1 = v2);
-    check_prop ~rctx ~gvars
-    @@ forall_ignore_unit (v1 :: vs1)
-    @@ smart_implies phi1 phi2
-  in
-  let opt_of_bool elem b = if b then Some elem else None in
-  let res_of_bool b = if b then Some ([], []) else None in
-  match lit with
-  | { events = [ ev' ]; op_filter = `Whitelist [] } when with_same_op ev' ev
-    -> (
-      let vs = ev.v :: ev.vs in
-      let fvs = List.sort_uniq compare_typed @@ typed_fv_prop ev.phi in
-      let fvs = List.substract typed_eq_typed fvs gvars in
-      match List.intersect_and_subtract typed_eq_typed fvs ghosts with
-      | [], _ -> res_of_bool @@ entails ev' ev
-      | ghosts, locals ->
-          if not @@ entails ev' { ev with phi = mk_true } then
-            (* TODO: is the simple skolemization an over/under approx *)
-            None
-          else
-            let locals, substs =
-              rename_xs ~rename:(rename ~op:ev.op ~index) locals
-            in
-            (* Pp.printf "locals: %s\n" @@ layout_typed_l (fun x -> x) locals; *)
-            let phi' = P.multisubst_prop_id substs ev'.phi in
-            let phi = P.multisubst_prop_id substs ev.phi in
-            if
-              (not (List.is_empty locals))
-              && (RTypectx.exists rctx @@ (List.hd locals).x)
-            then
-              (* ghost state already revealed *)
-              Some ([], rxs_of_xs phi ghosts)
-            else Some (rxs_of_xs phi' locals, rxs_of_xs phi ghosts))
-  | { events = []; op_filter = `Whitelist [ op ] } when ev.op = op ->
-      res_of_bool @@ entails { ev with phi = mk_true } ev
-  | { events = []; op_filter = `Blacklist ops } -> res_of_bool false
-  | _ -> res_of_bool false
+  let events = List.filter (not << is_bot_ev) events in
+  match op_filter with
+  | `Whitelist [] when List.is_empty events -> None
+  | _ -> Some {l with events}
 
-let ( let* ) x f = Choice.bind f x
-let ( let+ ) x f = Choice.map f x
+let mk_false = { guard = Pos mk_true; events = []; op_filter = `Whitelist [] }
+let mk_true = { guard = Pos mk_true; events = []; op_filter = `Blacklist [] }
 
-(** separate out events whose qualifier reference to variables in
-    `rctx`, and impose constraint from the qualifier
-    TODO: is this only necessary when the constraint comes from SFA being checked?
-*)
-let refine ~index (rctx, { events; op_filter }) =
-  let events, refined =
-    List.partition_map
-      (fun ({ op; vs; v; phi } as ev) ->
-        let fvs = List.sort_uniq compare_typed @@ typed_fv_prop phi in
-        let vs, fvs =
-          List.intersect_and_subtract typed_eq_typed fvs (v :: vs)
-        in
-        if not @@ List.exists (fun fv -> RTypectx.exists rctx fv.x) fvs then
-          Left ev
-        else
-          let vs, substs = rename_xs ~rename:(rename ~op ~index) vs in
-          let phi = P.multisubst_prop_id substs phi in
-          let rctx = RTypectx.new_to_rights rctx @@ rxs_of_xs phi vs in
-          Right (rctx, of_sevent @@ EffEvent ev))
-      (* let rxs = *)
-      (*   List.map *)
-      (*     (fun v -> { rx = rename ~op ~index v.x; rty = Rty.mk_top v.ty }) *)
-      (*     vs *)
-      (* in *)
-      (* let rctx = RTypectx.new_to_rights rctx rxs in *)
-      (* let phi = *)
-      (*   List.fold_left *)
-      (*     (fun phi (v, rx) -> subst_prop_id (v.x, rx.rx) phi) *)
-      (*     phi *)
-      (*   @@ List.combine vs rxs *)
-      (* in *)
-      (* let rctx = *)
-      (*   RTypectx.new_to_right rctx *)
-      (*   @@ ((Rename.unique "u") #:: (mk_unit_rty_from_prop phi)) *)
-      (* in *)
-      (* Pp.printf "rctx:\n%s\n" @@ RTypectx.layout_typed_l rctx; *)
-      events
-  in
-  (* _assert __FILE__ __LINE__ "refined event literals not bottom" *)
-  (* @@ not *)
-  (* @@ List.exists (fun (rctx, l) -> is_bot_literal ~rctx ~gvars:[] l) refined; *)
-  (* let last = *)
-  (*   match { events; op_filter } with *)
-  (*   | { events = []; op_filter = `Whitelist [] } -> Choice.fail *)
-  (*   | l -> *)
-  (*       _assert __FILE__ __LINE__ "remaining literal not bottom" *)
-  (*       @@ not *)
-  (*       @@ is_bot_literal ~rctx ~gvars:[] l; *)
-  (*       Choice.return (rctx, l) *)
-  (* in *)
-  let* rctx, l =
-    Choice.(of_list refined ++ return (rctx, { events; op_filter }))
-  in
-  let* () = Choice.guard @@ not @@ is_bot_literal ~rctx ~gvars:[] l in
-  Choice.return (rctx, l)
-
-let mk_false = { events = []; op_filter = `Whitelist [] }
-let mk_true = { events = []; op_filter = `Blacklist [] }
-
-let mk_not { events; op_filter } =
+let mk_not { guard; events; op_filter } =
   let event_ops = List.map (fun ev -> ev.op) events in
   let dual_event (ev : eff_event) = { ev with phi = mk_not ev.phi } in
   let dual_events = List.map dual_event events in
   match op_filter with
   | `Whitelist ops_include ->
       assert (StrList.is_disjoint ops_include event_ops);
-      { events = dual_events; op_filter = `Blacklist (event_ops @ ops_include) }
+      {
+        guard = Guard.mk_not guard;
+        events = dual_events;
+        op_filter = `Blacklist (event_ops @ ops_include);
+      }
   | `Blacklist ops_exclude ->
       assert (StrList.subset event_ops ops_exclude);
       {
+        guard = Guard.mk_not guard;
         events = dual_events;
         op_filter = `Whitelist (StrList.subtract ops_exclude event_ops);
       }
@@ -337,7 +227,8 @@ let mk_and l1 l2 =
     @ filter_events_by_op events_sub1 op_subfilter2
     @ filter_events_by_op events_sub2 op_subfilter1
   in
-  { events; op_filter }
+  let guard = Guard.mk_and (l1.guard, l2.guard) in
+  { guard; events; op_filter }
 
 let mk_or l1 l2 =
   let rec join_and_sub inter diff = function
@@ -371,7 +262,8 @@ let mk_or l1 l2 =
     | `Blacklist ops_exclude1, `Blacklist ops_exclude2 ->
         `Blacklist (StrList.intersect ops_exclude1 ops_exclude2)
   in
-  { events; op_filter }
+  let guard = Guard.mk_or (l1.guard, l2.guard) in
+  { guard; events; op_filter }
 
 let mk_or_multi lits =
   let rec aux acc = function
@@ -389,7 +281,7 @@ let mk_and_multi lits =
 
 let neg_literals lits = mk_not @@ mk_or_multi @@ Choice.run_all lits
 
-let join ~rctx ~gvars lits1 lits2 =
+let join ~rctx lits1 lits2 =
   let open Choice in
   (* Pp.printf "lits1: "; *)
   (* iter lits1 (fun lit1 -> *)
@@ -405,14 +297,14 @@ let join ~rctx ~gvars lits1 lits2 =
   let lits1_left =
     delay (fun () ->
         let neg_lit1 = neg_literals lits1 in
-        if is_bot_literal ~rctx ~gvars neg_lit1 then fail
-        else map (fun l2 -> mk_and neg_lit1 l2) lits2)
+        (* if is_bot_literal ~rctx neg_lit1 then fail else *)
+        map (fun l2 -> mk_and neg_lit1 l2) lits2)
   in
   let lits2_left =
     delay (fun () ->
         let neg_lit2 = neg_literals lits2 in
-        if is_bot_literal ~rctx ~gvars neg_lit2 then fail
-        else map (fun l1 -> mk_and l1 neg_lit2) lits1)
+        (* if is_bot_literal ~rctx neg_lit2 then fail else *)
+        map (fun l1 -> mk_and l1 neg_lit2) lits1)
   in
   let lits = intersects ++ lits1_left ++ lits2_left in
   (* Pp.printf "lits: "; *)
@@ -422,13 +314,13 @@ let join ~rctx ~gvars lits1 lits2 =
   (* print_newline (); *)
   lits
 
-let left_join ~rctx ~gvars lits1 lits2 =
+let left_join ~rctx lits1 lits2 =
   let open Choice in
   let intersects = lift2 mk_and lits1 lits2 in
   let lits2_left =
     delay (fun () ->
         let neg_lit2 = neg_literals lits2 in
-        if is_bot_literal ~rctx ~gvars neg_lit2 then fail
-        else map (fun l1 -> mk_and l1 neg_lit2) lits1)
+        (* if is_bot_literal ~rctx neg_lit2 then fail else *)
+        map (fun l1 -> mk_and l1 neg_lit2) lits1)
   in
   intersects ++ lits2_left

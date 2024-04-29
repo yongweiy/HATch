@@ -3,4 +3,4 @@
  (wrapped true)
  (inline_tests)
  (preprocess (pps ppx_jane ppx_let ppx_inline_test))
- (libraries language normalization subtyping core env smtquery choice))
+ (libraries language normalization subtyping core env smtquery choice oseq ocamlgraph))

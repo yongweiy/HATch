@@ -1,9 +1,12 @@
 open Sexplib.Std
+open Ppx_compare_lib.Builtin
+open Ppx_hash_lib.Std.Hash.Builtin
 
 type t = DtOp of string | EffOp of string | BuiltinOp of string
-[@@deriving sexp]
+[@@deriving sexp, compare, equal, hash]
 
 let compare a b = Sexplib.Sexp.compare (sexp_of_t a) (sexp_of_t b)
+let mk_dt_op op = DtOp op
 let id_eq_op = function BuiltinOp "==" -> true | _ -> false
 let id_is_dt name = String.(equal name @@ capitalize_ascii name)
 let to_string = function DtOp op -> op | EffOp op -> op | BuiltinOp op -> op

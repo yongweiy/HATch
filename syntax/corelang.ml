@@ -40,14 +40,17 @@ module type T = sig
   val mk_bool : bool -> comp typed
   val mk_var : string -> comp typed
   val to_v_ : comp -> value
+  val to_const_ : value -> Constant.t
   val to_comp_ : value -> comp
   val to_v : comp typed -> value typed
+  val to_const : value typed -> Constant.t typed
   val to_comp : value typed -> comp typed
   val mk_lam : string typed -> comp typed -> value typed
   val mk_id_function : t -> value typed
   val mk_fix : string typed -> string typed -> comp typed -> value typed
   val lam_to_fix : string typed -> value typed -> value typed
   val lam_to_fix_comp : string typed -> comp typed -> comp typed
+  val mk_val : value typed -> comp typed
   val mk_lete : string typed -> comp typed -> comp typed -> comp typed
   val mk_app : value typed -> value typed -> comp typed
   val mk_appop : Op.t typed -> value typed list -> comp typed
@@ -216,6 +219,9 @@ struct
   let to_v_ = function
     | CVal x -> x
     | _ -> _failatwith __FILE__ __LINE__ "not a value"
+  let to_const_ = function
+    | VConst x -> x
+    | _ -> _failatwith __FILE__ __LINE__ "not a const"
 
   let var_to_str_ = function
     | CVal (VVar x) -> x
@@ -223,6 +229,7 @@ struct
 
   let to_comp_ v = CVal v
   let to_v x = to_v_ #-> x
+  let to_const x = to_const_ #-> x
   let to_comp x = to_comp_ #-> x
   let var_to_str x = var_to_str_ #-> x
 
@@ -243,6 +250,8 @@ struct
 
   let lam_to_fix_comp fixname (body : comp typed) : comp typed =
     to_comp (lam_to_fix fixname (to_v body))
+
+  let mk_val v = (CVal v.x) #: v.ty
 
   let mk_lete lhs rhs letbody = (CLetE { lhs; rhs; letbody }) #: letbody.ty
   let mk_app appf apparg = (CApp { appf; apparg }) #: (get_retty appf.ty)

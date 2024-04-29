@@ -1,5 +1,7 @@
 module F (L : Lit.T) = struct
   open Sexplib.Std
+  open Ppx_compare_lib.Builtin
+  open Ppx_hash_lib.Std.Hash.Builtin
   module Cty = Cty.F (L)
   include Cty
 
@@ -9,12 +11,13 @@ module F (L : Lit.T) = struct
     v : string typed;
     phi : prop;
   }
-  [@@deriving sexp]
+  [@@deriving sexp, compare, equal, hash]
 
   include Cty
   (** just a hack to make sure cty's field name won't be overwritten *)
 
-  type sevent = GuardEvent of prop | EffEvent of eff_event [@@deriving sexp]
+  type sevent = GuardEvent of prop | EffEvent of eff_event
+  [@@deriving sexp, compare, equal, hash]
 
   let is_effevent = function EffEvent _ -> true | _ -> false
 
@@ -31,6 +34,10 @@ module F (L : Lit.T) = struct
     List.map (fun (x, ty) -> x #: ty) @@ _safe_combine __FILE__ __LINE__ vs tps
 
   (* subst *)
+
+  let subst_ev (y, z) ({ op; vs; v; phi } as ev) =
+    if List.exists (fun x -> String.equal x.x y) (v :: vs) then ev
+    else { ev with phi = subst_prop (y, z) phi }
 
   let subst (y, z) sevent =
     match sevent with

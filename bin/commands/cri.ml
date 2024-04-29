@@ -232,7 +232,7 @@ let symb_exec_ (ri_input, s) source_file =
   List.iter ~f:(fun res ->
       Printf.printf "DT(%s)  " ri_input.dt;
       Typecheck.pprint_res_one res)
-  @@ Srlexec.Symexec.check (setting.oprctx, setting.rctx) code normalized
+  @@ Srlexec.Engine.main (setting.oprctx, setting.rctx) code normalized
 
 let subtype_check_ (ri_input, s) source_file =
   let setting, code, normalized, _ =
