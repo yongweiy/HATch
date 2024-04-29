@@ -22,7 +22,12 @@ module F (L : Lit.T) = struct
   let mk_false = Lit mk_lit_false
   let is_true p = match get_cbool p with Some true -> true | _ -> false
   let is_false p = match get_cbool p with Some false -> true | _ -> false
-  let mk_not = function Not p -> p | p -> Not p
+
+  let mk_not = function
+    | Not p -> p
+    | p when is_true p -> mk_false
+    | p when is_false p -> mk_true
+    | p -> Not p
 
   let smart_and l =
     if List.exists is_false l then mk_false
