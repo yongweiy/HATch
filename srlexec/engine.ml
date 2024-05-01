@@ -36,6 +36,7 @@ let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
                 fixbody
                 |> do_subst_comp (fixname.x, appf)
                 |> do_subst_comp (fixarg.x, apparg)
+                |> rename_comp ~f:(fun x -> x ^ "_" ^ string_of_int i)
               in
               let comp = mk_lete lhs fixbody letbody in
               C.return @@ Config.with_comp comp cfg
@@ -43,9 +44,10 @@ let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
       | CAppOp { op; appopargs } -> (
           let cfg = Config.with_comp letbody cfg in
           let op_rty = ROpTypectx.get_ty opctx op.x in
-          let substs, ghosts, hty = collect_ghosts ~i @@ Rty op_rty in
+          let substs_ghost, ghosts, hty = collect_ghosts ~i @@ Rty op_rty in
           let cfg = Config.add_rxs ghosts cfg in
-          let phis, rethty = hty_to_contract appopargs hty in
+          let substs_arg, phis, rethty = hty_to_contract appopargs hty in
+          let substs = substs_ghost @ substs_arg in
           let* cfg = Config.asserts phis cfg in
           match rethty with
           | Rty retrty -> C.return @@ Config.add_rx lhs.x #:: retrty cfg
