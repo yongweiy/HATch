@@ -54,8 +54,8 @@ let assume phi config =
   if is_true phi then Some config
   else if is_false phi then None
   else
-    let rctx = add_prop_to_rctx phi config.rctx in
-    Some { config with rctx }
+    add_prop_to_rctx phi config.rctx
+    |> Option.map @@ fun rctx -> { config with rctx }
 
 (** eagerly find assertion failure
    TODO: try swap the order of two branches *)
