@@ -239,15 +239,16 @@ let rec collect_args ?(rxs = []) hty =
   | Rty (ArrRty { arr = GhostArr _; _ }) -> _failatwith __FILE__ __LINE__ "die"
   | _ -> (List.rev rxs, hty)
 
-let rec hty_to_contract ?(phis = []) args hty =
+let rec hty_to_contract ?(substs = []) ?(phis = []) args hty =
   match (args, hty) with
-  | [], _ -> (List.rev phis, hty)
+  | [], _ -> (substs, List.rev phis, hty)
   | arg :: args', Rty (ArrRty { arr = NormalArr { rx; rty }; rethty }) -> (
       match arg.x with
       | VVar x ->
           let _, phi = cty_typed_to_prop x #::: (rty_to_cty rty) in
           let rethty = subst_hty_id (rx, x) rethty in
-          hty_to_contract ~phis:(phi :: phis) args' rethty
+          hty_to_contract ~substs:((rx, x) :: substs) ~phis:(phi :: phis) args'
+            rethty
       | VConst c ->
           let cty = rty_to_cty rty in
           let phi = subst_prop (cty.v.x, AC c) cty.phi in
@@ -258,3 +259,42 @@ let rec hty_to_contract ?(phis = []) args hty =
   | _ :: args', Rty (ArrRty { arr = ArrArr _; rethty }) ->
       hty_to_contract ~phis args' rethty
   | _ -> _failatwith __FILE__ __LINE__ "die"
+
+let rec handle_rename ~f bindings body =
+  let bindings' = List.map (( #-> ) f) bindings in
+  let substs =
+    List.map2 (fun x x' -> (x.x, (fun x -> VVar x) #-> x')) bindings bindings'
+  in
+  let body' = do_multisubst_comp substs body in
+  (bindings', body')
+
+and rename_value ~f comp =
+  match comp.x with
+  | VLam { lamarg; lambody } -> mk_lam lamarg @@ rename_comp ~f lambody
+  | VFix { fixname; fixarg; fixbody } ->
+      mk_fix fixname fixarg @@ rename_comp ~f fixbody
+  | _ -> comp
+
+and rename_comp ~f comp =
+  match comp.x with
+  | CLetE { lhs; rhs; letbody } ->
+      let rhs' = rename_comp ~f rhs in
+      let lhs' = f #-> lhs in
+      let subst = (lhs.x, (fun x -> VVar x) #-> lhs') in
+      let letbody' = rename_comp ~f @@ do_subst_comp subst letbody in
+      mk_lete lhs' rhs' letbody'
+  | CLetDeTu { tulhs; turhs; letbody } ->
+      let tulhs, letbody = handle_rename ~f tulhs letbody in
+      let letbody = rename_comp ~f letbody in
+      (CLetDeTu { tulhs; turhs; letbody }) #: comp.ty
+  | CMatch { matched; match_cases } ->
+      let matched_cases =
+        List.map
+          (fun { constructor; args; exp } ->
+            let args, exp = handle_rename ~f args exp in
+            let exp = rename_comp ~f exp in
+            { constructor; args; exp })
+          match_cases
+      in
+      (CMatch { matched; match_cases = matched_cases }) #: comp.ty
+  | _ -> comp
