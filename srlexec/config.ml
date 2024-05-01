@@ -79,6 +79,7 @@ let asserts phis config =
     before matching them with `config.prefix`
  *)
 let admit ~substs sfa config =
+  (* Pp.printf "@{<yellow>admitting@} %s\n" @@ layout_regex sfa; *)
   let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
   D.G.init sfa;
   let* prefix, sfa' =
@@ -86,23 +87,21 @@ let admit ~substs sfa config =
   in
   let* () = C.guard @@ D.is_nullable sfa' in
   let prefix = List.fold_right Tr.subst_id substs prefix in
-  (* Pp.printf "@{<yellow>admit@} %s\n" @@ Tr.layout_trace prefix; *)
+  (* Pp.printf "@{<green>admited@} %s\n" @@ Tr.layout_trace prefix; *)
   C.return { config with prefix }
 
 let append ~substs sfa config =
   let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
   D.G.init sfa;
   let* tr, sfa' =
-    D.enum ~rctx:config.rctx ~substs
-      ~len_range:(0, Env.get_exec_max_pre_length ())
-      sfa
+    D.enum ~substs ~len_range:(0, Env.get_exec_max_pre_length ()) sfa
   in
   let* () = C.guard @@ D.is_nullable sfa' in
   let tr = List.fold_right Tr.subst_id substs tr in
-  (* Pp.printf "@{<yellow>append@} %s\n" @@ Tr.layout_trace tr; *)
   let* tr', cont =
     D.match_and_refine_trace ~rctx:config.rctx ~substs tr config.cont
   in
+  (* Pp.printf "@{<yellow>append@} %s\n" @@ Tr.layout_trace tr; *)
   C.return { config with prefix = Tr.append config.prefix tr'; cont }
 
 let init rxs pre comp post =

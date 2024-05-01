@@ -24,26 +24,22 @@ let rec is_nullable = function
   | ComplementA r -> not (is_nullable r)
   | SetMinusA (r, s) -> is_nullable r && not (is_nullable s)
 
-let rec next_literal ~rctx = function
-  | EmptyA | EpsilonA -> Choice.fail
-  | AnyA -> Choice.return @@ Literal.mk_true
-  | EventA sev -> Choice.return @@ Literal.of_sevent sev
-  | LorA (r, s) ->
-      Literal.join ~rctx (next_literal ~rctx r) (next_literal ~rctx s)
+let rec next_literal = function
+  | EmptyA | EpsilonA -> []
+  | AnyA -> [ L.mk_true ]
+  | EventA sev -> [ L.of_sevent sev ]
+  | LorA (r, s) -> L.join (next_literal r) (next_literal s)
   | LandA (r, s) ->
-      Choice.product (next_literal ~rctx r) (next_literal ~rctx s)
-      |> Choice.map (fun (l1, l2) -> Literal.mk_and l1 l2)
-  | SeqA (r, s) when is_nullable r ->
-      Literal.join ~rctx (next_literal ~rctx r) (next_literal ~rctx s)
-  | SeqA (r, s) -> next_literal ~rctx r
-  | StarA r -> next_literal ~rctx r
+      List.cartesian_map L.mk_and (next_literal r) (next_literal s)
+  | SeqA (r, s) when is_nullable r -> L.join (next_literal r) (next_literal s)
+  | SeqA (r, s) -> next_literal r
+  | StarA r -> next_literal r
   (* TODO: can we do better? pruning? ordering? *)
   | ComplementA r ->
-      let lits = next_literal ~rctx r in
-      Choice.(lits ++ delay (fun () -> return @@ Literal.neg_literals lits))
-  | SetMinusA (AnyA, EventA sev) ->
-      Choice.return @@ Literal.mk_not @@ Literal.of_sevent sev
-  | SetMinusA (r, s) -> next_literal ~rctx @@ LandA (r, ComplementA s)
+      let lits = next_literal r in
+      L.neg_literals lits :: lits
+  | SetMinusA (AnyA, EventA sev) -> [ L.mk_not @@ L.of_sevent sev ]
+  | SetMinusA (r, s) -> next_literal @@ LandA (r, ComplementA s)
 (* _failatwith __FILE__ __LINE__ *)
 (* @@ spf "next_literal: %s" @@ Rty.layout_regex r *)
 
@@ -165,25 +161,23 @@ end
     TODO: add a flag for prioritizing the sibling states closer to EmptyA
     , can be implemented via the `Mark` module
  *)
-let next ~rctx ~substs r =
+let next ~substs r =
   C.of_list
   @@
   match G.next r with
   (* a state is explored if all neighbors are
      and unexplored if none of neighbors are *)
   | [] ->
-      C.to_list
-      @@
-      let^ l = next_literal ~rctx r in
-      L.notbot_opt ~rctx ~substs l
-      |> Option.map @@ fun l ->
-         let s = deriv l r in
-         G.link r l s;
-         (l, s)
+      next_literal r
+      |> List.filter_map @@ L.notbot_opt ~substs
+      |> List.map (fun l ->
+             let s = deriv l r in
+             G.link r l s;
+             (l, s))
   | trans -> trans
 
 let match_and_refine ~rctx ~substs l r =
-  let^ l', r' = next ~rctx ~substs r in
+  let^ l', r' = next ~substs r in
   let l'' = L.mk_and l l' in
   L.notbot_opt ~rctx ~substs l'' |> Option.map @@ fun l'' -> (l'', r')
 
@@ -198,10 +192,10 @@ let match_and_refine_trace ~rctx ~substs tr r =
 
 (** enumerate all paths that start from the state
     denoted by `r` and are of length [`low`, `high`] *)
-let enum ~rctx ~substs ~len_range:(low, high) r =
+let enum ~substs ~len_range:(low, high) r =
   let advance acc =
     let* tr, r = acc in
-    let* l, r' = next ~rctx ~substs r in
+    let* l, r' = next ~substs r in
     C.return (Tr.snoc l tr, r')
   in
   let rec bfs len acc res =
