@@ -106,9 +106,9 @@ let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
 (*   in *)
 (*   aux cfgs *)
 
-let reduce_repeat ?(n = 10) ~opctx ~retrty cfgs =
+let reduce_repeat ?(n = 20) ~opctx ~retrty cfgs =
   let rec aux i =
-    if i = 10 then Fun.id else C.bind (aux (i + 1) << reduce ~i ~opctx)
+    if i = n then Fun.id else C.bind (aux (i + 1) << reduce ~i ~opctx)
   in
   aux 0 cfgs |> C.fmap @@ Config.hatch ~retrty |> C.fmap Config.get_witness
 
