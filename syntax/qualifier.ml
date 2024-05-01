@@ -78,10 +78,10 @@ module F (L : Lit.T) = struct
     match get_cbool a with
     | Some true -> prop
     | Some false -> mk_false
-    | None -> (
-        match prop with
-        | And props -> smart_and (a :: props)
-        | _ -> smart_and [ a; prop ])
+    | None ->
+        let props = match prop with And props -> props | _ -> [ prop ] in
+        if List.exists (equal_prop a << mk_not) props then mk_false
+        else smart_and (a :: props)
 
   let smart_implies a prop =
     match get_cbool a with

@@ -195,23 +195,24 @@ let exists_ignore_unit us prop =
 (*   let* () = Choice.guard @@ not @@ is_bot_literal ~rctx ~gvars:[] l in *)
 (*   Choice.return (rctx, l) *)
 
+(** return None if the result `rctx` has `false` binding *)
 let add_prop_to_rctx phi rctx =
   let fvs = fv_prop phi in
   match List.find_map (RTypectx.get_ty_opt rctx) fvs with
   | Some _ ->
       RTypectx.fold_right
-        (fun (rx, rty) rctx ->
-          let rty' =
-            match rty with
-            | BaseRty { cty } when StrList.exists rx fvs ->
-                let phi = subst_prop_id (rx, cty.v.x) phi in
-                BaseRty { cty = add_prop_to_cty phi cty }
-            | _ -> rty
-          in
-          (rx, rty') :: rctx)
-        rctx []
+        (fun (rx, rty) rctx_opt ->
+          Option.bind rctx_opt @@ fun rctx ->
+          match rty with
+          | BaseRty { cty } when StrList.exists rx fvs ->
+              let phi = subst_prop_id (rx, cty.v.x) phi in
+              let cty = add_prop_to_cty phi cty in
+              if is_false cty.phi then None
+              else Some ((rx, BaseRty { cty }) :: rctx)
+          | _ -> Some ((rx, rty) :: rctx))
+        rctx (Some [])
   | None ->
-      RTypectx.new_to_right rctx
+      Option.some @@ RTypectx.new_to_right rctx
       @@ ((Rename.unique "u") #:: (mk_unit_rty_from_prop phi))
 
 let rec collect_ghosts ?(substs = []) ?(rxs = []) ~i hty =
