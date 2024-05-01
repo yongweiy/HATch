@@ -134,7 +134,7 @@ let is_bot ~rctx ~substs { guard; events; op_filter } =
 
 (** an enhancement over `is_bot` by pruning out non-satisfiable branches
    TODO: add an option to enable over-approximation *)
-let notbot_opt ~rctx ~substs ({ guard; events; op_filter } as l) =
+let notbot_opt ?(rctx = []) ~substs ({ guard; events; op_filter } as l) =
   let is_bot_ev ({ op; vs; v; phi } as ev : eff_event) =
     check_prop ~rctx
     @@ forall_ignore_unit (v :: vs)
@@ -279,48 +279,9 @@ let mk_and_multi lits =
   in
   match lits with [] -> mk_true | lit :: lits -> aux lit lits
 
-let neg_literals lits = mk_not @@ mk_or_multi @@ Choice.run_all lits
+let neg_literals lits = mk_not @@ mk_or_multi @@ lits
 
-let join ~rctx lits1 lits2 =
-  let open Choice in
-  (* Pp.printf "lits1: "; *)
-  (* iter lits1 (fun lit1 -> *)
-  (*     Pp.printf "%s, " @@ layout_literal lit1; *)
-  (*     true); *)
-  (* print_newline (); *)
-  (* Pp.printf "lits2: "; *)
-  (* iter lits2 (fun lit2 -> *)
-  (*     Pp.printf "%s, " @@ layout_literal lit2; *)
-  (*     true); *)
-  (* print_newline (); *)
-  let intersects = lift2 mk_and lits1 lits2 in
-  let lits1_left =
-    delay (fun () ->
-        let neg_lit1 = neg_literals lits1 in
-        (* if is_bot_literal ~rctx neg_lit1 then fail else *)
-        map (fun l2 -> mk_and neg_lit1 l2) lits2)
-  in
-  let lits2_left =
-    delay (fun () ->
-        let neg_lit2 = neg_literals lits2 in
-        (* if is_bot_literal ~rctx neg_lit2 then fail else *)
-        map (fun l1 -> mk_and l1 neg_lit2) lits1)
-  in
-  let lits = intersects ++ lits1_left ++ lits2_left in
-  (* Pp.printf "lits: "; *)
-  (* iter lits (fun lit -> *)
-  (*     Pp.printf "%s, " @@ layout_literal lit; *)
-  (*     true); *)
-  (* print_newline (); *)
-  lits
-
-let left_join ~rctx lits1 lits2 =
-  let open Choice in
-  let intersects = lift2 mk_and lits1 lits2 in
-  let lits2_left =
-    delay (fun () ->
-        let neg_lit2 = neg_literals lits2 in
-        (* if is_bot_literal ~rctx neg_lit2 then fail else *)
-        map (fun l1 -> mk_and l1 neg_lit2) lits1)
-  in
-  intersects ++ lits2_left
+let join lits1 lits2 =
+  List.cartesian_map mk_and lits1 lits2
+  @ List.map (mk_and (neg_literals lits2)) lits1
+  @ List.map (mk_and (neg_literals lits1)) lits2

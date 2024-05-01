@@ -33,11 +33,11 @@ let aux_sub_cty uqvs { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
     Printf.printf "query: %s\n" (layout_prop query)
   in
   let fvs = fv_prop query in
-  let () =
-    _assert __FILE__ __LINE__
-      (spf "the cty query has free variables %s" (StrList.to_string fvs))
-      (0 == List.length fvs)
-  in
+  (* let () = *)
+  (*   _assert __FILE__ __LINE__ *)
+  (*     (spf "the cty query has free variables %s" (StrList.to_string fvs)) *)
+  (*     (0 == List.length fvs) *)
+  (* in *)
   let res = Smtquery.cached_check_bool query in
   let () =
     Env.show_debug_queries @@ fun _ ->
