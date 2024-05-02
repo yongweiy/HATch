@@ -289,7 +289,7 @@ and rename_comp ~f comp =
       let letbody = rename_comp ~f letbody in
       (CLetDeTu { tulhs; turhs; letbody }) #: comp.ty
   | CMatch { matched; match_cases } ->
-      let matched_cases =
+      let match_cases =
         List.map
           (fun { constructor; args; exp } ->
             let args, exp = handle_rename ~f args exp in
@@ -297,5 +297,5 @@ and rename_comp ~f comp =
             { constructor; args; exp })
           match_cases
       in
-      (CMatch { matched; match_cases = matched_cases }) #: comp.ty
+      (CMatch { matched; match_cases}) #: comp.ty
   | _ -> comp
