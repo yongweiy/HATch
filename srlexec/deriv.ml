@@ -165,6 +165,7 @@ end
 
     TODO: add a flag for prioritizing the sibling states closer to EmptyA
     , can be implemented via the `Mark` module
+    TODO: add a flag for omitting `neg_literals` case
  *)
 let next ~substs r =
   C.of_list
@@ -173,12 +174,12 @@ let next ~substs r =
   (* a state is explored if all neighbors are
      and unexplored if none of neighbors are *)
   | [] ->
-      next_literal r
-      |> List.filter_map @@ L.notbot_opt ~substs
-      |> List.map (fun l ->
-             let s = deriv l r in
-             G.link r l s;
-             (l, s))
+      let lits = List.filter_map (L.notbot_opt ~substs) (next_literal r) in
+      let nexts =
+        (L.neg_literals lits, EmptyA) :: List.map (fun l -> (l, deriv l r)) lits
+      in
+      List.iter (fun (l, s) -> G.link r l s) nexts;
+      nexts
   | trans -> trans
 
 let match_and_refine ~rctx ~substs l r =
