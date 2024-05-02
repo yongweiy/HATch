@@ -28,7 +28,11 @@ let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
           match appf.x with
           | VVar f -> _failatwith __FILE__ __LINE__ "higher-order unimp"
           | VLam { lamarg; lambody } ->
-              let lambody = do_subst_comp (lamarg.x, apparg) lambody in
+              let lambody =
+                lambody
+                |> do_subst_comp (lamarg.x, apparg)
+                |> rename_comp ~f:(fun x -> x ^ "_" ^ string_of_int i)
+              in
               let comp = mk_lete lhs lambody letbody in
               C.return @@ Config.with_comp comp cfg
           | VFix { fixname; fixarg; fixbody } ->
