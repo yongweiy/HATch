@@ -131,7 +131,12 @@ module DerivGraph = struct
           VCache.add cache v name;
           name
 
-  let vertex_attributes r = [ `Label (Rty.layout_regex r) ]
+  let vertex_attributes r =
+    [
+      `Label (Rty.layout_regex r);
+      `Color (if is_nullable r then 0x00ee00 else 0x000000);
+    ]
+
   let edge_attributes e = [ `Label (L.layout_literal @@ E.label e) ]
   let get_subgraph _ = None
 end
