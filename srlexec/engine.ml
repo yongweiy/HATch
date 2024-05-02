@@ -56,7 +56,7 @@ let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
                 C.of_list @@ hty_to_triples rethty
               in
               let[@warning "-8"] (SeqA (sfa_pre', sfa_new)) = sfa_post in
-              _assert __FILE__ __LINE__ "die" (sfa_pre = sfa_pre');
+              _assert __FILE__ __LINE__ "die" (equal_sfa sfa_pre sfa_pre');
               let* cfg = Config.admit ~substs sfa_pre cfg in
               let cfg = Config.add_rx lhs.x #:: retrty cfg in
               Config.append ~substs sfa_new cfg)
