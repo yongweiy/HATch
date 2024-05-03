@@ -3,8 +3,8 @@ open TypedCoreEff
 open Rty
 open Sugar
 open Utils
+open Deriv
 module C = Choice
-module D = Deriv
 module L = Literal
 module Tr = Trace
 
@@ -196,31 +196,31 @@ module DerivBased : T = struct
   let admit ~substs sfa config =
     (* Pp.printf "@{<yellow>admitting@} %s\n" @@ layout_regex sfa; *)
     let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
-    D.G.init sfa;
+    G.init sfa;
     let* prefix, sfa' =
-      D.match_and_refine_trace ~rctx:config.rctx ~substs config.prefix sfa
+      match_and_refine_trace ~rctx:config.rctx ~substs config.prefix sfa
     in
-    let* () = C.guard @@ D.is_nullable sfa' in
+    let* () = C.guard @@ is_nullable sfa' in
     let prefix = List.fold_right Tr.subst_id substs prefix in
     (* Pp.printf "@{<green>admited@} %s\n" @@ Tr.layout_trace prefix; *)
     C.return { config with prefix }
 
   let append ~substs sfa config =
     let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
-    D.G.init sfa;
+    G.init sfa;
     let* tr, sfa' =
-      D.enum ~substs ~len_range:(0, Env.get_exec_max_pre_length ()) sfa
+      enum ~substs ~len_range:(0, Env.get_exec_max_pre_length ()) sfa
     in
-    let* () = C.guard @@ D.is_nullable sfa' in
+    let* () = C.guard @@ is_nullable sfa' in
     let tr = List.fold_right Tr.subst_id substs tr in
     let* tr', cont =
-      D.match_and_refine_trace ~rctx:config.rctx ~substs tr config.cont
+      match_and_refine_trace ~rctx:config.rctx ~substs tr config.cont
     in
     (* Pp.printf "@{<yellow>append@} %s\n" @@ Tr.layout_trace tr; *)
     C.return { config with prefix = Tr.append config.prefix tr'; cont }
 
   let init ~substs rxs pre comp post =
-    D.G.init post;
+    G.init post;
     append ~substs pre
       { rctx = RTypectx.of_rxs rxs; prefix = Tr.empty; cont = post; comp }
 
@@ -231,7 +231,7 @@ module DerivBased : T = struct
     Pp.printf "@{<yellow>hatch:@}\n%s\n-----------------------------\n"
     @@ layout_config config;
     match comp.x with
-    | CVal _ when (not @@ D.is_nullable cont) && reachable config ->
+    | CVal _ when (not @@ is_nullable cont) && reachable config ->
         Some { config with comp = CErr #: comp.ty }
     | CVal v -> (
         match retrty with
