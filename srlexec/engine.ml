@@ -163,6 +163,7 @@ module Builder (Config : Config.T) = struct
                             List.iter Config.print_witness witnesses;
                             List.is_empty witnesses))
                in
-               D.G.output @@ open_out @@ name ^ ".dot";
+               Deriv.EffSFA.output @@ open_out @@ name ^ "_eff.dot";
+               Deriv.ContSFA.output @@ open_out @@ name ^ "_cont.dot";
                (id, name, res, exec_time))
 end

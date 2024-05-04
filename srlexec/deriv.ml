@@ -68,7 +68,7 @@ let mk_andA r s =
 let mk_seqA r s =
   if r = EpsilonA then s else if r = EmptyA then EmptyA else SeqA (r, s)
 
-let deriv l r =
+let quot l r =
   let rec aux = function
     | EmptyA | EpsilonA -> EmptyA
     | AnyA -> EpsilonA
@@ -100,14 +100,12 @@ let deriv l r =
 
 module DerivGraph = struct
   include
-    Graph.Imperative.Digraph.ConcreteLabeled
+    Graph.Imperative.Digraph.AbstractLabeled
       (struct
-        type t = sfa [@@deriving compare, equal, hash]
+        type t = sfa
       end)
       (struct
         type t = L.literal [@@deriving compare, equal, hash]
-
-        (* let compare _ _ = 0 *)
 
         (** default edge label should never be used *)
         let default = L.mk_false
@@ -119,19 +117,10 @@ module DerivGraph = struct
 
   module VCache = Hashtbl.Make (V)
 
-  let vertex_name =
-    let count = ref 0 in
-    let cache = VCache.create 11 in
-    fun v ->
-      match VCache.find_opt cache v with
-      | Some name -> name
-      | None ->
-          let name = "S" ^ string_of_int !count in
-          count := !count + 1;
-          VCache.add cache v name;
-          name
+  let vertex_name v = "S_" ^ string_of_int @@ V.hash v
 
-  let vertex_attributes r =
+  let vertex_attributes v =
+    let r = V.label v in
     [
       `Label (Rty.layout_regex r);
       `Color (if is_nullable r then 0x00ee00 else 0x000000);
@@ -141,74 +130,121 @@ module DerivGraph = struct
   let get_subgraph _ = None
 end
 
-module G = struct
+module type FlagT = sig
+  val flag : bool
+end
+
+module SFA (AllowEmpty : FlagT) = struct
   open DerivGraph
 
+  type deriv = V.t
+
+  module Table = Hashtbl.Make (struct
+    type t = sfa [@@deriving compare, equal, hash]
+  end)
+
+  let to_deriv =
+    let tbl = Table.create 10 in
+    fun sfa ->
+      match Table.find_opt tbl sfa with
+      | Some d -> d
+      | None ->
+          let d = V.create sfa in
+          Table.add tbl sfa d;
+          d
+
+  let of_deriv = V.label
+  let layout_deriv = Rty.layout_regex << of_deriv
+  let is_nullable d = is_nullable @@ of_deriv d
+
+  (** syntactically check if a derivative is equivalent to empty *)
+  let is_empty d =
+    let r = of_deriv d in
+    if SRL.equal_sfa r EmptyA then true
+    else (
+      _assert __FILE__ __LINE__ "Deriv.is_empty" @@ not @@ SRL.is_empty r;
+      false)
+
   let g = create ()
-  let () = add_vertex g EmptyA
-  let init r = add_vertex g r
-  let member = mem_vertex g
+  let empty = to_deriv EmptyA
 
-  let link r l s =
-    _assert __FILE__ __LINE__ "die" @@ member r;
-    (* _assert __FILE__ __LINE__ "die" @@ not @@ mem_edge g r s; *)
-    add_edge_e g @@ E.create r l s
+  let init sfa =
+    let d = to_deriv sfa in
+    add_vertex g d;
+    d
 
-  let next r = List.map (fun e -> (E.label e, E.dst e)) @@ succ_e g r
+  let new_trans d l d' = add_edge_e g @@ E.create d l d'
+  let get_nexts d = List.map (fun e -> (E.label e, E.dst e)) @@ succ_e g d
 
   module Dot = Graph.Graphviz.Dot (DerivGraph)
 
   let output oc = Dot.output_graph oc g
-end
 
-(** return the sibling states of the initial state of sfa `r`
+  (** return the sibling states of the initial state of sfa `r`
 
     TODO: add a flag for prioritizing the sibling states closer to EmptyA
     , can be implemented via the `Mark` module
     TODO: add a flag for omitting `neg_literals` case
  *)
-let next ~substs r =
-  C.of_list
-  @@
-  match G.next r with
-  (* a state is explored if all neighbors are
-     and unexplored if none of neighbors are *)
-  | [] ->
-      let lits = List.filter_map (L.notbot_opt ~substs) (next_literal r) in
-      let nexts =
-        (L.neg_literals lits, EmptyA) :: List.map (fun l -> (l, deriv l r)) lits
-      in
-      List.iter (fun (l, s) -> G.link r l s) nexts;
-      nexts
-  | trans -> trans
+  let next ~substs d =
+    C.of_list
+    @@
+    match get_nexts d with
+    (* a state is explored if all neighbors are
+       and unexplored if none of neighbors are *)
+    | [] ->
+        let lits =
+          List.filter_map (L.notbot_opt ~substs) @@ next_literal @@ of_deriv d
+        in
+        let nexts =
+          List.map (fun l -> (l, to_deriv @@ quot l @@ of_deriv d)) lits
+        in
+        let nexts =
+          if AllowEmpty.flag then (L.neg_literals lits, empty) :: nexts
+          else nexts
+        in
+        List.iter (fun (l, d') -> new_trans d l d') nexts;
+        nexts
+    | trans -> trans
 
-let match_and_refine ~rctx ~substs l r =
-  let^ l', r' = next ~substs r in
-  let l'' = L.mk_and l l' in
-  L.notbot_opt ~rctx ~substs l'' |> Option.map @@ fun l'' -> (l'', r')
+  let match_and_refine ~rctx ~substs l d =
+    let^ l', d' = next ~substs d in
+    let l'' = L.mk_and l l' in
+    L.notbot_opt ~rctx ~substs l'' |> Option.map @@ fun l'' -> (l'', d')
 
-let match_and_refine_trace ~rctx ~substs tr r =
-  Tr.fold_left
-    (fun ress l ->
-      let* tr, r = ress in
-      let* l', r = match_and_refine ~rctx ~substs l r in
-      C.return (Tr.snoc l' tr, r))
-    (C.return (Tr.empty, r))
-    tr
+  let match_and_refine_trace ~rctx ~substs tr d =
+    Tr.fold_left
+      (fun ress l ->
+        let* tr, d = ress in
+        let* l', d' = match_and_refine ~rctx ~substs l d in
+        C.return (Tr.snoc l' tr, d'))
+      (C.return (Tr.empty, d))
+      tr
 
-(** enumerate all paths that start from the state
+  (** enumerate all viable paths that start from the state
     denoted by `r` and are of length [`low`, `high`] *)
-let enum ~substs ~len_range:(low, high) r =
-  let advance acc =
-    let* tr, r = acc in
-    let* l, r' = next ~substs r in
-    C.return (Tr.snoc l tr, r')
-  in
-  let rec bfs len acc res =
-    if len > high then res
-    else
-      let res = if len >= low then C.(acc ++ res) else res in
-      let acc' = advance acc in
-      if C.is_empty acc' then res else bfs (len + 1) acc' res
-  in
-  bfs 0 (C.return (Tr.empty, r)) C.fail
+  let enum ~substs ~len_range:(low, high) d =
+    let advance acc =
+      let* tr, d = acc in
+      let* l, d' = next ~substs d in
+      C.return (Tr.snoc l tr, d')
+    in
+    let rec bfs len acc res =
+      if len > high then res
+      else
+        let res = if len >= low then C.(acc ++ res) else res in
+        let acc' = advance acc in
+        if C.is_empty acc' then res else bfs (len + 1) acc' res
+    in
+    bfs 0 (C.return (Tr.empty, d)) C.fail
+end
+
+module EffSFA = SFA (struct
+  let flag = false
+end)
+
+module ContSFA = struct
+  include SFA (struct
+    let flag = true
+  end)
+end
