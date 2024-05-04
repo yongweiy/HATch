@@ -127,7 +127,7 @@ module DerivBased : T = struct
   type config = {
     rctx : RTypectx.ctx;
     prefix : Tr.trace;
-    cont : sfa;
+    cont : ContSFA.deriv;
     comp : comp typed;
   }
   (** `rctx` only constrains first-order values *)
@@ -137,7 +137,7 @@ module DerivBased : T = struct
       [
         "rctx = " ^ RTypectx.layout_typed_l rctx;
         "prefix = " ^ Tr.layout_trace prefix;
-        "cont = " ^ layout_regex cont;
+        "cont = " ^ ContSFA.layout_deriv cont;
         "comp = " ^ layout_comp comp;
       ]
 
@@ -196,33 +196,33 @@ module DerivBased : T = struct
   let admit ~substs sfa config =
     (* Pp.printf "@{<yellow>admitting@} %s\n" @@ layout_regex sfa; *)
     let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
-    G.init sfa;
-    let* prefix, sfa' =
-      match_and_refine_trace ~rctx:config.rctx ~substs config.prefix sfa
+    let d = EffSFA.init sfa in
+    let* prefix, d' =
+      EffSFA.match_and_refine_trace ~rctx:config.rctx ~substs config.prefix d
     in
-    let* () = C.guard @@ is_nullable sfa' in
+    let* () = C.guard @@ EffSFA.is_nullable d' in
     let prefix = List.fold_right Tr.subst_id substs prefix in
     (* Pp.printf "@{<green>admited@} %s\n" @@ Tr.layout_trace prefix; *)
     C.return { config with prefix }
 
   let append ~substs sfa config =
     let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
-    G.init sfa;
-    let* tr, sfa' =
-      enum ~substs ~len_range:(0, Env.get_exec_max_pre_length ()) sfa
+    let d = EffSFA.init sfa in
+    let* tr, d' =
+      EffSFA.enum ~substs ~len_range:(0, Env.get_exec_max_pre_length ()) d
     in
-    let* () = C.guard @@ is_nullable sfa' in
+    let* () = C.guard @@ EffSFA.is_nullable d' in
     let tr = List.fold_right Tr.subst_id substs tr in
     let* tr', cont =
-      match_and_refine_trace ~rctx:config.rctx ~substs tr config.cont
+      ContSFA.match_and_refine_trace ~rctx:config.rctx ~substs tr config.cont
     in
     (* Pp.printf "@{<yellow>append@} %s\n" @@ Tr.layout_trace tr; *)
     C.return { config with prefix = Tr.append config.prefix tr'; cont }
 
   let init ~substs rxs pre comp post =
-    G.init post;
+    let cont = ContSFA.init post in
     append ~substs pre
-      { rctx = RTypectx.of_rxs rxs; prefix = Tr.empty; cont = post; comp }
+      { rctx = RTypectx.of_rxs rxs; prefix = Tr.empty; cont; comp }
 
   (** look for bug and prune terminated good execution
     TODO: create a flag to toggle preemptive bug check
@@ -231,7 +231,7 @@ module DerivBased : T = struct
     Pp.printf "@{<yellow>hatch:@}\n%s\n-----------------------------\n"
     @@ layout_config config;
     match comp.x with
-    | CVal _ when (not @@ is_nullable cont) && reachable config ->
+    | CVal _ when (not @@ ContSFA.is_nullable cont) && reachable config ->
         Some { config with comp = CErr #: comp.ty }
     | CVal v -> (
         match retrty with
@@ -239,7 +239,7 @@ module DerivBased : T = struct
             let phi = subst_prop (cty.v.x, AC (to_const_ v)) cty.phi in
             Option.bind (assume (mk_not phi) config) abort
         | _ -> None (* function value is not checked upon return *))
-    | _ when SRL.is_empty config.cont && reachable config ->
+    | _ when ContSFA.is_empty config.cont && reachable config ->
         Some { config with comp = CErr #: comp.ty }
     | _ -> Some config
 
@@ -262,7 +262,7 @@ module DerivBased : T = struct
   let get_witness ({ rctx; prefix; cont; comp } as config) =
     match comp.x with
     | CErr ->
-        if SRL.is_empty cont then Some { kind = `Preemptive; rctx; prefix }
+        if ContSFA.is_empty cont then Some { kind = `Preemptive; rctx; prefix }
         else Some { kind = `Terminated; rctx; prefix }
     | _ -> None
 end
