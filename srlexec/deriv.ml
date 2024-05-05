@@ -134,10 +134,41 @@ module type FlagT = sig
   val flag : bool
 end
 
-module SFA (AllowEmpty : FlagT) = struct
+module type IntT = sig
+  val bound : int
+end
+
+module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
   open DerivGraph
 
-  type deriv = V.t
+  let g = create ()
+  let fold_succ f d acc = fold_succ f g d acc
+  let iter_succ f d = iter_succ f g d
+
+  type deriv = V.t [@@deriving compare, equal]
+
+  let set_dist = Mark.set
+
+  let get_dist d =
+    let dist = Mark.get d in
+    if dist = max_int then None else Some dist
+
+  (** update the distance of `d` and derivatives
+      along the path to `empty` under `bound` *)
+  let update_dist d =
+    let rec aux len d =
+      match get_dist d with
+      | Some dist -> dist
+      | None ->
+          if len = LookAhead.bound then max_int
+          else
+            let dist =
+              fold_succ (fun d' -> min @@ aux (len + 1) d') d max_int
+            in
+            set_dist d dist;
+            dist
+    in
+    ignore (aux 0 d)
 
   module Table = Hashtbl.Make (struct
     type t = sfa [@@deriving compare, equal, hash]
@@ -150,7 +181,9 @@ module SFA (AllowEmpty : FlagT) = struct
       | Some d -> d
       | None ->
           let d = V.create sfa in
+          set_dist d max_int;
           Table.add tbl sfa d;
+          DerivGraph.add_vertex g d;
           d
 
   let of_deriv = V.label
@@ -165,8 +198,8 @@ module SFA (AllowEmpty : FlagT) = struct
       _assert __FILE__ __LINE__ "Deriv.is_empty" @@ not @@ SRL.is_empty r;
       false)
 
-  let g = create ()
   let empty = to_deriv EmptyA
+  let () = set_dist empty 0
 
   let init sfa =
     let d = to_deriv sfa in
@@ -198,6 +231,14 @@ module SFA (AllowEmpty : FlagT) = struct
         in
         let nexts =
           List.map (fun l -> (l, to_deriv @@ quot l @@ of_deriv d)) lits
+        in
+        let nexts =
+          if LookAhead.bound > 0 then (
+            List.iter (update_dist << snd) nexts;
+            List.sort
+              (fun (_, d) (_, d') -> Int.compare (Mark.get d) (Mark.get d'))
+              nexts)
+          else nexts
         in
         let nexts =
           if AllowEmpty.flag then (L.neg_literals lits, empty) :: nexts
@@ -239,12 +280,20 @@ module SFA (AllowEmpty : FlagT) = struct
     bfs 0 (C.return (Tr.empty, d)) C.fail
 end
 
-module EffSFA = SFA (struct
-  let flag = false
-end)
+module EffSFA =
+  SFA
+    (struct
+      let flag = false
+    end)
+    (struct
+      let bound = 0
+    end)
 
-module ContSFA = struct
-  include SFA (struct
-    let flag = true
-  end)
-end
+module ContSFA =
+  SFA
+    (struct
+      let flag = true
+    end)
+    (struct
+      let bound = 1
+    end)
