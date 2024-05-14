@@ -368,8 +368,10 @@ module F (L : Lit.T) = struct
         rethty
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
-  let add_prop_to_baserty phi = function
-    | BaseRty { cty } -> BaseRty { cty = Cty.add_prop_to_cty phi cty }
+  let join_baserty rty1 rty2 =
+    match (rty1, rty2) with
+    | BaseRty { cty = cty1 }, BaseRty { cty = cty2 } ->
+        BaseRty { cty = join_cty cty1 cty2 }
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
   let mk_from_prop ty phif = BaseRty { cty = mk_from_prop ty phif }

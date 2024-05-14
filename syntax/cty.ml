@@ -16,8 +16,6 @@ module F (L : Lit.T) = struct
     let Nt.{ x; ty } = v in
     (Nt.{ x = cx; ty }, P.subst_prop_id (x, cx) phi)
 
-  let add_prop_to_cty phi cty = { cty with phi = smart_add_to phi cty.phi }
-
   let neg_cty { v; phi } = { v; phi = P.mk_not phi }
 
   (* subst *)
