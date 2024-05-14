@@ -206,7 +206,7 @@ let add_prop_to_rctx phi rctx =
           match rty with
           | BaseRty { cty } when StrList.exists rx fvs ->
               let phi = subst_prop_id (rx, cty.v.x) phi in
-              let cty = add_prop_to_cty phi cty in
+              let cty = { cty with phi = smart_add_to phi cty.phi} in
               if is_false cty.phi then None
               else Some ((rx, BaseRty { cty }) :: rctx)
           | _ -> Some ((rx, rty) :: rctx))
