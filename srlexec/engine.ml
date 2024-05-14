@@ -13,10 +13,9 @@ module RCtx = RTypectx
 module C = Choice
 module L = Literal
 module D = Deriv
-module Tr = Trace
 
 module Builder (Config : Config.T) = struct
-  let rec reduce ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
+  let rec reduce ~until_rec ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
     match (Config.comp cfg).x with
     | CErr | CVal _ -> C.return cfg
     | CLetE { lhs; rhs; letbody } -> (
@@ -36,15 +35,25 @@ module Builder (Config : Config.T) = struct
                 in
                 let comp = mk_lete lhs lambody letbody in
                 C.return @@ Config.with_comp comp cfg
+            | VFix { fixname; fixarg; fixbody } when until_rec -> C.return cfg
             | VFix { fixname; fixarg; fixbody } ->
+                let summarized =
+                  (* let cfg = f_cfg @@ "_i_" ^ string_of_int i in *)
+                  let* iter_info, cfg_i = Config.start_iteration cfg in
+                  let* cfg_j =
+                    reduce_repeat ~until_rec:true ~start:i ~opctx
+                    @@ C.return cfg_i
+                  in
+                  Config.end_iteration iter_info cfg_j
+                in
                 let fixbody =
                   fixbody
                   |> do_subst_comp (fixname.x, appf)
                   |> do_subst_comp (fixarg.x, apparg)
                   |> rename_comp ~f:(fun x -> x ^ "_" ^ string_of_int i)
                 in
-                let comp = mk_lete lhs fixbody letbody in
-                C.return @@ Config.with_comp comp cfg
+                let inlined = mk_lete lhs fixbody letbody in
+                C.mplus summarized @@ C.return @@ Config.with_comp inlined cfg
             | VTu _ | VConst _ -> _failatwith __FILE__ __LINE__ "die")
         | CAppOp { op; appopargs } -> (
             let cfg = Config.with_comp letbody cfg in
@@ -66,7 +75,9 @@ module Builder (Config : Config.T) = struct
                 let cfg = Config.add_rx lhs.x #:: retrty cfg in
                 Config.append ~substs sfa_new cfg)
         | CLetE _ | CMatch _ ->
-            let+ cfg = reduce ~i ~opctx @@ Config.with_comp rhs cfg in
+            let+ cfg =
+              reduce ~until_rec ~i ~opctx @@ Config.with_comp rhs cfg
+            in
             let comp = mk_lete lhs (Config.comp cfg) letbody in
             Config.with_comp comp cfg
         | CLetDeTu _ -> _failatwith __FILE__ __LINE__ "unimp")
@@ -111,13 +122,12 @@ module Builder (Config : Config.T) = struct
   (*   in *)
   (*   aux cfgs *)
 
-  let reduce_repeat ?(n = 20) ~opctx ~retrty ~sfa_post cfgs =
+  and reduce_repeat ?(until_rec = false) ?(n = 20) ?(start = 0) ~opctx cfgs =
     let rec aux i =
-      if i = n then Fun.id else C.bind (aux (i + 1) << reduce ~i ~opctx)
+      if i = n then Fun.id
+      else C.bind (aux (i + 1) << reduce ~until_rec ~i:(start + i) ~opctx)
     in
     aux 0 cfgs
-    |> C.fmap @@ Config.hatch ~retrty ~sfa_post
-    |> C.fmap Config.get_witness
 
   let wrap_client comp rty =
     let rec apply_args v = function
@@ -156,8 +166,9 @@ module Builder (Config : Config.T) = struct
                      hty_to_triples hty
                      |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
                             let witnesses =
-                              C.to_list
-                              @@ reduce_repeat ~opctx ~retrty ~sfa_post
+                              C.to_list @@ C.fmap Config.get_witness
+                              @@ C.fmap (Config.hatch ~retrty ~sfa_post)
+                              @@ reduce_repeat ~opctx
                               @@ Config.init ~substs rxs sfa_pre comp sfa_post
                             in
                             List.iter Config.print_witness witnesses;

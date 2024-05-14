@@ -1,3 +1,4 @@
+open Zzdatatype.Datatype
 open Language
 open TypedCoreEff
 open Rty
@@ -33,6 +34,11 @@ module type T = sig
   val admit : substs:(string * string) list -> sfa -> config -> config C.t
   val append : substs:(string * string) list -> sfa -> config -> config C.t
   val hatch : retrty:rty -> sfa_post:sfa -> config -> config option
+
+  type iteration_info
+
+  val start_iteration : config -> (iteration_info * config) C.t
+  val end_iteration : iteration_info -> config -> config C.t
 
   type witness
 
@@ -110,6 +116,11 @@ module Naive : T = struct
         | _ -> None)
     | _ -> Some config
 
+  type iteration_info = unit
+
+  let start_iteration _ = C.fail
+  let end_iteration _ = _failatwith __FILE__ __LINE__ "die"
+
   type witness = { rctx : RTypectx.ctx; curr : sfa }
 
   let layout_witness { rctx; curr } =
@@ -146,7 +157,8 @@ module DerivBased : T = struct
   let with_comp comp config = { config with comp }
 
   let add_rx rx config =
-    { config with rctx = RTypectx.new_to_right config.rctx rx }
+    if erase_rty rx.rty = Nt.unit_ty then config
+    else { config with rctx = RTypectx.new_to_right config.rctx rx }
 
   let add_rxs rxs config =
     { config with rctx = RTypectx.new_to_rights config.rctx rxs }
@@ -155,11 +167,41 @@ module DerivBased : T = struct
     not @@ Subtyping.is_bot_cty rctx @@ mk_unit_from_prop mk_true
 
   let reachable { rctx; prefix; _ } =
-    let rxs =
-      Tr.fold_lefti (fun index rxs l -> rxs @ L.to_rxs ~index l) [] prefix
-    in
-    let rctx' = RTypectx.new_to_rights rctx rxs in
-    not @@ Subtyping.is_bot_cty rctx' @@ mk_unit_from_prop mk_true
+    not @@ Subtyping.is_bot_cty rctx @@ mk_unit_from_prop @@ smart_and
+    @@ Tr.fold
+         (function
+           | TamperSeal -> Fun.id
+           | Atom l -> List.cons @@ L.to_phi l
+           | Repeat { from; to_; l } ->
+               List.cons
+               @@ Forall
+                    ( "i" #: Nt.int_ty,
+                      Implies
+                        ( And
+                            [
+                              Lit
+                                (AAppOp
+                                   ( (Op.BuiltinOp ">=")
+                                     #: Nt.(
+                                          construct_arr_tp
+                                            ([ int_ty; int_ty ], bool_ty)),
+                                     [
+                                       (AVar "_i") #: Nt.int_ty;
+                                       from #: Nt.int_ty;
+                                     ] ));
+                              Lit
+                                (AAppOp
+                                   ( (Op.BuiltinOp "<")
+                                     #: Nt.(
+                                          construct_arr_tp
+                                            ([ int_ty; int_ty ], bool_ty)),
+                                     [
+                                       (AVar "_i") #: Nt.int_ty;
+                                       to_ #: Nt.int_ty;
+                                     ] ));
+                            ],
+                          L.to_phi l ) ))
+         prefix []
 
   (** CErr if reachable, otherwise safe to prune the path *)
   let abort config =
@@ -170,6 +212,7 @@ module DerivBased : T = struct
     if is_true phi then Some config
     else if is_false phi then None
     else
+      (* Pp.printf "@{<yellow>assume@} %s\n" @@ layout_prop phi; *)
       add_prop_to_rctx phi config.rctx
       |> Option.map @@ fun rctx -> { config with rctx }
 
@@ -197,7 +240,7 @@ module DerivBased : T = struct
     (* Pp.printf "@{<yellow>admitting@} %s\n" @@ layout_regex sfa; *)
     let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
     let d = EffSFA.init sfa in
-    let* prefix, d' =
+    let* _, prefix, d' =
       EffSFA.match_and_refine_trace ~rctx:config.rctx ~substs config.prefix d
     in
     let* () = C.guard @@ EffSFA.is_nullable d' in
@@ -213,7 +256,7 @@ module DerivBased : T = struct
     in
     let* () = C.guard @@ EffSFA.is_nullable d' in
     let tr = List.fold_right Tr.subst_id substs tr in
-    let* tr', cont =
+    let* _, tr', cont =
       ContSFA.match_and_refine_trace ~rctx:config.rctx ~substs tr config.cont
     in
     (* Pp.printf "@{<yellow>append@} %s\n" @@ Tr.layout_trace tr; *)
@@ -233,12 +276,13 @@ module DerivBased : T = struct
     match comp.x with
     | CVal _ when (not @@ ContSFA.is_nullable cont) && reachable config ->
         Some { config with comp = CErr #: comp.ty }
-    | CVal v -> (
-        match retrty with
-        | BaseRty { cty } ->
-            let phi = subst_prop (cty.v.x, AC (to_const_ v)) cty.phi in
-            Option.bind (assume (mk_not phi) config) abort
-        | _ -> None (* function value is not checked upon return *))
+    | CVal (VConst c) ->
+        let { v; phi } = rty_to_cty retrty in
+        let post = subst_prop (v.x, AC c) phi in
+        Option.bind (assume (mk_not post) config) abort
+    | CVal (VVar v) when Nt.is_base_tp comp.ty ->
+        abort (add_rx v #:: (neg_rty __FILE__ __LINE__ retrty) config)
+    | CVal _ -> None (* function value is not checked upon return *)
     | _ when ContSFA.is_empty config.cont && reachable config ->
         Some { config with comp = CErr #: comp.ty }
     | _ -> Some config
@@ -265,4 +309,212 @@ module DerivBased : T = struct
         if ContSFA.is_empty cont then Some { kind = `Preemptive; rctx; prefix }
         else Some { kind = `Terminated; rctx; prefix }
     | _ -> None
+
+  type iteration_info = {
+    lhs_ : string typed;
+    fixname_ : string typed;
+    letbody_ : comp typed;
+    cont_ : ContSFA.deriv;
+    prev_rctx : RTypectx.ctx;
+    prev_prefix : Tr.trace;
+  }
+
+  let rec get_conjuncts phi =
+    match phi with
+    | Lit lit -> [ lit ]
+    | And lits -> List.concat_map get_conjuncts lits
+    | _ -> []
+
+  let to_assignment phi (x : string Nt.typed) =
+    match x.ty with
+    | Ty_bool -> find_boollit_assignment_from_prop_opt phi x.x
+    | _ ->
+        List.get_opt
+        @@ List.filter_map (fun lit -> find_assignment_of_intvar lit x.x)
+        @@ get_conjuncts phi
+
+  let n_ = "_n"
+  let i_ = "_i"
+
+  let[@warning "-8"] start_iteration
+      {
+        rctx;
+        prefix;
+        cont;
+        comp =
+          {
+            x =
+              CLetE
+                {
+                  lhs;
+                  rhs =
+                    {
+                      x =
+                        CApp
+                          {
+                            appf =
+                              {
+                                x = VFix { fixname; fixarg; fixbody };
+                                ty = _ty_fix;
+                              } as appf;
+                            apparg;
+                          };
+                      ty = _ty_rhs;
+                    };
+                  letbody;
+                };
+            ty = _ty_comp;
+          };
+      } =
+    let+ () =
+      match apparg.x with
+      | VConst (I 0) -> C.return ()
+      | VVar x -> (
+          let rty = RTypectx.get_ty rctx x in
+          let cty = rty_to_cty rty in
+          let x, phi = cty_typed_to_prop x #::: cty in
+          match to_assignment phi x with
+          | Some lit -> C.guard @@ equal_lit lit (AC (I 0))
+          | None -> C.fail)
+      | _ -> C.fail
+      (* C.guard (CVal apparg.x = int_ 0) *)
+    in
+    let cty =
+      Cty.mk_from_prop Nt.int_ty @@ fun { x; ty } ->
+      Lit
+        (AAppOp
+           ( (Op.BuiltinOp ">=")
+             #: Nt.(construct_arr_tp ([ int_ty; int_ty ], bool_ty)),
+             [ (AVar x) #: ty; (AC (I 0)) #: Nt.int_ty ] ))
+    in
+    let rx = n_ #:: (BaseRty { cty }) in
+    let rctx = RTypectx.new_to_right rctx rx in
+    let prefix = Tr.snoc TamperSeal prefix in
+    let fixbody =
+      fixbody
+      |> do_subst_comp (fixname.x, appf)
+      |> do_subst_comp (fixarg.x, (VVar n_) #: Nt.int_ty)
+    in
+    let inlined = mk_lete lhs fixbody letbody in
+    ( {
+        lhs_ = lhs;
+        fixname_ = fixname;
+        letbody_ = letbody;
+        cont_ = cont;
+        prev_rctx = rctx;
+        prev_prefix = prefix;
+      },
+      (* TODO: include new construct to `Tr` to avoid tampering of `prefix` *)
+      { rctx; prefix; cont; comp = inlined } )
+
+  let end_iteration { lhs_; fixname_; letbody_; cont_; prev_rctx; prev_prefix }
+      (config : config) =
+    let^ () = C.guard @@ ContSFA.equal_deriv config.cont cont_ in
+    let ( let* ) x f = opt_bind x f in
+    let ( let+ ) x f = opt_fmap x f in
+    let rec remove_trivial_equality phi =
+      match phi with
+      | And ls -> List.concat_map remove_trivial_equality ls
+      | Lit (AAppOp (op, [ l1; l2 ]))
+        when Op.id_eq_op op.x && equal_lit l1.x l2.x ->
+          []
+      | Iff (Lit l1, Lit l2) when equal_lit l1 l2 -> []
+      | _ -> [ phi ]
+    in
+    let rec skolemize ?(phi_i = mk_true) eff = function
+      | [] -> Some (phi_i, eff)
+      | (x, rty) :: rctx ->
+          (* TODO: ignore function binding *)
+          let ctys = rty_to_cty rty in
+          let x, phi = cty_typed_to_prop x #::: ctys in
+          let* lit = to_assignment phi x in
+          let phis = remove_trivial_equality @@ subst_prop (x.x, lit) phi in
+          let* phi_i =
+            List.fold_left
+              (fun opt phi ->
+                Option.bind opt @@ fun phi_i ->
+                let+ () =
+                  opt_guard @@ not @@ StrList.exists x.x @@ fv_prop phi
+                in
+                smart_add_to phi phi_i)
+              (Some phi_i) phis
+          in
+          let eff = Tr.subst (x.x, lit) eff in
+          let rctx = RTypectx.subst ~f:subst_rty (x.x, lit) rctx in
+          skolemize ~phi_i eff rctx
+    in
+    let* argvar, comp_after =
+      match config.comp.x with
+      | CLetE
+          {
+            lhs;
+            rhs =
+              {
+                x =
+                  CApp { appf = { x = VFix { fixname; _ }; _ } as appf; apparg };
+                _;
+              };
+            letbody;
+          }
+        when fixname.x = fixname_.x && apparg.ty = Nt.int_ty
+             && do_subst_comp (lhs.x, (VVar lhs_.x) #: lhs_.ty) letbody
+                = letbody_ -> (
+          match apparg.x with
+          | VVar x ->
+              Some (x, mk_lete lhs (mk_app appf (VVar n_) #: Nt.int_ty) letbody)
+          | _ -> None)
+      | _ -> None
+    in
+    let* n_plus_one =
+      let rty = RTypectx.get_ty config.rctx argvar in
+      let cty = rty_to_cty rty in
+      let argvar, phi = cty_typed_to_prop argvar #::: cty in
+      to_assignment phi argvar
+    in
+    let* () =
+      opt_guard @@ equal_lit n_plus_one
+      @@ AAppOp
+           ( (Op.BuiltinOp "+")
+             #: Nt.(construct_arr_tp ([ int_ty; int_ty ], int_ty)),
+             [ (AVar n_) #: Nt.int_ty; (AC (I 1)) #: Nt.int_ty ] )
+    in
+    let rctx_i =
+      RTypectx.subst ~f:subst_rty (n_, AVar i_)
+      @@ applyn ~n:(List.length prev_rctx) List.tl config.rctx
+    in
+    let* prev_rctx, (_n, rty_n) = List.last_destruct_opt prev_rctx in
+    let eff_i =
+      Tr.subst (n_, AVar i_) @@ Tr.take (Tr.length prev_prefix) config.prefix
+    in
+    let+ phi_i, eff_i = skolemize eff_i rctx_i in
+    let rty =
+      join_rty rty_n @@ mk_from_prop Nt.int_ty
+      @@ fun n ->
+      Forall
+        ( i_ #: Nt.int_ty,
+          Implies
+            ( And
+                [
+                  Lit
+                    (AAppOp
+                       ( (Op.BuiltinOp ">=")
+                         #: Nt.(construct_arr_tp ([ int_ty; int_ty ], bool_ty)),
+                         [ (AVar i_) #: Nt.int_ty; (AC (I 0)) #: Nt.int_ty ] ));
+                  Lit
+                    (AAppOp
+                       ( (Op.BuiltinOp "<")
+                         #: Nt.(construct_arr_tp ([ int_ty; int_ty ], bool_ty)),
+                         [ (AVar i_) #: Nt.int_ty; (AVar n.x) #: n.ty ] ));
+                ],
+              phi_i ) )
+    in
+    {
+      rctx = RTypectx.new_to_right prev_rctx n_ #:: rty;
+      prefix =
+        Tr.snoc
+          (Repeat { from = AC (I 0); to_ = AVar n_; l = Tr.get_literal eff_i })
+          prev_prefix;
+      cont = cont_;
+      comp = comp_after;
+    }
 end
