@@ -165,7 +165,7 @@ module F (L : Lit.T) = struct
         | None -> Forall (u, smart_implies xprop prop)
         | Some z -> subst_prop (x, z) prop)
 
-  let find_boollit_assignment_from_prop prop x =
+  let find_boollit_assignment_from_prop_opt prop x =
     let rec aux e =
       match e with
       | And es -> (
@@ -173,11 +173,12 @@ module F (L : Lit.T) = struct
       | Iff (Lit (AVar y), Lit lit) when String.equal x y -> Some lit
       | Iff (Lit lit, Lit (AVar y)) when String.equal x y -> Some lit
       | Iff _ -> None
-      | Implies _ | Ite _ | Not _ | Forall _ | Exists _ | Or _ ->
-          _failatwith __FILE__ __LINE__ "die"
-      | Lit _ -> None
+      | Implies _ | Ite _ | Not _ | Forall _ | Exists _ | Or _ | Lit _ -> None
     in
-    match aux prop with
+    aux prop
+
+  let find_boollit_assignment_from_prop prop x =
+    match find_boollit_assignment_from_prop_opt prop x with
     | None -> _failatwith __FILE__ __LINE__ "die"
     | Some s -> s
 

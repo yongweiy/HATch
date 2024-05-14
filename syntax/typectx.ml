@@ -37,6 +37,9 @@ module F (I : CtxId) = struct
   let layout_typed_l f l =
     Zzdatatype.Datatype.List.split_by_comma (layout_typed f) l
 
+  let subst ~f (y, z) rctx =
+      List.map (fun (x, ty) -> (x, f (y, z) ty)) rctx
+
   let from_kv_list l = l
   let empty = []
   let exists ctx name = List.exists (fun (x, _) -> I.equal x name) ctx

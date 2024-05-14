@@ -80,6 +80,13 @@ let to_rxs ~index { guard; events; op_filter } =
         #:: (mk_unit_rty_from_prop @@ Guard.apply guard mk_true);
       ]
 
+let to_phi { guard; events; op_filter } =
+  match op_filter with
+  | `Whitelist [] ->
+      Guard.apply guard @@ smart_or
+      @@ List.map (fun { op; vs; v; phi } -> exists_ignore_unit (v :: vs) phi) events
+  | `Whitelist _ | `Blacklist _ -> Guard.apply guard mk_true
+
 let layout_literal { guard; events; op_filter } =
   let event_strs = List.map (fun ev -> layout_sevent (EffEvent ev)) events in
   Guard.layout guard

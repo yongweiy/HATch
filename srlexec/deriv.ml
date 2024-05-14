@@ -189,6 +189,7 @@ module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
   let of_deriv = V.label
   let layout_deriv = Rty.layout_regex << of_deriv
   let is_nullable d = is_nullable @@ of_deriv d
+  let is_free d = SRL.equal_sfa (StarA AnyA) @@ of_deriv d
 
   (** syntactically check if a derivative is equivalent to empty *)
   let is_empty d =
@@ -254,13 +255,21 @@ module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
     L.notbot_opt ~rctx ~substs l'' |> Option.map @@ fun l'' -> (l'', d')
 
   let match_and_refine_trace ~rctx ~substs tr d =
-    Tr.fold_left
-      (fun ress l ->
-        let* tr, d = ress in
-        let* l', d' = match_and_refine ~rctx ~substs l d in
-        C.return (Tr.snoc l' tr, d'))
-      (C.return (Tr.empty, d))
+    Tr.fold
+      (fun atom ->
+        C.bind @@ fun (touchable, tr, d) ->
+        match atom with
+        | TamperSeal ->
+            _assert __FILE__ __LINE__ "two Untouchable flag" @@ touchable;
+            C.return (false, Tr.snoc TamperSeal tr, d)
+        | _ when is_free d -> C.return (touchable, Tr.snoc atom tr, d)
+        | Repeat _ -> C.fail (* TODO: UNIMP *)
+        | Atom l ->
+            let* () = C.guard touchable in
+            let+ l', d' = match_and_refine ~rctx ~substs l d in
+            (touchable, Tr.snoc (Atom l') tr, d'))
       tr
+      (C.return (true, Tr.empty, d))
 
   (** enumerate all viable paths that start from the state
     denoted by `r` and are of length [`low`, `high`] *)
@@ -268,7 +277,7 @@ module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
     let advance acc =
       let* tr, d = acc in
       let* l, d' = next ~substs d in
-      C.return (Tr.snoc l tr, d')
+      C.return (Tr.snoc (Atom l) tr, d')
     in
     let rec bfs len acc res =
       if len > high then res
