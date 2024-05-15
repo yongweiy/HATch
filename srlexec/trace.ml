@@ -8,26 +8,31 @@ type atom =
      everything to its right it untouchable by `Deriv` *)
   | Atom of literal
   (* let `f` return trace  *)
-  | Repeat of { from : lit; to_ : lit; l : literal }
+  | Repeat of { from : lit; to_ : lit; tr : trace }
 
-let layout_atom = function
-  | TamperSeal -> "ω"
-  | Atom x -> layout_literal x
-  | Repeat { from; to_; l } ->
-      spf "[%s | i=%s..%s] " (layout_literal @@ l) (layout_lit from)
-        (layout_lit to_)
-
-let subst_atom yz = function
-  | TamperSeal -> TamperSeal
-  | Atom l -> Atom (subst yz l)
-  | Repeat { from; to_; l } -> Repeat {from; to_; l = subst yz l}
-
-type trace = atom list
+and trace = atom list
 (** stored in reverse order for ease of appending
    TODO: might need a customized data structure *)
 
-let layout_trace = List.rev >> List.map layout_atom >> String.concat ";"
+let rec layout_atom = function
+  | TamperSeal -> "ω"
+  | Atom x -> layout_literal x
+  | Repeat { from; to_; tr } ->
+      spf "[%s | i=%s..%s] " (layout_trace tr) (layout_lit from)
+        (layout_lit to_)
+
+and layout_trace tr = String.concat "; " @@ List.map layout_atom @@ List.rev tr
+
 let print_trace tr = Pp.printf "%s\n" @@ layout_trace tr
+
+let rec subst_atom yz = function
+  | TamperSeal -> TamperSeal
+  | Atom l -> Atom (subst yz l)
+  | Repeat { from; to_; tr } -> Repeat { from; to_; tr = subst_trace yz tr }
+
+and subst_trace yz = List.map (subst_atom yz)
+
+let subst_trace_id (y, z) = subst_trace (y, AVar z)
 
 let get_literal (tr : trace) =
   match tr with
@@ -36,8 +41,6 @@ let get_literal (tr : trace) =
       _failatwith __FILE__ __LINE__
       @@ spf "Trace.get_literal %s" @@ layout_trace tr
 
-let subst yz = List.map (subst_atom yz)
-let subst_id (y, z) = subst (y, AVar z)
 let empty = []
 let length = List.length
 
@@ -66,8 +69,7 @@ let repeat n f = snoc_repeat n f empty
 let append tr1 tr2 = List.fold_right snoc tr2 tr1
 (* OSeq.append s1 s2 *)
 
-let fold : (atom -> 'acc -> 'acc) -> trace -> 'acc -> 'acc =
-  List.fold_right
+let fold : (atom -> 'acc -> 'acc) -> trace -> 'acc -> 'acc = List.fold_right
 (* List.fold_right *)
 (*   (fun x acc_opt -> *)
 (*     let* acc = acc_opt in *)
