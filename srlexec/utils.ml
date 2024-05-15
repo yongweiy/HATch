@@ -11,6 +11,20 @@ let ( let+ ) x f = Choice.map f x
 let layout_comp = Denormalize.layout_comp
 let layout_value = Denormalize.layout_value
 
+(* Nt type *)
+let int_rel_ty = Nt.(construct_arr_tp ([ int_ty; int_ty ], bool_ty))
+let int_arith_ty = Nt.(construct_arr_tp ([ int_ty; int_ty ], int_ty))
+
+(* boolean lits *)
+let mk_geq i j =
+  AAppOp ((Op.BuiltinOp ">=") #: int_rel_ty, [ i #: Nt.int_ty; j #: Nt.int_ty ])
+
+let mk_lt i j =
+  AAppOp ((Op.BuiltinOp "<") #: int_rel_ty, [ i #: Nt.int_ty; j #: Nt.int_ty ])
+
+let mk_plus i j =
+  AAppOp ((Op.BuiltinOp "+") #: int_arith_ty, [ i #: Nt.int_ty; j #: Nt.int_ty ])
+
 (* TODO: are those still needed? *)
 
 (* equality checking between typed and untyped variables *)
@@ -206,7 +220,7 @@ let add_prop_to_rctx phi rctx =
           match rty with
           | BaseRty { cty } when StrList.exists rx fvs ->
               let phi = subst_prop_id (rx, cty.v.x) phi in
-              let cty = { cty with phi = smart_add_to phi cty.phi} in
+              let cty = { cty with phi = smart_add_to phi cty.phi } in
               if is_false cty.phi then None
               else Some ((rx, BaseRty { cty }) :: rctx)
           | _ -> Some ((rx, rty) :: rctx))
@@ -297,5 +311,5 @@ and rename_comp ~f comp =
             { constructor; args; exp })
           match_cases
       in
-      (CMatch { matched; match_cases}) #: comp.ty
+      (CMatch { matched; match_cases }) #: comp.ty
   | _ -> comp
