@@ -163,6 +163,9 @@ module DerivBased : T = struct
   let add_rxs rxs config =
     { config with rctx = RTypectx.new_to_rights config.rctx rxs }
 
+  let n_ = "_n"
+  let i_ = "_i"
+
   let over_reachable { rctx; _ } =
     not @@ Subtyping.is_bot_cty rctx @@ mk_unit_from_prop mk_true
 
@@ -175,30 +178,12 @@ module DerivBased : T = struct
            | Repeat { from; to_; tr } ->
                List.cons
                @@ Forall
-                    ( "i" #: Nt.int_ty,
+                    ( i_ #: Nt.int_ty,
                       Implies
                         ( And
                             [
-                              Lit
-                                (AAppOp
-                                   ( (Op.BuiltinOp ">=")
-                                     #: Nt.(
-                                          construct_arr_tp
-                                            ([ int_ty; int_ty ], bool_ty)),
-                                     [
-                                       (AVar "_i") #: Nt.int_ty;
-                                       from #: Nt.int_ty;
-                                     ] ));
-                              Lit
-                                (AAppOp
-                                   ( (Op.BuiltinOp "<")
-                                     #: Nt.(
-                                          construct_arr_tp
-                                            ([ int_ty; int_ty ], bool_ty)),
-                                     [
-                                       (AVar "_i") #: Nt.int_ty;
-                                       to_ #: Nt.int_ty;
-                                     ] ));
+                              Lit (mk_geq (AVar i_) from);
+                              Lit (mk_lt (AVar i_) to_);
                             ],
                           Tr.fold
                             (function
@@ -337,9 +322,6 @@ module DerivBased : T = struct
         @@ List.filter_map (fun lit -> find_assignment_of_intvar lit x.x)
         @@ get_conjuncts phi
 
-  let n_ = "_n"
-  let i_ = "_i"
-
   let[@warning "-8"] start_iteration
       {
         rctx;
@@ -385,11 +367,7 @@ module DerivBased : T = struct
     in
     let cty =
       Cty.mk_from_prop Nt.int_ty @@ fun { x; ty } ->
-      Lit
-        (AAppOp
-           ( (Op.BuiltinOp ">=")
-             #: Nt.(construct_arr_tp ([ int_ty; int_ty ], bool_ty)),
-             [ (AVar x) #: ty; (AC (I 0)) #: Nt.int_ty ] ))
+      Lit (mk_geq (AVar x) (AC (I 0)))
     in
     let rx = n_ #:: (BaseRty { cty }) in
     let rctx = RTypectx.new_to_right rctx rx in
@@ -476,11 +454,7 @@ module DerivBased : T = struct
       to_assignment phi argvar
     in
     let* () =
-      opt_guard @@ equal_lit n_plus_one
-      @@ AAppOp
-           ( (Op.BuiltinOp "+")
-             #: Nt.(construct_arr_tp ([ int_ty; int_ty ], int_ty)),
-             [ (AVar n_) #: Nt.int_ty; (AC (I 1)) #: Nt.int_ty ] )
+      opt_guard @@ equal_lit n_plus_one @@ mk_plus (AVar n_) (AC (I 1))
     in
     let rctx_i =
       RTypectx.subst ~f:subst_rty (n_, AVar i_)
@@ -500,16 +474,8 @@ module DerivBased : T = struct
           Implies
             ( And
                 [
-                  Lit
-                    (AAppOp
-                       ( (Op.BuiltinOp ">=")
-                         #: Nt.(construct_arr_tp ([ int_ty; int_ty ], bool_ty)),
-                         [ (AVar i_) #: Nt.int_ty; (AC (I 0)) #: Nt.int_ty ] ));
-                  Lit
-                    (AAppOp
-                       ( (Op.BuiltinOp "<")
-                         #: Nt.(construct_arr_tp ([ int_ty; int_ty ], bool_ty)),
-                         [ (AVar i_) #: Nt.int_ty; (AVar n.x) #: n.ty ] ));
+                  Lit (mk_geq (AVar i_) (AC (I 0)));
+                  Lit (mk_lt (AVar i_) (AVar n.x));
                 ],
               phi_i ) )
     in
