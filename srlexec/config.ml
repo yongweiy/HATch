@@ -172,7 +172,7 @@ module DerivBased : T = struct
          (function
            | TamperSeal -> Fun.id
            | Atom l -> List.cons @@ L.to_phi l
-           | Repeat { from; to_; l } ->
+           | Repeat { from; to_; tr } ->
                List.cons
                @@ Forall
                     ( "i" #: Nt.int_ty,
@@ -200,7 +200,11 @@ module DerivBased : T = struct
                                        to_ #: Nt.int_ty;
                                      ] ));
                             ],
-                          L.to_phi l ) ))
+                          Tr.fold
+                            (function
+                              | Atom l -> smart_add_to @@ L.to_phi l
+                              | _ -> _failatwith __FILE__ __LINE__ "die")
+                            tr mk_true ) ))
          prefix []
 
   (** CErr if reachable, otherwise safe to prune the path *)
@@ -244,7 +248,7 @@ module DerivBased : T = struct
       EffSFA.match_and_refine_trace ~rctx:config.rctx ~substs config.prefix d
     in
     let* () = C.guard @@ EffSFA.is_nullable d' in
-    let prefix = List.fold_right Tr.subst_id substs prefix in
+    let prefix = List.fold_right Tr.subst_trace_id substs prefix in
     (* Pp.printf "@{<green>admited@} %s\n" @@ Tr.layout_trace prefix; *)
     C.return { config with prefix }
 
@@ -255,7 +259,7 @@ module DerivBased : T = struct
       EffSFA.enum ~substs ~len_range:(0, Env.get_exec_max_pre_length ()) d
     in
     let* () = C.guard @@ EffSFA.is_nullable d' in
-    let tr = List.fold_right Tr.subst_id substs tr in
+    let tr = List.fold_right Tr.subst_trace_id substs tr in
     let* _, tr', cont =
       ContSFA.match_and_refine_trace ~rctx:config.rctx ~substs tr config.cont
     in
@@ -439,7 +443,7 @@ module DerivBased : T = struct
                 smart_add_to phi phi_i)
               (Some phi_i) phis
           in
-          let eff = Tr.subst (x.x, lit) eff in
+          let eff = Tr.subst_trace (x.x, lit) eff in
           let rctx = RTypectx.subst ~f:subst_rty (x.x, lit) rctx in
           skolemize ~phi_i eff rctx
     in
@@ -484,7 +488,8 @@ module DerivBased : T = struct
     in
     let* prev_rctx, (_n, rty_n) = List.last_destruct_opt prev_rctx in
     let eff_i =
-      Tr.subst (n_, AVar i_) @@ Tr.take (Tr.length prev_prefix) config.prefix
+      Tr.subst_trace (n_, AVar i_)
+      @@ Tr.take (Tr.length prev_prefix) config.prefix
     in
     let+ phi_i, eff_i = skolemize eff_i rctx_i in
     let rty =
@@ -512,7 +517,7 @@ module DerivBased : T = struct
       rctx = RTypectx.new_to_right prev_rctx n_ #:: rty;
       prefix =
         Tr.snoc
-          (Repeat { from = AC (I 0); to_ = AVar n_; l = Tr.get_literal eff_i })
+          (Repeat { from = AC (I 0); to_ = AVar n_; tr = eff_i })
           prev_prefix;
       cont = cont_;
       comp = comp_after;
