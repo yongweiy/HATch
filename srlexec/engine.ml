@@ -14,7 +14,7 @@ module C = Choice
 module L = Literal
 module D = Deriv
 
-module Builder (Config : Config.T) = struct
+module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
   let rec reduce ~until_rec ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
     match (Config.comp cfg).x with
     | CErr | CVal _ -> C.return cfg
@@ -38,10 +38,9 @@ module Builder (Config : Config.T) = struct
             | VFix { fixname; fixarg; fixbody } when until_rec -> C.return cfg
             | VFix { fixname; fixarg; fixbody } ->
                 let summarized =
-                  (* let cfg = f_cfg @@ "_i_" ^ string_of_int i in *)
                   let* iter_info, cfg_i = Config.start_iteration cfg in
                   let* cfg_j =
-                    reduce_repeat ~until_rec:true ~start:i ~opctx
+                    reduce_repeat ~until_rec:true ~n:(AccelBound.value) ~start:i ~opctx
                     @@ C.return cfg_i
                   in
                   Config.end_iteration iter_info cfg_j
@@ -101,10 +100,6 @@ module Builder (Config : Config.T) = struct
         cfg |> Config.with_comp exp |> Config.add_rxs rxs |> Config.assume phi
     | CLetDeTu _ -> _failatwith __FILE__ __LINE__ "unimp"
     | CAppOp _ | CApp _ -> _failatwith __FILE__ __LINE__ "not in MNF"
-
-  (** Naively Incrementally Hatch Bug
-    TODO: make it more liberal to avoid repeated concretization of Choice Monad
- *)
   (* let reduce_until_hatched ~opctx ~retrty cfgs = *)
   (*   let rec aux cfgs = *)
   (*     let cfgs = C.fmap (Config.hatch ~retrty) cfgs in *)
@@ -122,7 +117,11 @@ module Builder (Config : Config.T) = struct
   (*   in *)
   (*   aux cfgs *)
 
-  and reduce_repeat ?(until_rec = false) ?(n = 20) ?(start = 0) ~opctx cfgs =
+  (** Naively Incrementally Hatch Bug
+    TODO: make it more liberal to avoid repeated concretization of Choice Monad
+ *)
+
+  and reduce_repeat ?(until_rec = false) ~n ?(start = 0) ~opctx cfgs =
     let rec aux i =
       if i = n then Fun.id
       else C.bind (aux (i + 1) << reduce ~until_rec ~i:(start + i) ~opctx)
@@ -168,13 +167,12 @@ module Builder (Config : Config.T) = struct
                             let witnesses =
                               C.to_list @@ C.fmap Config.get_witness
                               @@ C.fmap (Config.hatch ~retrty ~sfa_post)
-                              @@ reduce_repeat ~opctx
+                              @@ reduce_repeat ~opctx ~n:(ExecBound.value)
                               @@ Config.init ~substs rxs sfa_pre comp sfa_post
                             in
                             List.iter Config.print_witness witnesses;
                             List.is_empty witnesses))
                in
-               Deriv.EffSFA.output @@ open_out @@ name ^ "_eff.dot";
-               Deriv.ContSFA.output @@ open_out @@ name ^ "_cont.dot";
+               Config.output_dot name;
                (id, name, res, exec_time))
 end

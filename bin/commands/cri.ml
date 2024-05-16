@@ -219,7 +219,8 @@ let type_check_ (ri_input, s) source_file =
   (* let () = Printf.printf "%s\n" @@ Smtquery.(layout_cache check_bool_cache) in *)
   interfaceStaic
 
-let symb_exec_ ~naive (ri_input, s) source_file =
+let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
+    look_ahead accel_bound () =
   let setting, code, normalized, interfaceStaic =
     normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
   in
@@ -228,21 +229,38 @@ let symb_exec_ ~naive (ri_input, s) source_file =
   (*   ROpTypectx.pretty_print_lines setting.oprctx *)
   (* in *)
   let () = Stat.init_interfaceDynamic ri_input.interface_file in
-  if naive then
-    let module SymbExecEngine = Srlexec.Engine.Builder (Srlexec.Config.Naive) in
+  let module Engine =
+    Srlexec.Engine.Builder
+      (struct
+        let value = exec_bound
+      end)
+      (struct
+        let value = accel_bound
+      end)
+  in
+  if not deriv then
+    let module NaiveEngine = Engine (Srlexec.Config.Naive) in
     Env.show_log "result" @@ fun _ ->
     List.iter ~f:(fun res ->
         Printf.printf "DT(%s)  " ri_input.dt;
         Typecheck.pprint_res_one res)
-    @@ SymbExecEngine.main (setting.oprctx, setting.rctx) code normalized
+    @@ NaiveEngine.main (setting.oprctx, setting.rctx) code normalized
   else
-    let module SymbExecEngine =
-      Srlexec.Engine.Builder (Srlexec.Config.DerivBased) in
+    let module Config =
+      Srlexec.Config.DerivBased
+        (struct
+          let value = append_bound
+        end)
+        (struct
+          let value = look_ahead
+        end)
+    in
+    let module DerivEngine = Engine (Config) in
     Env.show_log "result" @@ fun _ ->
     List.iter ~f:(fun res ->
         Printf.printf "DT(%s)  " ri_input.dt;
         Typecheck.pprint_res_one res)
-    @@ SymbExecEngine.main (setting.oprctx, setting.rctx) code normalized
+    @@ DerivEngine.main (setting.oprctx, setting.rctx) code normalized
 
 let subtype_check_ (ri_input, s) source_file =
   let setting, code, normalized, _ =
@@ -365,23 +383,10 @@ let typecheck_cmds =
           let () = update_dt_static_stat dt_stat in
           ()) );
     ( "symb-exec",
-      cmd_config_source "symbolic execution"
-        (fun meta_config_file source_file () ->
-          let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
-          let _ =
-            symb_exec_ ~naive:false (ri_input, s)
-              [ ri_input.ri_file; source_file ]
-          in
-          ()) );
-    ( "naive-symb-exec",
-      cmd_config_source "naive symbolic execution"
-        (fun meta_config_file source_file () ->
-          let ri_inputs, s, dt_stat = prepare_ri meta_config_file source_file in
-          let _ =
-            symb_exec_ ~naive:true (ri_inputs, s)
-              [ ri_inputs.ri_file; source_file ]
-          in
-          ()) );
+      cmd_symb_exec_config_source "symbolic execution"
+      @@ fun meta_config_file source_file ->
+      let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
+      symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ] );
     ( "type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->
           let s = mk_inputs_setting meta_config_file in
