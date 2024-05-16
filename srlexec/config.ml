@@ -277,8 +277,10 @@ module DerivBased (AppendBound : IntT) (LookAhead : IntT) : T = struct
     TODO: create a flag to toggle preemptive bug check
  *)
   let hatch ~retrty ~sfa_post ({ cont; comp; _ } as config) =
-    Pp.printf "@{<yellow>hatch:@}\n%s\n-----------------------------\n"
-    @@ layout_config config;
+    let () =
+      Env.show_debug_hatch @@ fun _ ->
+      Pp.printf "%s\n-----------------------------\n" @@ layout_config config
+    in
     match comp.x with
     | CVal _ when (not @@ ContSFA.is_nullable cont) && reachable config ->
         Some { config with comp = CErr #: comp.ty }

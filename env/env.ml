@@ -46,6 +46,7 @@ let show_debug_typing = show_log "typing"
 let show_debug_queries = show_log "queries"
 let show_debug_minterms = show_log "minterms"
 let show_debug_solving = show_log "solving"
+let show_debug_hatch = show_log "hatch"
 let show_debug_stat = show_log "stat"
 let show_debug_info = show_log "info"
 let show_debug_debug = show_log "debug"
@@ -86,7 +87,6 @@ let load_meta meta_fname =
     | _ -> failwith "config: unknown mode"
   in
   let max_printing_size = metaj |> member "max_printing_size" |> to_int in
-  let exec_max_pre_length = metaj |> member "exec_max_pre_length" |> to_int in
   let resfile = metaj |> member "resfile" |> to_string in
   let statfile = metaj |> member "statfile" |> to_string in
   let logfile = metaj |> member "logfile" |> to_string in
