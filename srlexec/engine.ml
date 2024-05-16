@@ -160,8 +160,6 @@ module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
                let exec_time, res =
                  Sugar.clock (fun () ->
                      let substs, rxs, comp, hty = wrap_client comp rty in
-                     Pp.printf "symbolically executing\n%s\n"
-                     @@ layout_comp comp;
                      hty_to_triples hty
                      |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
                             let witnesses =
