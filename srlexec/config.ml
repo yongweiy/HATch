@@ -33,6 +33,7 @@ module type T = sig
   val asserts : prop list -> config -> config C.t
   val admit : substs:(string * string) list -> sfa -> config -> config C.t
   val append : substs:(string * string) list -> sfa -> config -> config C.t
+  val reach_bad_state : config -> bool
   val hatch : retrty:rty -> sfa_post:sfa -> config -> config option
   val output_dot : string -> unit
 
@@ -43,7 +44,6 @@ module type T = sig
 
   type witness
 
-  val layout_witness : witness -> string
   val print_witness : witness -> unit
   val get_witness : config -> witness option
 end
@@ -105,6 +105,8 @@ module Naive : T = struct
   let append ~substs sfa config =
     C.return { config with curr = SeqA (config.curr, sfa) }
 
+  let reach_bad_state _ = false
+
   let hatch ~retrty ~sfa_post ({ rctx; curr; comp } as config) =
     match comp.x with
     | CVal _ when not @@ Subtyping.sub_srl_bool rctx (curr, sfa_post) ->
@@ -126,18 +128,18 @@ module Naive : T = struct
 
   type witness = { rctx : RTypectx.ctx; curr : sfa }
 
-  let layout_witness { rctx; curr } =
-    Printf.sprintf "bug hatched:\nrctx = %s\ncurr = %s"
+  let print_witness { rctx; curr } =
+    Pp.printf
+      "@{bug hatched@}:\nrctx = %s\ncurr = %s\n------------------------\n"
       (RTypectx.layout_typed_l rctx)
       (layout_regex curr)
-
-  let print_witness witness = Pp.printf "%s\n" @@ layout_witness witness
 
   let get_witness ({ rctx; curr; comp } as config) =
     match comp.x with CErr -> Some { rctx; curr } | _ -> None
 end
 
-module DerivBased (AppendBound : IntT) (LookAhead : IntT) : T = struct
+module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
+  T = struct
   module EffSFA =
     SFA
       (struct
@@ -273,6 +275,8 @@ module DerivBased (AppendBound : IntT) (LookAhead : IntT) : T = struct
     append ~substs pre
       { rctx = RTypectx.of_rxs rxs; prefix = Tr.empty; cont; comp }
 
+  let reach_bad_state { cont; _ } = EmptyAware.flag && ContSFA.is_empty cont
+
   (** look for bug and prune terminated good execution
     TODO: create a flag to toggle preemptive bug check
  *)
@@ -305,15 +309,17 @@ module DerivBased (AppendBound : IntT) (LookAhead : IntT) : T = struct
     prefix : Tr.trace;
   }
 
-  let layout_witness { kind; rctx; prefix } =
-    Printf.sprintf "%s bug hatched:\nrctx = %s\nprefix = %s"
+  let print_witness { kind; rctx; prefix } =
+    Pp.printf
+      "@{<bold>%s bug hatched@}:\n\
+       rctx = %s\n\
+       prefix = %s\n\
+       ------------------------\n"
       (match kind with
       | `Preemptive -> "Preemptive"
       | `Terminated -> "Terminated")
       (RTypectx.layout_typed_l rctx)
       (Tr.layout_trace prefix)
-
-  let print_witness witness = Pp.printf "%s\n" @@ layout_witness witness
 
   let get_witness ({ rctx; prefix; cont; comp } as config) =
     match comp.x with

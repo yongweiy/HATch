@@ -17,6 +17,7 @@ module D = Deriv
 module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
   let rec reduce ~until_rec ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
     match (Config.comp cfg).x with
+    | _ when Config.reach_bad_state cfg -> C.return cfg
     | CErr | CVal _ -> C.return cfg
     | CLetE { lhs; rhs; letbody } -> (
         match rhs.x with

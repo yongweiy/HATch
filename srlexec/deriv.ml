@@ -182,17 +182,16 @@ module SFA (AllowEmpty : BoolT) (LookAhead : IntT) = struct
   let layout_deriv = Rty.layout_regex << of_deriv
   let is_nullable d = is_nullable @@ of_deriv d
   let is_free d = SRL.equal_sfa (StarA AnyA) @@ of_deriv d
+  let empty = to_deriv EmptyA
+  let () = set_dist empty 0
 
   (** syntactically check if a derivative is equivalent to empty *)
   let is_empty d =
-    let r = of_deriv d in
-    if SRL.equal_sfa r EmptyA then true
+    if equal_deriv d empty then true
     else (
-      _assert __FILE__ __LINE__ "Deriv.is_empty" @@ not @@ SRL.is_empty r;
+      _assert __FILE__ __LINE__ "Deriv.is_empty"
+      @@ not @@ SRL.is_empty @@ of_deriv d;
       false)
-
-  let empty = to_deriv EmptyA
-  let () = set_dist empty 0
 
   let init sfa =
     let d = to_deriv sfa in
