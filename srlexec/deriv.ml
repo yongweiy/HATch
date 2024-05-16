@@ -130,15 +130,7 @@ module DerivGraph = struct
   let get_subgraph _ = None
 end
 
-module type FlagT = sig
-  val flag : bool
-end
-
-module type IntT = sig
-  val bound : int
-end
-
-module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
+module SFA (AllowEmpty : BoolT) (LookAhead : IntT) = struct
   open DerivGraph
 
   let g = create ()
@@ -160,7 +152,7 @@ module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
       match get_dist d with
       | Some dist -> dist
       | None ->
-          if len = LookAhead.bound then max_int
+          if len = LookAhead.value then max_int
           else
             let dist =
               fold_succ (fun d' -> min @@ aux (len + 1) d') d max_int
@@ -234,7 +226,7 @@ module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
           List.map (fun l -> (l, to_deriv @@ quot l @@ of_deriv d)) lits
         in
         let nexts =
-          if LookAhead.bound > 0 then (
+          if LookAhead.value > 0 then (
             List.iter (update_dist << snd) nexts;
             List.sort
               (fun (_, d) (_, d') -> Int.compare (Mark.get d) (Mark.get d'))
@@ -288,21 +280,3 @@ module SFA (AllowEmpty : FlagT) (LookAhead : IntT) = struct
     in
     bfs 0 (C.return (Tr.empty, d)) C.fail
 end
-
-module EffSFA =
-  SFA
-    (struct
-      let flag = false
-    end)
-    (struct
-      let bound = 0
-    end)
-
-module ContSFA =
-  SFA
-    (struct
-      let flag = true
-    end)
-    (struct
-      let bound = 1
-    end)

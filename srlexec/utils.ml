@@ -5,6 +5,14 @@ open Rty
 open Syntax
 open Sugar
 
+module type BoolT = sig
+  val flag : bool
+end
+
+module type IntT = sig
+  val value : int
+end
+
 let ( let* ) x f = Choice.bind f x
 let ( let^ ) x f = Choice.fmap f x
 let ( let+ ) x f = Choice.map f x

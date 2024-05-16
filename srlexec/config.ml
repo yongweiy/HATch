@@ -34,6 +34,7 @@ module type T = sig
   val admit : substs:(string * string) list -> sfa -> config -> config C.t
   val append : substs:(string * string) list -> sfa -> config -> config C.t
   val hatch : retrty:rty -> sfa_post:sfa -> config -> config option
+  val output_dot : string -> unit
 
   type iteration_info
 
@@ -116,6 +117,8 @@ module Naive : T = struct
         | _ -> None)
     | _ -> Some config
 
+  let output_dot _ = ()
+
   type iteration_info = unit
 
   let start_iteration _ = C.fail
@@ -134,7 +137,23 @@ module Naive : T = struct
     match comp.x with CErr -> Some { rctx; curr } | _ -> None
 end
 
-module DerivBased : T = struct
+module DerivBased (AppendBound : IntT) (LookAhead : IntT) : T = struct
+  module EffSFA =
+    SFA
+      (struct
+        let flag = false
+      end)
+      (struct
+        let value = 0
+      end)
+
+  module ContSFA =
+    SFA
+      (struct
+        let flag = true
+      end)
+      (LookAhead)
+
   type config = {
     rctx : RTypectx.ctx;
     prefix : Tr.trace;
@@ -240,9 +259,7 @@ module DerivBased : T = struct
   let append ~substs sfa config =
     let sfa = List.fold_right (SRL.subst_id << swap) substs sfa in
     let d = EffSFA.init sfa in
-    let* tr, d' =
-      EffSFA.enum ~substs ~len_range:(0, Env.get_exec_max_pre_length ()) d
-    in
+    let* tr, d' = EffSFA.enum ~substs ~len_range:(0, AppendBound.value) d in
     let* () = C.guard @@ EffSFA.is_nullable d' in
     let tr = List.fold_right Tr.subst_trace_id substs tr in
     let* _, tr', cont =
@@ -275,6 +292,10 @@ module DerivBased : T = struct
     | _ when ContSFA.is_empty config.cont && reachable config ->
         Some { config with comp = CErr #: comp.ty }
     | _ -> Some config
+
+  let output_dot name =
+    EffSFA.output @@ open_out @@ name ^ "_eff.dot";
+    ContSFA.output @@ open_out @@ name ^ "_cont.dot"
 
   type witness = {
     kind : [ `Preemptive | `Terminated ];
@@ -353,17 +374,18 @@ module DerivBased : T = struct
           };
       } =
     let+ () =
+      C.guard
+      @@
       match apparg.x with
-      | VConst (I 0) -> C.return ()
+      | VConst (I 0) -> true
       | VVar x -> (
           let rty = RTypectx.get_ty rctx x in
           let cty = rty_to_cty rty in
           let x, phi = cty_typed_to_prop x #::: cty in
           match to_assignment phi x with
-          | Some lit -> C.guard @@ equal_lit lit (AC (I 0))
-          | None -> C.fail)
-      | _ -> C.fail
-      (* C.guard (CVal apparg.x = int_ 0) *)
+          | Some lit -> equal_lit lit (AC (I 0))
+          | None -> false)
+      | _ -> false
     in
     let cty =
       Cty.mk_from_prop Nt.int_ty @@ fun { x; ty } ->

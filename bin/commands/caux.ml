@@ -46,6 +46,40 @@ let cmd_config_source summary f =
       and source_file = anon ("source_code_file" %: regular_file) in
       f meta_config_file source_file)
 
+let cmd_symb_exec_config_source summary f =
+  Command.basic ~summary
+    Command.Let_syntax.(
+      let%map_open meta_config_file = anon ("meta_config_file" %: regular_file)
+      and source_file = anon ("source_code_file" %: regular_file)
+      and exec_bound =
+        flag "-exec-bound"
+          (optional_with_default 10 int)
+          ~doc:
+            "<int> Set the bound on the number of reduction steps during \
+             symbolic execution"
+      and no_derivative = flag "-no-deriv" no_arg ~doc:" Disable derivative"
+      and append_bound =
+        flag "-eff-append-bound"
+          (optional_with_default 1 int)
+          ~doc:
+            "<int> Set the bound on the length of event sequences sampled from \
+             SFA being appended during symbolic execution"
+      and accel_bound =
+        flag "-accel-bound"
+          (optional_with_default 5 int)
+          ~doc:
+            "<int> Set the bound on the number of reduction steps within one \
+             iteration to be accelerated"
+      and look_ahead =
+        flag "-sfa-look-ahead"
+          (optional_with_default 1 int)
+          ~doc:
+            "<int> Set the look-ahead depth for empty state in SFA during \
+             symbolic execution"
+      in
+      f meta_config_file source_file exec_bound (not no_derivative) append_bound
+        look_ahead accel_bound)
+
 let cmd_config_ir_source summary f =
   Command.basic ~summary
     Command.Let_syntax.(
