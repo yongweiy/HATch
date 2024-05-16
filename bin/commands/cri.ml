@@ -220,7 +220,7 @@ let type_check_ (ri_input, s) source_file =
   interfaceStaic
 
 let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
-    look_ahead accel_bound () =
+    empty_aware look_ahead accel_bound () =
   let setting, code, normalized, interfaceStaic =
     normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
   in
@@ -250,6 +250,9 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
       Srlexec.Config.DerivBased
         (struct
           let value = append_bound
+        end)
+        (struct
+          let flag = empty_aware
         end)
         (struct
           let value = look_ahead

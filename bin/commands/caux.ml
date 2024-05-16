@@ -70,6 +70,10 @@ let cmd_symb_exec_config_source summary f =
           ~doc:
             "<int> Set the bound on the number of reduction steps within one \
              iteration to be accelerated"
+      and empty_aware =
+        flag "-empty-aware" no_arg
+          ~doc:
+            "Make derivative-based engine stop upon reaching bad state in SFA"
       and look_ahead =
         flag "-sfa-look-ahead"
           (optional_with_default 1 int)
@@ -78,7 +82,7 @@ let cmd_symb_exec_config_source summary f =
              symbolic execution"
       in
       f meta_config_file source_file exec_bound (not no_derivative) append_bound
-        look_ahead accel_bound)
+        empty_aware look_ahead accel_bound)
 
 let cmd_config_ir_source summary f =
   Command.basic ~summary
