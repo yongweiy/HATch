@@ -17,7 +17,7 @@ module type T = sig
 
   val init :
     substs:(string * string) list ->
-    string rtyped list ->
+    RTypectx.ctx ->
     sfa ->
     comp typed ->
     sfa ->
@@ -25,6 +25,7 @@ module type T = sig
 
   val comp : config -> comp typed
   val with_comp : comp typed -> config -> config
+  val get_rty : string -> config -> rty
   val add_rx : string rtyped -> config -> config
   val add_rxs : string rtyped list -> config -> config
   val abort : config -> config option
@@ -61,11 +62,12 @@ module Naive : T = struct
 
   let print_config config = Pp.printf "%s\n" @@ layout_config config
 
-  let init ~substs rxs curr comp post =
-    C.return { rctx = RTypectx.of_rxs rxs; curr; comp }
+  let init ~substs rctx curr comp post =
+    C.return { rctx; curr; comp }
 
   let comp { comp; _ } = comp
   let with_comp comp config = { config with comp }
+  let get_rty x { rctx; _ } = RTypectx.get_ty rctx x
 
   let add_rx rx config =
     { config with rctx = RTypectx.new_to_right config.rctx rx }
@@ -176,6 +178,7 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
   let print_config config = Pp.printf "%s\n" @@ layout_config config
   let comp { comp; _ } = comp
   let with_comp comp config = { config with comp }
+  let get_rty x { rctx; _ } = RTypectx.get_ty rctx x
 
   let add_rx rx config =
     if erase_rty rx.rty = Nt.unit_ty then config
@@ -270,10 +273,10 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
     (* Pp.printf "@{<yellow>append@} %s\n" @@ Tr.layout_trace tr; *)
     C.return { config with prefix = Tr.append config.prefix tr'; cont }
 
-  let init ~substs rxs pre comp post =
+  let init ~substs rctx pre comp post =
     let cont = ContSFA.init post in
     append ~substs pre
-      { rctx = RTypectx.of_rxs rxs; prefix = Tr.empty; cont; comp }
+      { rctx; prefix = Tr.empty; cont; comp }
 
   let reach_bad_state { cont; _ } = EmptyAware.flag && ContSFA.is_empty cont
 

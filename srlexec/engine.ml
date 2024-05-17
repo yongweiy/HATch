@@ -14,7 +14,28 @@ module C = Choice
 module L = Literal
 module D = Deriv
 
-module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
+module Builder (ExecBound : IntT) (AccelBound : IntT) (Config : Config.T) =
+struct
+  let apply ~i ~lhs ~letbody rty args cfg =
+    let cfg = Config.with_comp letbody cfg in
+    let substs_ghost, ghosts, hty = collect_ghosts ~i @@ Rty rty in
+    let cfg = Config.add_rxs ghosts cfg in
+    let substs_arg, phis, rethty = hty_to_contract args hty in
+    let substs = substs_ghost @ substs_arg in
+    let* cfg = Config.asserts phis cfg in
+    match rethty with
+    | Rty retrty -> C.return @@ Config.add_rx lhs.x #:: retrty cfg
+    | _ -> (
+        let* sfa_pre, retrty, sfa_post = C.of_list @@ hty_to_triples rethty in
+        let* cfg = Config.admit ~substs sfa_pre cfg in
+        let cfg = Config.add_rx lhs.x #:: retrty cfg in
+        match sfa_post with
+        | SeqA (sfa_pre', sfa_eff) ->
+            _assert __FILE__ __LINE__ "die" (equal_sfa sfa_pre sfa_pre');
+            Config.append ~substs sfa_eff cfg
+        | _ when equal_sfa sfa_pre sfa_post -> C.return cfg
+        | _ -> _failatwith __FILE__ __LINE__ "unimp")
+
   let rec reduce ~until_rec ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
     match (Config.comp cfg).x with
     | _ when Config.reach_bad_state cfg -> C.return cfg
@@ -27,7 +48,9 @@ module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
             C.return @@ Config.with_comp comp cfg
         | CApp { appf; apparg } -> (
             match appf.x with
-            | VVar f -> _failatwith __FILE__ __LINE__ "higher-order unimp"
+            | VVar f ->
+                let f_rty = Config.get_rty f cfg in
+                apply ~i ~lhs ~letbody f_rty [apparg] cfg
             | VLam { lamarg; lambody } ->
                 let lambody =
                   lambody
@@ -41,7 +64,8 @@ module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
                 let summarized =
                   let* iter_info, cfg_i = Config.start_iteration cfg in
                   let* cfg_j =
-                    reduce_repeat ~until_rec:true ~n:(AccelBound.value) ~start:i ~opctx
+                    reduce_repeat ~until_rec:true ~n:AccelBound.value ~start:i
+                      ~opctx
                     @@ C.return cfg_i
                   in
                   Config.end_iteration iter_info cfg_j
@@ -55,25 +79,9 @@ module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
                 let inlined = mk_lete lhs fixbody letbody in
                 C.mplus summarized @@ C.return @@ Config.with_comp inlined cfg
             | VTu _ | VConst _ -> _failatwith __FILE__ __LINE__ "die")
-        | CAppOp { op; appopargs } -> (
-            let cfg = Config.with_comp letbody cfg in
+        | CAppOp { op; appopargs } ->
             let op_rty = ROpTypectx.get_ty opctx op.x in
-            let substs_ghost, ghosts, hty = collect_ghosts ~i @@ Rty op_rty in
-            let cfg = Config.add_rxs ghosts cfg in
-            let substs_arg, phis, rethty = hty_to_contract appopargs hty in
-            let substs = substs_ghost @ substs_arg in
-            let* cfg = Config.asserts phis cfg in
-            match rethty with
-            | Rty retrty -> C.return @@ Config.add_rx lhs.x #:: retrty cfg
-            | _ ->
-                let* sfa_pre, retrty, sfa_post =
-                  C.of_list @@ hty_to_triples rethty
-                in
-                let[@warning "-8"] (SeqA (sfa_pre', sfa_new)) = sfa_post in
-                _assert __FILE__ __LINE__ "die" (equal_sfa sfa_pre sfa_pre');
-                let* cfg = Config.admit ~substs sfa_pre cfg in
-                let cfg = Config.add_rx lhs.x #:: retrty cfg in
-                Config.append ~substs sfa_new cfg)
+            apply ~i ~lhs ~letbody op_rty appopargs cfg
         | CLetE _ | CMatch _ ->
             let+ cfg =
               reduce ~until_rec ~i ~opctx @@ Config.with_comp rhs cfg
@@ -146,7 +154,7 @@ module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
 
   let main (opctx', rctx') structure normalized_structure =
     let opctx, rctx = ROpTypectx.from_code structure in
-    let opctx, rctx = (opctx' @ opctx, rctx' @ rctx) in
+    let opctx, _ = (opctx' @ opctx, rctx' @ rctx) in
     RTypectx.get_task structure
     |> List.mapi (fun id (name, rty) ->
            let id = id + 1 in
@@ -161,13 +169,14 @@ module Builder (ExecBound: IntT) (AccelBound: IntT) (Config : Config.T) = struct
                let exec_time, res =
                  Sugar.clock (fun () ->
                      let substs, rxs, comp, hty = wrap_client comp rty in
+                     let rctx = RTypectx.new_to_rights rctx rxs in
                      hty_to_triples hty
                      |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
                             let witnesses =
                               C.to_list @@ C.fmap Config.get_witness
                               @@ C.fmap (Config.hatch ~retrty ~sfa_post)
-                              @@ reduce_repeat ~opctx ~n:(ExecBound.value)
-                              @@ Config.init ~substs rxs sfa_pre comp sfa_post
+                              @@ reduce_repeat ~opctx ~n:ExecBound.value
+                              @@ Config.init ~substs rctx sfa_pre comp sfa_post
                             in
                             List.iter Config.print_witness witnesses;
                             List.is_empty witnesses))
