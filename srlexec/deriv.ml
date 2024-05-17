@@ -221,9 +221,11 @@ module SFA (AllowEmpty : BoolT) (LookAhead : IntT) = struct
         let lits =
           List.filter_map (L.notbot_opt ~substs) @@ next_literal @@ of_deriv d
         in
+        (* compute derivatives over lits *)
         let nexts =
           List.map (fun l -> (l, to_deriv @@ quot l @@ of_deriv d)) lits
         in
+        (* look ahead for bad state to guide the transition *)
         let nexts =
           if LookAhead.value > 0 then (
             List.iter (update_dist << snd) nexts;
@@ -232,10 +234,16 @@ module SFA (AllowEmpty : BoolT) (LookAhead : IntT) = struct
               nexts)
           else nexts
         in
+        (* in ContSFA, include transition to bad state if there is one *)
         let nexts =
-          if AllowEmpty.flag then (L.neg_literals lits, empty) :: nexts
+          if AllowEmpty.flag then
+            let neg = L.neg_literals lits in
+            match L.notbot_opt ~substs neg with
+            | Some l -> (l, empty) :: nexts
+            | None -> nexts
           else nexts
         in
+        (* commit the transition to SFA graph *)
         List.iter (fun (l, d') -> new_trans d l d') nexts;
         nexts
     | trans -> trans
