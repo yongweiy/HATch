@@ -29,6 +29,8 @@ module F (L : Lit.T) = struct
     | p when is_false p -> mk_true
     | p -> Not p
 
+  let is_neg p1 p2 = equal_prop p1 (mk_not p2)
+
   let smart_and l =
     if List.exists is_false l then mk_false
     else
@@ -80,8 +82,14 @@ module F (L : Lit.T) = struct
     | Some false -> mk_false
     | None ->
         let props = match prop with And props -> props | _ -> [ prop ] in
-        if List.exists (equal_prop a << mk_not) props then mk_false
-        else smart_and (a :: props)
+        let atoms = match a with And atoms -> atoms | _ -> [ a ] in
+        if List.exists (fun a -> List.exists (is_neg a) props) atoms then
+          mk_false
+        else
+          smart_and @@ props
+          @ List.filter
+              (fun atom -> not @@ List.exists (equal_prop atom) props)
+              atoms
 
   let smart_implies a prop =
     match get_cbool a with
