@@ -49,10 +49,15 @@ let mk_complementA = function
   | r -> ComplementA r
 
 let mk_orA r s =
+  let rec aux r0 = function
+    | LorA (r, s) -> aux r0 r || aux r0 s
+    | s -> r0 = s
+  in
   if r = EmptyA then s
   else if s = EmptyA then r
   else if r = StarA AnyA || s = StarA AnyA then StarA AnyA
-  else if r = s then r
+  else if aux r s then s
+  else if aux s r then r
   else LorA (r, s)
 
 let mk_andA r s =
