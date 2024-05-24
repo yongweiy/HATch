@@ -6,60 +6,41 @@ open Rty
 open Sugar
 open Syntax
 open Utils
-
-module Guard = struct
-  type t = Pos of prop | Neg of prop [@@deriving sexp, compare, equal, hash]
-
-  let apply guard phi =
-    match guard with
-    | Pos psi -> smart_and [ psi; phi ]
-    | Neg psi -> smart_or [ mk_not psi; phi ]
-
-  let is_trivial = function Pos phi | Neg phi -> is_true phi
-
-  let layout = function
-    | g when is_trivial g -> ""
-    | Pos phi -> layout_prop phi ^ "⩓"
-    | Neg phi -> layout_prop (mk_not phi) ^ "⩔"
-
-  let mk_not = function Pos phi -> Neg phi | Neg phi -> Pos phi
-
-  let mk_and = function
-    | Pos phi1, Pos phi2 -> Pos (smart_and [ phi1; phi2 ])
-    | guard, Neg phi | Neg phi, guard ->
-        _assert __FILE__ __LINE__ "mk_and: non-trivial guard" @@ is_true phi;
-        guard
-
-  let mk_or = function
-    | Neg phi1, Neg phi2 -> Neg (smart_or [ phi1; phi2 ])
-    | guard, Pos phi | Pos phi, guard ->
-        _assert __FILE__ __LINE__ "mk_or: non-trivial guard" @@ is_true phi;
-        guard
-end
-
 open Sexplib.Std
 open Ppx_compare_lib.Builtin
 open Ppx_hash_lib.Std.Hash.Builtin
 
-type literal = {
-  guard : Guard.t;
-  events : eff_event list;
-  op_filter : [ `Whitelist of string list | `Blacklist of string list ];
-}
+type op_pred = Whitelist of string list | Blacklist of prop * string list
+[@@deriving sexp, compare, equal, hash]
+
+let subst_op_pred yz = function
+  | Whitelist ops -> Whitelist ops
+  | Blacklist (phi, ops) -> Blacklist (P.subst_prop yz phi, ops)
+
+type literal = { events : eff_event list; op_pred : op_pred }
 [@@deriving sexp, compare, equal, hash]
 (** a literal denotes a disjunction of qualified events from `events`
     and other events whose `op` is conditioned by `op_filter`.
-    `Pos` guard is interpreted as a conjunct to each event qualifier;
-    `Neg` guard is interpreted as a disjunct to each event qualifier.
     a literal is well-formed if the disjuncted events are disjoint.
-*)
+ *)
 
-let subst yz l = { l with events = List.map (SE.subst_ev yz) l.events }
+let mk_false = { events = []; op_pred = Whitelist [] }
+let mk_true = { events = []; op_pred = Blacklist (P.mk_true, []) }
+
+(** temporary holder for input/output args *)
+let mk_event_from_op ?(phi = P.mk_true) op =
+  { op; vs = []; v = Common.v_ret_name #: Nt.unit_ty; phi }
+
+let subst yz { events; op_pred } =
+  {
+    events = List.map (SE.subst_ev yz) events;
+    op_pred = subst_op_pred yz op_pred;
+  }
 
 (** TODO: this is weird, shall we abandon the rctx infrastructure? *)
-let to_rxs ~index { guard; events; op_filter } =
-  match op_filter with
-  | `Whitelist [] ->
+let to_rxs ~index { events; op_pred } =
+  match op_pred with
+  | Whitelist [] ->
       let vs, phis =
         events
         |> List.map (fun { op; vs; v; phi } ->
@@ -72,205 +53,227 @@ let to_rxs ~index { guard; events; op_filter } =
              (fun (vss, phis) (vs, phi) -> (vs @ vss, phi :: phis))
              ([], [])
       in
-      let phi = Guard.apply guard @@ smart_or phis in
-      rxs_of_xs phi vs
-  | `Whitelist _ | `Blacklist _ ->
-      [
-        (Rename.unique "u")
-        #:: (mk_unit_rty_from_prop @@ Guard.apply guard mk_true);
-      ]
+      rxs_of_xs (smart_or phis) vs
+  | Whitelist _ -> [ (Rename.unique "u") #:: (mk_unit_rty_from_prop P.mk_true) ]
+  | Blacklist (phi, _) ->
+      [ (Rename.unique "u") #:: (mk_unit_rty_from_prop phi) ]
 
-let to_phi { guard; events; op_filter } =
-  match op_filter with
-  | `Whitelist [] ->
-      Guard.apply guard @@ smart_or
-      @@ List.map (fun { op; vs; v; phi } -> exists_ignore_unit (v :: vs) phi) events
-  | `Whitelist _ | `Blacklist _ -> Guard.apply guard mk_true
+let to_phi { events; op_pred } =
+  match op_pred with
+  | Whitelist [] ->
+      smart_or
+      @@ List.map
+           (fun { op; vs; v; phi } -> exists_ignore_unit (v :: vs) phi)
+           events
+  | Whitelist _ -> P.mk_true
+  | Blacklist (phi, _) -> phi
 
-let layout_literal { guard; events; op_filter } =
+let layout_literal { events; op_pred } =
   let event_strs = List.map (fun ev -> layout_sevent (EffEvent ev)) events in
-  Guard.layout guard
-  ^
-  match op_filter with
-  | `Whitelist ops_include ->
+  match op_pred with
+  | Whitelist ops_include ->
       let strs = event_strs @ ops_include in
       if List.is_empty strs then "⊥" else String.concat " | " strs
-  | `Blacklist ops_exclude when List.is_empty ops_exclude ->
+  | Blacklist (phi, ops_exclude) when List.is_empty ops_exclude ->
       _assert __FILE__ __LINE__ "layout_literal: disjointness"
       @@ List.is_empty event_strs;
-      "⊤"
-  | `Blacklist ops_exclude ->
+      layout_prop phi
+  | Blacklist (phi, ops_exclude) ->
       String.concat " | " @@ event_strs
-      @ [ "¬(" ^ String.concat " | " ops_exclude ^ ")" ]
+      @ [ layout_prop phi ^ "¬(" ^ String.concat " | " ops_exclude ^ ")" ]
 
 let of_sevent = function
-  | GuardEvent phi ->
-      { guard = Pos phi; events = []; op_filter = `Whitelist [] }
-  | EffEvent ev ->
-      { guard = Pos mk_true; events = [ ev ]; op_filter = `Whitelist [] }
+  | GuardEvent phi -> { events = []; op_pred = Blacklist (phi, []) }
+  | EffEvent ev -> { events = [ ev ]; op_pred = Whitelist [] }
+
+let inter_events evs1 evs2 =
+  List.intersect_map
+    (fun ev1 ev2 ->
+      if String.equal ev1.op ev2.op then
+        let ev = if List.is_empty ev1.vs then ev2 else ev1 in
+        Some { ev with phi = smart_add_to ev2.phi ev1.phi }
+      else None)
+    evs1 evs2
+
+let union_events evs1 evs2 =
+  List.union_map
+    (fun ev1 ev2 ->
+      if String.equal ev1.op ev2.op then
+        let ev = if List.is_empty ev1.vs then ev2 else ev1 in
+        Some { ev with phi = smart_or [ ev2.phi; ev1.phi ] }
+      else None)
+    evs1 evs2
+
+let inter_op_pred pred1 pred2 =
+  match (pred1, pred2) with
+  | Whitelist ops1, Whitelist ops2 ->
+      { events = []; op_pred = Whitelist (StrList.intersect ops1 ops2) }
+  | Whitelist ops, Blacklist (phi, ops_exclude)
+  | Blacklist (phi, ops_exclude), Whitelist ops ->
+      let ops = StrList.subtract ops ops_exclude in
+      if is_true phi then { events = []; op_pred = Whitelist ops }
+      else { events = List.map mk_event_from_op ops; op_pred = Whitelist [] }
+  | Blacklist (phi1, ops_exclude1), Blacklist (phi2, ops_exclude2) ->
+      {
+        events = [];
+        op_pred =
+          Blacklist
+            (smart_add_to phi2 phi1, StrList.union ops_exclude1 ops_exclude2);
+      }
+
+let union_op_pred pred1 pred2 =
+  match (pred1, pred2) with
+  | Whitelist ops1, Whitelist ops2 ->
+      { events = []; op_pred = Whitelist (StrList.union ops1 ops2) }
+  | Whitelist ops, Blacklist (phi, ops_exclude)
+  | Blacklist (phi, ops_exclude), Whitelist ops ->
+      if is_true phi then
+        {
+          events = [];
+          op_pred = Blacklist (phi, StrList.subtract ops_exclude ops);
+        }
+      else
+        {
+          events = List.map mk_event_from_op ops;
+          op_pred = Blacklist (phi, StrList.union ops_exclude ops);
+        }
+  | Blacklist (phi1, ops_exclude1), Blacklist (phi2, ops_exclude2)
+    when is_true phi1 && is_true phi2 ->
+      {
+        events = [];
+        op_pred =
+          Blacklist (phi1, StrList.intersect ops_exclude1 ops_exclude2);
+      }
+  | Blacklist (phi1, ops_exclude1), Blacklist (phi2, ops_exclude2) ->
+      {
+        events =
+          (List.map (mk_event_from_op ~phi:phi1)
+          @@ StrList.subtract ops_exclude2 ops_exclude1)
+          @ List.map (mk_event_from_op ~phi:phi2)
+          @@ StrList.subtract ops_exclude1 ops_exclude2;
+        op_pred =
+          Blacklist
+            (smart_or [ phi1; phi2 ], StrList.union ops_exclude1 ops_exclude2);
+      }
+
+let filter_events = function
+  | Whitelist ops -> List.filter @@ fun ev -> List.mem ev.op ops
+  | Blacklist (phi, ops) ->
+      List.filter_map @@ fun ev ->
+      if List.mem ev.op ops then None
+      else Some { ev with phi = smart_add_to phi ev.phi }
+
+let events_union_op_pred evs op_pred =
+  match op_pred with
+  | Whitelist ops ->
+      {
+        events = List.filter (fun ev -> not @@ List.mem ev.op ops) evs;
+        op_pred;
+      }
+  | Blacklist (phi, ops) when is_true phi ->
+      { events = List.filter (fun ev -> List.mem ev.op ops) evs; op_pred }
+  | Blacklist (phi, ops) ->
+      {
+        events =
+          List.map
+            (fun ev ->
+              if List.mem ev.op ops then ev
+              else { ev with phi = smart_or [ ev.phi; phi ] })
+            evs;
+        op_pred =
+          Blacklist (phi, StrList.union ops @@ List.map (fun ev -> ev.op) evs);
+      }
+
+let literal_union_events { events; op_pred } evs =
+  let { events = evs; op_pred } = events_union_op_pred evs op_pred in
+  { events = union_events events evs; op_pred }
 
 (** It is sound to only consider either `guard` or `events`
     because of the way literals are emitted from the SFA.
    TODO: how much faster using syntactic approach instead of calling solver *)
-let entails_sevent { guard; events; op_filter } = function
+let entails_sevent { events; op_pred } = function
   | GuardEvent phi' -> (
-      match guard with
-      | Pos phi -> Smtquery.check_bool @@ smart_implies phi phi'
-      | Neg _ -> _failatwith __FILE__ __LINE__ "unimp")
+      let entails_ev { op; vs; v; phi } =
+        Smtquery.check_bool @@ smart_implies phi phi'
+      in
+      match op_pred with
+      | Blacklist (phi, _) when Smtquery.check_bool @@ smart_implies phi phi' ->
+          List.for_all entails_ev events
+      | Blacklist _ -> false
+      | Whitelist [] -> List.for_all entails_ev events
+      | Whitelist _ -> Smtquery.check_bool phi')
   | EffEvent ev' -> (
-      _assert __FILE__ __LINE__ "unimp"
-        (match guard with
-        | Neg phi when not @@ is_true phi -> false
-        | _ -> true);
-      match (events, op_filter) with
-      | [ ev ], `Whitelist [] when String.equal ev.op ev'.op ->
+      match (events, op_pred) with
+      | [ ev ], Whitelist [] when String.equal ev.op ev'.op ->
           Smtquery.check_bool @@ smart_implies ev.phi ev'.phi
-      | [], `Whitelist [ op ] when String.equal op ev'.op ->
-          Smtquery.check_bool @@ smart_implies mk_true ev'.phi
+      | [], Whitelist [ op ] when String.equal op ev'.op ->
+          Smtquery.check_bool ev'.phi
       | _ -> false)
 
+let is_bot_ev ~rctx ~substs ({ op; vs; v; phi } : eff_event) =
+  check_prop ~rctx
+  @@ forall_ignore_unit (v :: vs)
+  @@ mk_not
+  @@ List.fold_right subst_prop_id substs phi
+
 (** determine if a literal is bottom, i.e., no satisfying events *)
-let is_bot ~rctx ~substs { guard; events; op_filter } =
-  let aux ({ op; vs; v; phi } : eff_event) =
-    check_prop ~rctx
-    @@ forall_ignore_unit (v :: vs)
-    @@ mk_not @@ Guard.apply guard
-    @@ List.fold_right subst_prop_id substs phi
-  in
-  match op_filter with `Whitelist [] -> List.for_all aux events | _ -> false
+let is_bot ~rctx ~substs { events; op_pred } =
+  match op_pred with
+  | Whitelist [] -> List.for_all (is_bot_ev ~rctx ~substs) events
+  | Blacklist (phi, _) when Smtquery.check_bool @@ mk_not phi ->
+      List.for_all (is_bot_ev ~rctx ~substs) events
+  | _ -> false
 
 (** an enhancement over `is_bot` by pruning out non-satisfiable branches
    TODO: add an option to enable over-approximation *)
-let notbot_opt ?(rctx = []) ~substs ({ guard; events; op_filter } as l) =
-  let is_bot_ev ({ op; vs; v; phi } as ev : eff_event) =
-    check_prop ~rctx
-    @@ forall_ignore_unit (v :: vs)
-    @@ mk_not @@ Guard.apply guard
-    @@ List.fold_right subst_prop_id substs phi
-  in
-  let events = List.filter (not << is_bot_ev) events in
-  match op_filter with
-  | `Whitelist [] when List.is_empty events -> None
+let notbot_opt ?(rctx = []) ~substs ({ events; op_pred } as l) =
+  let events = List.filter (not << is_bot_ev ~rctx ~substs) events in
+  match op_pred with
+  | Whitelist [] when List.is_empty events -> None
+  | Blacklist (phi, _) when Smtquery.check_bool @@ mk_not phi ->
+      if List.is_empty events then None
+      else Some { events; op_pred = Whitelist [] }
   | _ -> Some { l with events }
 
-let mk_false = { guard = Pos mk_true; events = []; op_filter = `Whitelist [] }
-let mk_true = { guard = Pos mk_true; events = []; op_filter = `Blacklist [] }
-
-let mk_not { guard; events; op_filter } =
+let mk_not { events; op_pred } =
   let event_ops = List.map (fun ev -> ev.op) events in
   let dual_event (ev : eff_event) = { ev with phi = mk_not ev.phi } in
   let dual_events = List.map dual_event events in
-  match op_filter with
-  | `Whitelist ops_include ->
+  match op_pred with
+  | Whitelist ops_include ->
       assert (StrList.is_disjoint ops_include event_ops);
       {
-        guard = Guard.mk_not guard;
         events = dual_events;
-        op_filter = `Blacklist (event_ops @ ops_include);
+        op_pred = Blacklist (P.mk_true, event_ops @ ops_include);
       }
-  | `Blacklist ops_exclude ->
+  | Blacklist (phi, ops_exclude) when is_true phi ->
       assert (StrList.subset event_ops ops_exclude);
       {
-        guard = Guard.mk_not guard;
         events = dual_events;
-        op_filter = `Whitelist (StrList.subtract ops_exclude event_ops);
+        op_pred = Whitelist (StrList.subtract ops_exclude event_ops);
+      }
+  | Blacklist (phi, ops_exclude) ->
+      assert (StrList.subset event_ops ops_exclude);
+      let events' =
+        List.map mk_event_from_op @@ StrList.subtract ops_exclude event_ops
+      in
+      {
+        events = dual_events @ events';
+        op_pred = Blacklist (mk_not phi, ops_exclude);
       }
 
 let mk_and l1 l2 =
-  let rec join_and_sub inter diff = function
-    | [] -> (inter, diff)
-    | ev :: evs -> (
-        match List.find_opt (with_same_op ev) l2.events with
-        | Some ev' ->
-            let ev = { ev with phi = smart_add_to ev'.phi ev.phi } in
-            join_and_sub (ev :: inter) diff evs
-        | None -> join_and_sub inter (ev :: diff) evs)
-  in
-  let filter_events_by_op evs op_filter =
-    match op_filter with
-    | `Whitelist ops_include ->
-        List.filter (fun ev -> List.mem ev.op ops_include) evs
-    | `Blacklist ops_exclude ->
-        List.filter (fun ev -> not @@ List.mem ev.op ops_exclude) evs
-  in
-  let events_inter, events_sub1 = join_and_sub [] [] l1.events in
-  let events_sub2 = List.substract with_same_op l2.events events_inter in
-  let op_filter, op_subfilter1, op_subfilter2 =
-    match (l1.op_filter, l2.op_filter) with
-    | `Whitelist ops_include1, `Whitelist ops_include2 ->
-        let ops_include, ops_include_sub1 =
-          StrList.intersect_and_subtract ops_include1 ops_include2
-        in
-        let ops_include_sub2 = StrList.subtract ops_include2 ops_include in
-        ( `Whitelist ops_include,
-          `Whitelist ops_include_sub1,
-          `Whitelist ops_include_sub2 )
-    | `Whitelist ops_include, `Blacklist ops_exclude ->
-        let ops_include_excluded, ops_include_sub =
-          StrList.intersect_and_subtract ops_include ops_exclude
-        in
-        let ops_exclude = ops_exclude @ ops_include_sub in
-        ( `Whitelist ops_include_sub,
-          `Whitelist ops_include_excluded,
-          `Blacklist ops_exclude )
-    | `Blacklist ops_exclude, `Whitelist ops_include ->
-        let ops_include_excluded, ops_include_sub =
-          StrList.intersect_and_subtract ops_include ops_exclude
-        in
-        let ops_exclude = ops_exclude @ ops_include_sub in
-        ( `Whitelist ops_include_sub,
-          `Blacklist ops_exclude,
-          `Whitelist ops_include_excluded )
-    | `Blacklist ops_exclude1, `Blacklist ops_exclude2 ->
-        let ops_exclude = StrList.union ops_exclude1 ops_exclude2 in
-        ( `Blacklist ops_exclude,
-          `Whitelist (StrList.subtract ops_exclude2 ops_exclude1),
-          `Whitelist (StrList.subtract ops_exclude1 ops_exclude2) )
-  in
-  (* TODO: is it really more efficient to use `op_subfilterX` instead
-     of `op_filterX` *)
-  let events =
-    events_inter
-    @ filter_events_by_op events_sub1 op_subfilter2
-    @ filter_events_by_op events_sub2 op_subfilter1
-  in
-  let guard = Guard.mk_and (l1.guard, l2.guard) in
-  { guard; events; op_filter }
+  let evs0 = inter_events l1.events l2.events in
+  let evs1 = filter_events l2.op_pred l1.events in
+  let evs2 = filter_events l1.op_pred l2.events in
+  let evs = evs0 @ evs1 @ evs2 in
+  let l = inter_op_pred l1.op_pred l2.op_pred in
+  literal_union_events l evs
 
 let mk_or l1 l2 =
-  let rec join_and_sub inter diff = function
-    | [] -> (inter, diff)
-    | ev :: evs -> (
-        match List.find_opt (with_same_op ev) l2.events with
-        | Some ev' ->
-            let ev = { ev with phi = smart_or [ ev.phi; ev'.phi ] } in
-            join_and_sub (ev :: inter) diff evs
-        | None -> join_and_sub inter (ev :: diff) evs)
-  in
-  let discard_events_by_op evs op_filter =
-    match op_filter with
-    | `Whitelist ops_include ->
-        List.filter (fun ev -> not @@ List.mem ev.op ops_include) evs
-    | `Blacklist ops_exclude ->
-        List.filter (fun ev -> List.mem ev.op ops_exclude) evs
-  in
-  let events_inter, events_sub1 = join_and_sub [] [] l1.events in
-  let events_sub2 = List.substract with_same_op l2.events events_inter in
-  let events_sub1 = discard_events_by_op events_sub1 l2.op_filter in
-  let events_sub2 = discard_events_by_op events_sub2 l1.op_filter in
-  let events = events_inter @ events_sub1 @ events_sub2 in
-  let op_filter =
-    match (l1.op_filter, l2.op_filter) with
-    | `Whitelist ops_include1, `Whitelist ops_include2 ->
-        `Whitelist (StrList.union ops_include1 ops_include2)
-    | `Whitelist ops_include, `Blacklist ops_exclude
-    | `Blacklist ops_exclude, `Whitelist ops_include ->
-        `Blacklist (StrList.subtract ops_exclude ops_include)
-    | `Blacklist ops_exclude1, `Blacklist ops_exclude2 ->
-        `Blacklist (StrList.intersect ops_exclude1 ops_exclude2)
-  in
-  let guard = Guard.mk_or (l1.guard, l2.guard) in
-  { guard; events; op_filter }
+  let evs = union_events l1.events l2.events in
+  let l = union_op_pred l1.op_pred l2.op_pred in
+  literal_union_events l evs
 
 let mk_or_multi lits =
   let rec aux acc = function
