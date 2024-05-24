@@ -154,7 +154,7 @@ struct
 
   let main (opctx', rctx') structure normalized_structure =
     let opctx, rctx = ROpTypectx.from_code structure in
-    let opctx, _ = (opctx' @ opctx, rctx' @ rctx) in
+    let opctx, rctx = (opctx' @ opctx, rctx' @ rctx) in
     RTypectx.get_task structure
     |> List.mapi (fun id (name, rty) ->
            let id = id + 1 in
