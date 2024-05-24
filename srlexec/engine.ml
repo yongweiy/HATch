@@ -50,7 +50,7 @@ struct
             match appf.x with
             | VVar f ->
                 let f_rty = Config.get_rty f cfg in
-                apply ~i ~lhs ~letbody f_rty [apparg] cfg
+                apply ~i ~lhs ~letbody f_rty [ apparg ] cfg
             | VLam { lamarg; lambody } ->
                 let lambody =
                   lambody
