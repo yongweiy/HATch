@@ -61,10 +61,7 @@ module Naive : T = struct
       ]
 
   let print_config config = Pp.printf "%s\n" @@ layout_config config
-
-  let init ~substs rctx curr comp post =
-    C.return { rctx; curr; comp }
-
+  let init ~substs rctx curr comp post = C.return { rctx; curr; comp }
   let comp { comp; _ } = comp
   let with_comp comp config = { config with comp }
   let get_rty x { rctx; _ } = RTypectx.get_ty rctx x
@@ -275,8 +272,7 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
 
   let init ~substs rctx pre comp post =
     let cont = ContSFA.init post in
-    append ~substs pre
-      { rctx; prefix = Tr.empty; cont; comp }
+    append ~substs pre { rctx; prefix = Tr.empty; cont; comp }
 
   let reach_bad_state { cont; _ } = EmptyAware.flag && ContSFA.is_empty cont
 
