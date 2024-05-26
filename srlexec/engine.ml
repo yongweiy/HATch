@@ -38,7 +38,6 @@ struct
 
   let rec reduce ~until_rec ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =
     match (Config.comp cfg).x with
-    | _ when Config.reach_bad_state cfg -> C.return cfg
     | CErr | CVal _ -> C.return cfg
     | CLetE { lhs; rhs; letbody } -> (
         match rhs.x with
@@ -64,9 +63,7 @@ struct
                 let summarized =
                   let* iter_info, cfg_i = Config.start_iteration cfg in
                   let* cfg_j =
-                    reduce_repeat ~until_rec:true ~n:AccelBound.value ~start:i
-                      ~opctx
-                    @@ C.return cfg_i
+                    reduce_repeat ~n:AccelBound.value ~start:i ~opctx cfg_i
                   in
                   Config.end_iteration iter_info cfg_j
                 in
@@ -130,10 +127,17 @@ struct
     TODO: make it more liberal to avoid repeated concretization of Choice Monad
  *)
 
-  and reduce_repeat ?(until_rec = false) ~n ?(start = 0) ~opctx cfgs =
-    let rec aux i =
-      if i = n then Fun.id
-      else C.bind (aux (i + 1) << reduce ~until_rec ~i:(start + i) ~opctx)
+  and reduce_repeat ?(mode = `PassThrough) ~n ?(start = 0) ~opctx cfgs =
+    let rec aux i cfg =
+      if i = n then C.return cfg
+      else
+        C.bind (aux (i + 1))
+        @@
+        match mode with
+        | `PassThrough -> reduce ~until_rec:true ~i:(start + i) ~opctx cfg
+        | `TopLevel _ ->
+            C.fmap (Config.hatch ~mode)
+            @@ reduce ~until_rec:false ~i:(start + i) ~opctx cfg
     in
     aux 0 cfgs
 
@@ -172,14 +176,23 @@ struct
                      let rctx = RTypectx.new_to_rights rctx rxs in
                      hty_to_triples hty
                      |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
-                            let witnesses =
-                              C.to_list @@ C.fmap Config.get_witness
-                              @@ C.fmap (Config.hatch ~retrty ~sfa_post)
-                              @@ reduce_repeat ~opctx ~n:ExecBound.value
-                              @@ Config.init ~substs rctx sfa_pre comp sfa_post
-                            in
-                            List.iter Config.print_witness witnesses;
-                            List.is_empty witnesses))
+                            try
+                              ignore @@ C.to_list
+                              @@ C.fair_bind
+                                   (reduce_repeat
+                                      ~mode:(`TopLevel (retrty, sfa_post))
+                                      ~opctx ~n:ExecBound.value)
+                              @@ Config.init ~substs rctx sfa_pre comp sfa_post;
+                              true
+                            with
+                            | Config.PreemptiveHatch cfg ->
+                                Pp.printf "@{<bold>Preemptive Hatch@}\n";
+                                Config.print_config cfg;
+                                false
+                            | Config.TerminatedHatch cfg ->
+                                Pp.printf "@{<bold>Terminated Hatch@}\n";
+                                Config.print_config cfg;
+                                false))
                in
                Config.output_dot name;
                (id, name, res, exec_time))
