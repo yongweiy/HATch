@@ -35,7 +35,13 @@ module type T = sig
   val admit : substs:(string * string) list -> sfa -> config -> config C.t
   val append : substs:(string * string) list -> sfa -> config -> config C.t
   val reach_bad_state : config -> bool
-  val hatch : retrty:rty -> sfa_post:sfa -> config -> config option
+
+  exception PreemptiveHatch of config
+  exception TerminatedHatch of config
+
+  val hatch :
+    mode:[ `TopLevel of rty * sfa | `PassThrough ] -> config -> config option
+
   val output_dot : string -> unit
 
   type iteration_info
@@ -106,17 +112,30 @@ module Naive : T = struct
 
   let reach_bad_state _ = false
 
-  let hatch ~retrty ~sfa_post ({ rctx; curr; comp } as config) =
-    match comp.x with
-    | CVal _ when not @@ Subtyping.sub_srl_bool rctx (curr, sfa_post) ->
-        Some { config with comp = CErr #: comp.ty }
-    | CVal v -> (
-        match retrty with
-        | BaseRty { cty } ->
-            let phi = subst_prop (cty.v.x, AC (to_const_ v)) cty.phi in
-            Option.bind (assume (mk_not phi) config) abort
-        | _ -> None)
-    | _ -> Some config
+  exception PreemptiveHatch of config
+  exception TerminatedHatch of config
+
+  let hatch ~mode ({ rctx; curr; comp } as config) =
+    match mode with
+    | `PassThrough -> Some config
+    | `TopLevel (retrty, sfa_post) -> (
+        match comp.x with
+        | CErr -> raise @@ TerminatedHatch config
+        | CVal _ when not @@ Subtyping.sub_srl_bool rctx (curr, sfa_post) ->
+            raise @@ TerminatedHatch config
+        | CVal (VConst c) ->
+            let { v; phi } = rty_to_cty retrty in
+            let post = subst_prop (v.x, AC c) phi in
+            Option.bind (assume (mk_not post) config) @@ fun config ->
+            if reachable config then raise @@ TerminatedHatch config else None
+        | CVal (VVar v) when Nt.is_base_tp comp.ty ->
+            if
+              reachable
+              @@ add_rx v #:: (neg_rty __FILE__ __LINE__ retrty) config
+            then raise @@ TerminatedHatch config
+            else None
+        | CVal _ -> None
+        | _ -> Some config)
 
   let output_dot _ = ()
 
@@ -276,27 +295,38 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
 
   let reach_bad_state { cont; _ } = EmptyAware.flag && ContSFA.is_empty cont
 
+  exception PreemptiveHatch of config
+  exception TerminatedHatch of config
+
   (** look for bug and prune terminated good execution
     TODO: create a flag to toggle preemptive bug check
  *)
-  let hatch ~retrty ~sfa_post ({ cont; comp; _ } as config) =
+  let hatch ~mode ({ cont; comp; _ } as config) =
     let () =
       Env.show_debug_hatch @@ fun _ ->
       Pp.printf "%s\n-----------------------------\n" @@ layout_config config
     in
-    match comp.x with
-    | CVal _ when (not @@ ContSFA.is_nullable cont) && reachable config ->
-        Some { config with comp = CErr #: comp.ty }
-    | CVal (VConst c) ->
-        let { v; phi } = rty_to_cty retrty in
-        let post = subst_prop (v.x, AC c) phi in
-        Option.bind (assume (mk_not post) config) abort
-    | CVal (VVar v) when Nt.is_base_tp comp.ty ->
-        abort (add_rx v #:: (neg_rty __FILE__ __LINE__ retrty) config)
-    | CVal _ -> None (* function value is not checked upon return *)
-    | _ when ContSFA.is_empty config.cont && reachable config ->
-        Some { config with comp = CErr #: comp.ty }
-    | _ -> Some config
+    match mode with
+    | `PassThrough -> Some config
+    | `TopLevel (retrty, _) -> (
+        match comp.x with
+        | _ when reach_bad_state config ->
+            if reachable config then raise @@ PreemptiveHatch config else None
+        | CVal _ when not @@ ContSFA.is_nullable cont ->
+            if reachable config then raise @@ TerminatedHatch config else None
+        | CVal (VConst c) ->
+            let { v; phi } = rty_to_cty retrty in
+            let post = subst_prop (v.x, AC c) phi in
+            Option.bind (assume (mk_not post) config) @@ fun config ->
+            if reachable config then raise @@ TerminatedHatch config else None
+        | CVal (VVar v) when Nt.is_base_tp comp.ty ->
+            if
+              reachable
+              @@ add_rx v #:: (neg_rty __FILE__ __LINE__ retrty) config
+            then raise @@ TerminatedHatch config
+            else None
+        | CVal _ -> None (* function value is not checked upon return *)
+        | _ -> Some config)
 
   let output_dot name =
     EffSFA.output @@ open_out @@ name ^ "_eff.dot";
