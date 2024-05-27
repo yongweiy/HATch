@@ -158,7 +158,7 @@ struct
 
   let main (opctx', rctx') structure normalized_structure =
     let opctx, rctx = ROpTypectx.from_code structure in
-    let opctx, rctx = (opctx' @ opctx, rctx' @ rctx) in
+    let opctx, rctx0 = (opctx' @ opctx, rctx' @ rctx) in
     RTypectx.get_task structure
     |> List.mapi (fun id (name, rty) ->
            let id = id + 1 in
@@ -173,7 +173,7 @@ struct
                let exec_time, res =
                  Sugar.clock (fun () ->
                      let substs, rxs, comp, hty = wrap_client comp rty in
-                     let rctx = RTypectx.new_to_rights rctx rxs in
+                     let rctx = RTypectx.new_to_rights rctx0 rxs in
                      hty_to_triples hty
                      |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
                             try
@@ -187,11 +187,13 @@ struct
                             with
                             | Config.PreemptiveHatch cfg ->
                                 Pp.printf "@{<bold>Preemptive Hatch@}\n";
-                                Config.print_config cfg;
+                                Config.print_config
+                                  ~chop_rctx:(List.length rctx0) cfg;
                                 false
                             | Config.TerminatedHatch cfg ->
                                 Pp.printf "@{<bold>Terminated Hatch@}\n";
-                                Config.print_config cfg;
+                                Config.print_config
+                                  ~chop_rctx:(List.length rctx0) cfg;
                                 false))
                in
                Config.output_dot name;

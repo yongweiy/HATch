@@ -12,8 +12,8 @@ module Tr = Trace
 module type T = sig
   type config
 
-  val layout_config : config -> string
-  val print_config : config -> unit
+  val layout_config : ?chop_rctx:int -> config -> string
+  val print_config : ?chop_rctx:int -> config -> unit
 
   val init :
     substs:(string * string) list ->
@@ -58,15 +58,17 @@ end
 module Naive : T = struct
   type config = { rctx : RTypectx.ctx; curr : sfa; comp : comp typed }
 
-  let layout_config { rctx; curr; comp } =
+  let layout_config ?(chop_rctx = 0) { rctx; curr; comp } =
     String.concat "\n"
       [
-        "rctx = " ^ RTypectx.layout_typed_l rctx;
+        "rctx = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
         "curr = " ^ layout_regex curr;
         "comp = " ^ layout_comp comp;
       ]
 
-  let print_config config = Pp.printf "%s\n" @@ layout_config config
+  let print_config ?(chop_rctx = 0) config =
+    Pp.printf "%s\n" @@ layout_config ~chop_rctx config
+
   let init ~substs rctx curr comp post = C.return { rctx; curr; comp }
   let comp { comp; _ } = comp
   let with_comp comp config = { config with comp }
@@ -182,16 +184,18 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
   }
   (** `rctx` only constrains first-order values *)
 
-  let layout_config { rctx; prefix; cont; comp } =
+  let layout_config ?(chop_rctx = 0) { rctx; prefix; cont; comp } =
     String.concat "\n"
       [
-        "rctx = " ^ RTypectx.layout_typed_l rctx;
+        "rctx = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
         "prefix = " ^ Tr.layout_trace prefix;
         "cont = " ^ ContSFA.layout_deriv cont;
         "comp = " ^ layout_comp comp;
       ]
 
-  let print_config config = Pp.printf "%s\n" @@ layout_config config
+  let print_config ?(chop_rctx = 0) config =
+    Pp.printf "%s\n" @@ layout_config ~chop_rctx config
+
   let comp { comp; _ } = comp
   let with_comp comp config = { config with comp }
   let get_rty x { rctx; _ } = RTypectx.get_ty rctx x
@@ -319,12 +323,11 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
             let post = subst_prop (v.x, AC c) phi in
             Option.bind (assume (mk_not post) config) @@ fun config ->
             if reachable config then raise @@ TerminatedHatch config else None
-        | CVal (VVar v) when Nt.is_base_tp comp.ty ->
-            if
-              reachable
-              @@ add_rx v #:: (neg_rty __FILE__ __LINE__ retrty) config
-            then raise @@ TerminatedHatch config
-            else None
+        | CVal (VVar ret) when Nt.is_base_tp comp.ty ->
+            let { v; phi } = rty_to_cty retrty in
+            let post = subst_prop (v.x, AVar ret) phi in
+            Option.bind (assume (mk_not post) config) @@ fun config ->
+            if reachable config then raise @@ TerminatedHatch config else None
         | CVal _ -> None (* function value is not checked upon return *)
         | _ -> Some config)
 
