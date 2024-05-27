@@ -242,7 +242,7 @@ let rec collect_ghosts ?(substs = []) ?(rxs = []) ~i hty =
   let rty = hty_force_rty hty in
   match rty with
   | ArrRty { arr = GhostArr { x; ty }; rethty } ->
-      let x' = x ^ string_of_int i in
+      let x' = x ^ "_" ^ string_of_int i in
       let rethty = subst_hty_id (x, x') rethty in
       collect_ghosts ~substs:((x, x') :: substs)
         ~rxs:((x' #:: (mk_top ty)) :: rxs)
