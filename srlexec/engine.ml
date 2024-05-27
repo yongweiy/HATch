@@ -33,7 +33,7 @@ struct
         | SeqA (sfa_pre', sfa_eff) ->
             _assert __FILE__ __LINE__ "die" (equal_sfa sfa_pre sfa_pre');
             Config.append ~substs sfa_eff cfg
-        | _ when equal_sfa sfa_pre sfa_post -> C.return cfg
+        | _ when SRL.entails (sfa_pre, sfa_post) -> C.return cfg
         | _ -> _failatwith __FILE__ __LINE__ "unimp")
 
   let rec reduce ~until_rec ~i ~(opctx : ROpTypectx.ctx) (cfg : Config.config) =

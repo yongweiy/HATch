@@ -29,6 +29,13 @@ module F (L : Lit.T) = struct
   let smart_seq (a1, a2) =
     match a1 with EmptyA -> EmptyA | EpsilonA -> a2 | _ -> SeqA (a1, a2)
 
+  (** syntactically determine if an SFA entails the other *)
+  let rec entails = function
+    | a, b when equal_sfa a b -> true
+    | LandA (a1, a2), b -> entails (a1, b) || entails (a2, b)
+    | a, LandA (b1, b2) -> entails (a, b1) && entails (a, b2)
+    | _ -> false
+
   (* open Sugar *)
 
   let compare l1 l2 = Sexplib.Sexp.compare (sexp_of_regex l1) (sexp_of_regex l2)
