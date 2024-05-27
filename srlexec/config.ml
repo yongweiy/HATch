@@ -306,29 +306,35 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
     TODO: create a flag to toggle preemptive bug check
  *)
   let hatch ~mode ({ cont; comp; _ } as config) =
-    let () =
-      Env.show_debug_hatch @@ fun _ ->
-      Pp.printf "%s\n-----------------------------\n" @@ layout_config config
+    let discard cfg =
+      Env.show_debug_hatch (fun _ ->
+          Pp.printf "%s\n-----------------------------\n" @@ layout_config cfg);
+      None
     in
     match mode with
     | `PassThrough -> Some config
     | `TopLevel (retrty, _) -> (
         match comp.x with
         | _ when reach_bad_state config ->
-            if reachable config then raise @@ PreemptiveHatch config else None
+            if reachable config then raise @@ PreemptiveHatch config
+            else discard config
         | CVal _ when not @@ ContSFA.is_nullable cont ->
-            if reachable config then raise @@ TerminatedHatch config else None
+            if reachable config then raise @@ TerminatedHatch config
+            else discard config
         | CVal (VConst c) ->
             let { v; phi } = rty_to_cty retrty in
             let post = subst_prop (v.x, AC c) phi in
             Option.bind (assume (mk_not post) config) @@ fun config ->
-            if reachable config then raise @@ TerminatedHatch config else None
+            if reachable config then raise @@ TerminatedHatch config
+            else discard config
         | CVal (VVar ret) when Nt.is_base_tp comp.ty ->
             let { v; phi } = rty_to_cty retrty in
             let post = subst_prop (v.x, AVar ret) phi in
             Option.bind (assume (mk_not post) config) @@ fun config ->
-            if reachable config then raise @@ TerminatedHatch config else None
-        | CVal _ -> None (* function value is not checked upon return *)
+            if reachable config then raise @@ TerminatedHatch config
+            else discard config
+        | CVal _ ->
+            discard config (* function value is not checked upon return *)
         | _ -> Some config)
 
   let output_dot name =
