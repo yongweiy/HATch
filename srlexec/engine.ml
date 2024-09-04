@@ -129,9 +129,9 @@ struct
 
   and reduce_repeat ?(mode = `PassThrough) ~n ?(start = 0) ~opctx cfgs =
     let rec aux i cfg =
-      if i = n then C.return cfg
+      if i > n then C.return cfg
       else
-        C.bind (aux (i + 1))
+        C.fair_bind (aux (i + 1))
         @@
         match mode with
         | `PassThrough -> reduce ~until_rec:true ~i:(start + i) ~opctx cfg
@@ -177,8 +177,10 @@ struct
                      hty_to_triples hty
                      |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
                             try
+                              Limit.run_with_memory_limit 1000000000
+                              @@ fun () ->
                               ignore @@ C.to_list
-                              @@ C.fair_bind
+                              @@ C.bind
                                    (reduce_repeat
                                       ~mode:(`TopLevel (retrty, sfa_post))
                                       ~opctx ~n:ExecBound.value)
@@ -194,6 +196,9 @@ struct
                                 Pp.printf "@{<bold>Terminated Hatch@}\n";
                                 Config.print_config
                                   ~chop_rctx:(List.length rctx0) cfg;
+                                false
+                            | Out_of_memory ->
+                                Printf.printf "Out of memory: ";
                                 false))
                in
                Config.output_dot name;
