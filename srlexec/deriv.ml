@@ -144,11 +144,20 @@ module SFA (AllowEmpty : BoolT) (LookAhead : IntT) = struct
 
   type deriv = V.t [@@deriving compare, equal]
 
+  let of_deriv = V.label
+  let layout_deriv = Rty.layout_regex << of_deriv
+  let is_nullable d = is_nullable @@ of_deriv d
+  let is_free d = SRL.equal_sfa (StarA AnyA) @@ of_deriv d
   let set_dist = Mark.set
 
   let get_dist d =
     let dist = Mark.get d in
-    if dist = max_int then None else Some dist
+    if dist <> max_int then Some dist
+      (* else if AllowEmpty.flag then None *)
+      (* else if is_nullable d then ( *)
+      (*   set_dist d 0; *)
+      (*   Some 0) *)
+    else None
 
   (** update the distance of `d` and derivatives
       along the path to `empty` under `bound` *)
@@ -183,12 +192,8 @@ module SFA (AllowEmpty : BoolT) (LookAhead : IntT) = struct
           DerivGraph.add_vertex g d;
           d
 
-  let of_deriv = V.label
-  let layout_deriv = Rty.layout_regex << of_deriv
-  let is_nullable d = is_nullable @@ of_deriv d
-  let is_free d = SRL.equal_sfa (StarA AnyA) @@ of_deriv d
   let empty = to_deriv EmptyA
-  let () = set_dist empty 0
+  let () = if AllowEmpty.flag then set_dist empty 0
 
   (** syntactically check if a derivative is equivalent to empty *)
   let is_empty d =
@@ -286,7 +291,7 @@ module SFA (AllowEmpty : BoolT) (LookAhead : IntT) = struct
     let rec bfs len acc res =
       if len > high then res
       else
-        let res = if len >= low then C.(acc ++ res) else res in
+        let res = if len >= low then C.(res ++ acc) else res in
         let acc' = advance acc in
         if C.is_empty acc' then res else bfs (len + 1) acc' res
     in

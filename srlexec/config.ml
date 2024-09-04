@@ -75,7 +75,8 @@ module Naive : T = struct
   let get_rty x { rctx; _ } = RTypectx.get_ty rctx x
 
   let add_rx rx config =
-    { config with rctx = RTypectx.new_to_right config.rctx rx }
+    if erase_rty rx.rty = Nt.unit_ty then config
+    else { config with rctx = RTypectx.new_to_right config.rctx rx }
 
   let add_rxs rxs config =
     { config with rctx = RTypectx.new_to_rights config.rctx rxs }
@@ -118,25 +119,30 @@ module Naive : T = struct
   exception TerminatedHatch of config
 
   let hatch ~mode ({ rctx; curr; comp } as config) =
+    let discard cfg =
+      Env.show_debug_hatch (fun _ ->
+          Pp.printf "%s\n-----------------------------\n" @@ layout_config cfg);
+      None
+    in
     match mode with
     | `PassThrough -> Some config
     | `TopLevel (retrty, sfa_post) -> (
         match comp.x with
-        | CErr -> raise @@ TerminatedHatch config
         | CVal _ when not @@ Subtyping.sub_srl_bool rctx (curr, sfa_post) ->
             raise @@ TerminatedHatch config
         | CVal (VConst c) ->
             let { v; phi } = rty_to_cty retrty in
             let post = subst_prop (v.x, AC c) phi in
             Option.bind (assume (mk_not post) config) @@ fun config ->
-            if reachable config then raise @@ TerminatedHatch config else None
-        | CVal (VVar v) when Nt.is_base_tp comp.ty ->
-            if
-              reachable
-              @@ add_rx v #:: (neg_rty __FILE__ __LINE__ retrty) config
-            then raise @@ TerminatedHatch config
-            else None
-        | CVal _ -> None
+            if reachable config then raise @@ TerminatedHatch config
+            else discard config
+        | CVal (VVar ret) when Nt.is_base_tp comp.ty ->
+            let { v; phi } = rty_to_cty retrty in
+            let post = subst_prop (v.x, AVar ret) phi in
+            Option.bind (assume (mk_not post) config) @@ fun config ->
+            if reachable config then raise @@ TerminatedHatch config
+            else discard config
+        | CVal _ -> discard config
         | _ -> Some config)
 
   let output_dot _ = ()
@@ -294,8 +300,20 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
     C.return { config with prefix = Tr.append config.prefix tr'; cont }
 
   let init ~substs rctx pre comp post =
-    let cont = ContSFA.init post in
-    append ~substs pre { rctx; prefix = Tr.empty; cont; comp }
+    match post with
+    | SeqA (pre', post) when equal_sfa pre pre' ->
+        let cont = ContSFA.init post in
+        let^ prefix, d' =
+          EffSFA.enum ~substs ~len_range:(0, AppendBound.value)
+          @@ EffSFA.init pre
+        in
+        if EffSFA.is_nullable d' then (
+          Pp.printf "@{<yellow>init@} %s\n" @@ Tr.layout_trace prefix;
+          Some { rctx; prefix; cont; comp })
+        else None
+    | _ ->
+        append ~substs pre
+          { rctx; prefix = Tr.empty; cont = ContSFA.init post; comp }
 
   let reach_bad_state { cont; _ } = EmptyAware.flag && ContSFA.is_empty cont
 
