@@ -16,6 +16,16 @@ module F (L : Lit.T) = struct
         args : string Normalty.Ntyped.typed list;
         ltlf_body : R.LTLf.ltlf;
       }
+    | SrlProperty of {
+        name : string;
+        args : string Normalty.Ntyped.typed list;
+        srl_body : R.regex;
+      }
+    | LtlfProperty of {
+        name : string;
+        args : string Normalty.Ntyped.typed list;
+        ltlf_body : R.LTLf.ltlf;
+      }
     | Type_dec of Type_dec.t
     | Func_dec of string Normalty.Ntyped.typed
     | FuncImp of { name : string; if_rec : bool; body : term typed }
@@ -37,6 +47,9 @@ module F (L : Lit.T) = struct
         (* in *)
         let ltlf_body = R.LTLf.apply_pred pred ltlf_body in
         LtlfPred { name; args; ltlf_body }
+    | LtlfProperty { name; args; ltlf_body } ->
+        let ltlf_body = R.LTLf.apply_pred pred ltlf_body in
+        LtlfProperty { name; args; ltlf_body }
     | LtlfRty { name; kind; rty } ->
         LtlfRty { name; kind; rty = R.apply_pred_rty pred rty }
     | _ -> entry
@@ -63,6 +76,11 @@ module F (L : Lit.T) = struct
             List.map (inline_ltlf_pred_one (name, args, ltlf_body)) entrys
           in
           LtlfPred { name; args; ltlf_body } :: aux res entrys
+      | LtlfProperty { name; args; ltlf_body } :: entrys ->
+          let entrys =
+            List.map (inline_ltlf_pred_one (name, args, ltlf_body)) entrys
+          in
+          LtlfProperty { name; args; ltlf_body } :: aux res entrys
       | entry :: entrys -> aux (res @ [ entry ]) entrys
     in
     aux [] entrys
@@ -92,7 +110,9 @@ module F (L : Lit.T) = struct
         | RtyLib -> [ (name, LR.erase_rty rty) ]
         | RtyToCheck -> [])
     | Func_dec x -> [ (x.x, x.ty) ]
-    | FuncImp _ | Type_dec _ | LtlfPred _ | SrlPred _ | Axiom _ -> []
+    | FuncImp _ | Type_dec _ | LtlfPred _ | SrlPred _ | LtlfProperty _
+    | SrlProperty _ | Axiom _ ->
+        []
 
   let mk_normal_top_opctx_ = function
     | Type_dec d ->

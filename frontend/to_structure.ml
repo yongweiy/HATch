@@ -71,6 +71,12 @@ let ocaml_structure_to_structure structure =
           | "effRty" | "libRty" | "assertRty" | "libSRLRty" | "effSRLRty"
           | "assertSRLRty" ->
               mk_rty_entry (label, name, value_binding.pvb_expr)
+          | "property" ->
+              let args, body = mk_pred_args value_binding.pvb_expr in
+              LtlfProperty { name; args; ltlf_body = To_ltlf.of_ocamlexpr body }
+          | "SRLproperty" ->
+              let args, body = mk_pred_args value_binding.pvb_expr in
+              SrlProperty { name; args; srl_body = To_srl.of_ocamlexpr body }
           | _ ->
               _failatwith __FILE__ __LINE__
                 "syntax error: non known rty kind, not libSRLRty / effSRLRty / \
@@ -112,6 +118,16 @@ let layout_entry = function
         (To_ltlf.layout ltlf_body)
   | SrlPred { name; args; srl_body } ->
       spf "val[@SRLpred] %s: %s = %s" name
+        (List.split_by " " Nt.(fun x -> spf "(%s : %s)" x.x (layout x.ty)) args)
+        (To_srl.layout srl_body)
+  | LtlfProperty { name; args; ltlf_body } ->
+      spf "val[@property] %s: %s = %s" name
+        (List.split_by " "
+           Nt.(fun x -> spf "(%s : %s)" x.x (layout x.Nt.ty))
+           args)
+        (To_ltlf.layout ltlf_body)
+  | SrlProperty { name; args; srl_body } ->
+      spf "val[@SRLproperty] %s: %s = %s" name
         (List.split_by " " Nt.(fun x -> spf "(%s : %s)" x.x (layout x.ty)) args)
         (To_srl.layout srl_body)
 

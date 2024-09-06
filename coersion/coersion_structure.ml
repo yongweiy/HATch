@@ -19,8 +19,11 @@ let force_entry entry =
       Rty { name; kind = force_kind kind; rty = force_rty rty }
   | Raw.SrlPred { name; args; srl_body } ->
       SrlPred { name; args; srl_body = Coersion_srl.force srl_body }
+  | Raw.SrlProperty { name; args; srl_body } ->
+      SrlProperty { name; args; srl_body = Coersion_srl.force srl_body }
   | Raw.LtlfRty _ -> _failatwith __FILE__ __LINE__ "die"
   | Raw.LtlfPred _ -> _failatwith __FILE__ __LINE__ "die"
+  | Raw.LtlfProperty _ -> _failatwith __FILE__ __LINE__ "die"
   | Raw.(Axiom { name; uninterops; body }) ->
       Axiom { name; uninterops; body = Coersion_qualifier.force body }
 
@@ -34,9 +37,12 @@ let besome_entry entry =
       Raw.Rty { name; kind = besome_kind kind; rty = besome_rty rty }
   | SrlPred { name; args; srl_body } ->
       Raw.SrlPred { name; args; srl_body = Coersion_srl.besome srl_body }
+  | SrlProperty { name; args; srl_body } ->
+      Raw.SrlProperty { name; args; srl_body = Coersion_srl.besome srl_body }
   | Axiom { name; uninterops; body } ->
       Raw.Axiom { name; uninterops; body = Coersion_qualifier.besome body }
   | LtlfPred _ -> _failatwith __FILE__ __LINE__ "die"
+  | LtlfProperty _ -> _failatwith __FILE__ __LINE__ "die"
   | LtlfRty _ -> _failatwith __FILE__ __LINE__ "die"
 
 let force_structure st = List.map force_entry st

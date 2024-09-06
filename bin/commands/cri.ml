@@ -80,6 +80,15 @@ let load_source_code { automata_preds; _ } source_codes =
   in
   code
 
+let load_property { automata_preds; _ } property_file =
+  let code = load_raw_code_from_file property_file in
+  assert (List.length code = 1);
+  let code =
+    StructureRaw.ltlf_to_srl @@ StructureRaw.inline_ltlf_pred @@ automata_preds
+    @ code
+  in
+  List.last_exn code
+
 let load_rctx s files =
   let code = load_source_code s files in
   let code = Ntypecheck.opt_to_typed_structure s.opnctx [] code in
@@ -165,7 +174,7 @@ let ntyped_ (setting, code) =
 
 open Stat
 
-let normalized_ ri_input (setting, code) =
+let normalized_ (setting, code) =
   let normalized = Normalize.get_normalized_code code in
   let () =
     Env.show_debug_preprocess @@ fun _ ->
@@ -189,13 +198,13 @@ let normalized_ ri_input (setting, code) =
 
 let ntype_check_ (ri_input, s) source_file =
   let setting, code, normalized, interfaceStaic =
-    normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
+    normalized_ @@ ntyped_ @@ print_source_code_ s source_file
   in
   interfaceStaic
 
 let type_check_ (ri_input, s) source_file =
   let setting, code, normalized, interfaceStaic =
-    normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
+    normalized_ @@ ntyped_ @@ print_source_code_ s source_file
   in
   (* let () = *)
   (*   Printf.printf "\n>>>>Top Operation Rty Context:\n"; *)
@@ -222,7 +231,7 @@ let type_check_ (ri_input, s) source_file =
 let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
     empty_aware look_ahead accel_bound () =
   let setting, code, normalized, interfaceStaic =
-    normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
+    normalized_ @@ ntyped_ @@ print_source_code_ s source_file
   in
   (* let () = *)
   (*   Printf.printf "\n>>>>Top Operation Rty Context:\n"; *)
@@ -265,9 +274,41 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
         Typecheck.pprint_res_one res)
     @@ DerivEngine.main (setting.oprctx, setting.rctx) code normalized
 
+let infer_incorrectness_ (ri_input, s) property_file source_file =
+  let setting, code, normalized, interfaceStaic =
+    normalized_ @@ ntyped_ @@ print_source_code_ s [ source_file ]
+  in
+  let property = load_property setting property_file in
+
+  Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ];
+
+  (* let () = *)
+  (*   Printf.printf "\n>>>>Top Operation Rty Context:\n"; *)
+  (*   ROpTypectx.pretty_print_lines setting.oprctx *)
+  (* in *)
+
+  (* let () = Stat.init_interfaceDynamic ri_input.interface_file in *)
+  (* let ress = Typecheck.check (setting.oprctx, setting.rctx) code normalized in *)
+  (* let () = *)
+  (*   Env.show_log "result" @@ fun _ -> *)
+  (*   List.iter *)
+  (*     ~f:(fun res -> *)
+  (*       Printf.printf "DT(%s)  " ri_input.dt; *)
+  (*       Typecheck.pprint_res_one res) *)
+  (*     ress *)
+  (* in *)
+  (* let () = *)
+  (*   Stat.update_dt_dynamic_stat *)
+  (*     (ri_input.dt, ri_input.lib, !Stat.local_interface_dynamic_stat) *)
+  (* in*)
+
+  (* let () = Stat.dump default_stat_file ress in *)
+  (* let () = Printf.printf "%s\n" @@ Smtquery.(layout_cache check_bool_cache) in *)
+  interfaceStaic
+
 let subtype_check_ (ri_input, s) source_file =
   let setting, code, normalized, _ =
-    normalized_ ri_input @@ ntyped_ @@ print_source_code_ s source_file
+    normalized_ @@ ntyped_ @@ print_source_code_ s source_file
   in
   (* let opctx, rctx = ROpTypectx.from_code code in *)
   (* let opctx = opctx @ opctx' in *)
@@ -299,6 +340,7 @@ let stat_ri s ri_file =
         match entry with
         | LtlfPred { name; args; ltlf_body } when String.equal name "rI" ->
             Some (args, ltlf_body)
+        | LtlfProperty { name; args; ltlf_body } -> Some (args, ltlf_body)
         | _ -> None)
       code
   in
@@ -324,8 +366,7 @@ let stat_ri s ri_file =
   let numGhost, sizeI = (List.length args, R.SRL.stat_size rI) in
   (numGhost, sizeI)
 
-let prepare_ri meta_config_file source_file =
-  let s = mk_inputs_setting meta_config_file in
+let prepare_ri s source_file =
   let ri_input = mk_ri_inputs source_file in
   let { dir; dt; lib; ri_file; interface_file } = ri_input in
   (* let ri_file = sprintf "%s/ri.ml" dir in *)
@@ -369,7 +410,8 @@ let typecheck_cmds =
           ()) );
     ( "ri-type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->
-          let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
+          let s = mk_inputs_setting meta_config_file in
+          let ri_input, s, dt_stat = prepare_ri s source_file in
           let interfaceStatStatic =
             type_check_ (ri_input, s) [ ri_input.ri_file; source_file ]
           in
@@ -378,7 +420,8 @@ let typecheck_cmds =
           ()) );
     ( "ri-ntype-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->
-          let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
+          let s = mk_inputs_setting meta_config_file in
+          let ri_input, s, dt_stat = prepare_ri s source_file in
           let interfaceStatStatic =
             ntype_check_ (ri_input, s) [ ri_input.ri_file; source_file ]
           in
@@ -388,8 +431,20 @@ let typecheck_cmds =
     ( "symb-exec",
       cmd_symb_exec_config_source "symbolic execution"
       @@ fun meta_config_file source_file ->
-      let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
+      let s = mk_inputs_setting meta_config_file in
+      let ri_input, s, dt_stat = prepare_ri s source_file in
       symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ] );
+    ( "ri-infer-incorrectness",
+      cmd_config_source "infer incorrectness"
+        (fun meta_config_file source_file () ->
+          let s = mk_inputs_setting meta_config_file in
+          let ri_input, s, dt_stat = prepare_ri s source_file in
+          let interfaceStatStatic =
+            infer_incorrectness_ (ri_input, s) ri_input.ri_file source_file
+          in
+          let dt_stat = { dt_stat with interfaceStatStatic } in
+          let () = update_dt_static_stat dt_stat in
+          ()) );
     ( "type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->
           let s = mk_inputs_setting meta_config_file in

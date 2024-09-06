@@ -192,8 +192,7 @@ module RTypectx = struct
 
   type ctx = rty poly_ctx
 
-  let of_rxs rxs = List.map (fun {rx; rty} -> (rx, rty)) rxs
-
+  let of_rxs rxs = List.map (fun { rx; rty } -> (rx, rty)) rxs
   let new_to_right ctx { rx; rty } = new_to_right ctx (rx, rty)
 
   let new_to_rights ctx l =
@@ -217,7 +216,8 @@ module RTypectx = struct
         | FuncImp _ | Func_dec _ | Type_dec _ -> None
         | Rty { name; kind; rty } -> f (name, kind, rty)
         | LtlfRty _ -> None
-        | LtlfPred _ | SrlPred _ | Axiom _ -> None)
+        | LtlfPred _ | SrlPred _ | LtlfProperty _ | SrlProperty _ | Axiom _ ->
+            None)
       code
 
   (* let get_rtys_from_code code = filter_map_hty (fun x -> x) code *)
@@ -263,7 +263,7 @@ module ROpTypectx = struct
         match code with
         | Rty { name; kind; rty } -> f (name, kind, rty)
         | LtlfRty _ | FuncImp _ | Func_dec _ | Type_dec _ | LtlfPred _
-        | SrlPred _ | Axiom _ ->
+        | SrlPred _ | LtlfProperty _ | SrlProperty _ | Axiom _ ->
             None)
       code
 
