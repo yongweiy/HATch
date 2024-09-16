@@ -94,6 +94,13 @@ module F (L : Lit.T) = struct
             args;
             srl_body = R.SRL.normalize_name @@ R.LTLf.to_srl ltlf_body;
           }
+    | LtlfProperty { name; args; ltlf_body } ->
+        SrlProperty
+          {
+            name;
+            args;
+            srl_body = R.SRL.normalize_name @@ R.LTLf.to_srl ltlf_body;
+          }
     | LtlfRty { name; kind; rty } ->
         Rty { name; kind; rty = R.normalize_name_rty @@ R.to_rty rty }
     | _ -> entry
@@ -141,6 +148,15 @@ module F (L : Lit.T) = struct
       (fun code ->
         match code with
         | Rty { name; kind; rty } -> Rty { name; kind; rty = f rty }
+        | _ -> code)
+      codes
+
+  let map_srl_properties f codes =
+    List.map
+      (fun code ->
+        match code with
+        | SrlProperty { name; args; srl_body } ->
+            SrlProperty { name; args; srl_body = f args srl_body }
         | _ -> code)
       codes
 

@@ -87,7 +87,12 @@ let load_property { automata_preds; _ } property_file =
     StructureRaw.ltlf_to_srl @@ StructureRaw.inline_ltlf_pred @@ automata_preds
     @ code
   in
-  List.last_exn code
+  let () =
+    Env.show_debug_preprocess @@ fun _ ->
+    Printf.printf "\nProperty:\n";
+    Printf.printf "\n%s\n" @@ StructureRaw.layout_structure code
+  in
+  code
 
 let load_rctx s files =
   let code = load_source_code s files in
@@ -278,33 +283,39 @@ let infer_incorrectness_ (ri_input, s) property_file source_file =
   let setting, code, normalized, interfaceStaic =
     normalized_ @@ ntyped_ @@ print_source_code_ s [ source_file ]
   in
-  let property = load_property setting property_file in
-
-  Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ];
-
-  (* let () = *)
-  (*   Printf.printf "\n>>>>Top Operation Rty Context:\n"; *)
-  (*   ROpTypectx.pretty_print_lines setting.oprctx *)
-  (* in *)
-
-  (* let () = Stat.init_interfaceDynamic ri_input.interface_file in *)
-  (* let ress = Typecheck.check (setting.oprctx, setting.rctx) code normalized in *)
-  (* let () = *)
-  (*   Env.show_log "result" @@ fun _ -> *)
-  (*   List.iter *)
-  (*     ~f:(fun res -> *)
-  (*       Printf.printf "DT(%s)  " ri_input.dt; *)
-  (*       Typecheck.pprint_res_one res) *)
-  (*     ress *)
-  (* in *)
-  (* let () = *)
-  (*   Stat.update_dt_dynamic_stat *)
-  (*     (ri_input.dt, ri_input.lib, !Stat.local_interface_dynamic_stat) *)
-  (* in*)
-
-  (* let () = Stat.dump default_stat_file ress in *)
-  (* let () = Printf.printf "%s\n" @@ Smtquery.(layout_cache check_bool_cache) in *)
+  let[@warning "-8"] Structure.[ SrlProperty { name; args; srl_body } ] =
+    Ntypecheck.opt_to_typed_structure setting.opnctx setting.nctx
+    @@ load_property setting property_file
+  in
+  let open Automata in
+  let module A = Builder.F (Literal.M) in
+  let a = A.of_regex srl_body in
+  A.to_dot_file "property.dot" a;
   interfaceStaic
+(* Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ]; *)
+
+(* let () = *)
+(*   Printf.printf "\n>>>>Top Operation Rty Context:\n"; *)
+(*   ROpTypectx.pretty_print_lines setting.oprctx *)
+(* in *)
+
+(* let () = Stat.init_interfaceDynamic ri_input.interface_file in *)
+(* let ress = Typecheck.check (setting.oprctx, setting.rctx) code normalized in *)
+(* let () = *)
+(*   Env.show_log "result" @@ fun _ -> *)
+(*   List.iter *)
+(*     ~f:(fun res -> *)
+(*       Printf.printf "DT(%s)  " ri_input.dt; *)
+(*       Typecheck.pprint_res_one res) *)
+(*     ress *)
+(* in *)
+(* let () = *)
+(*   Stat.update_dt_dynamic_stat *)
+(*     (ri_input.dt, ri_input.lib, !Stat.local_interface_dynamic_stat) *)
+(* in*)
+
+(* let () = Stat.dump default_stat_file ress in *)
+(* let () = Printf.printf "%s\n" @@ Smtquery.(layout_cache check_bool_cache) in *)
 
 let subtype_check_ (ri_input, s) source_file =
   let setting, code, normalized, _ =

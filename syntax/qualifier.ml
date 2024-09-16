@@ -155,6 +155,20 @@ module F (L : Lit.T) = struct
   let get_eqprop_by_name prop x =
     match prop with Lit lit -> get_eqlit_by_name lit x | _ -> None
 
+  let smart_multi_exists (l : 'a Lit.Ty.typed list) prop =
+    let fvs = fv_prop prop in
+    List.fold_right
+      (fun (Normalty.Ntyped.{ x; ty } as u) prop ->
+        if ty = Ty_unit || List.mem x fvs then prop else Exists (u, prop))
+      l prop
+
+  let smart_multi_forall (l : 'a Lit.Ty.typed list) prop =
+    let fvs = fv_prop prop in
+    List.fold_right
+      (fun (Normalty.Ntyped.{ x; ty } as u) prop ->
+        if ty = Ty_unit || List.mem x fvs then prop else Forall (u, prop))
+      l prop
+
   let smart_sigma (u, xprop) prop =
     let Normalty.Ntyped.{ x; ty } = u in
     match ty with

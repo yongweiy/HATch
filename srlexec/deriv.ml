@@ -11,19 +11,6 @@ module L = Literal
 module C = Choice
 module Tr = Trace
 
-let rec is_nullable = function
-  | EmptyA -> false
-  | EpsilonA -> true
-  | AnyA -> false
-  | EventA (GuardEvent _) -> false
-  | EventA (EffEvent _) -> false
-  | LorA (r, s) -> is_nullable r || is_nullable s
-  | LandA (r, s) -> is_nullable r && is_nullable s
-  | SeqA (r, s) -> is_nullable r && is_nullable s
-  | StarA _ -> true
-  | ComplementA r -> not (is_nullable r)
-  | SetMinusA (r, s) -> is_nullable r && not (is_nullable s)
-
 let rec next_literal = function
   | EmptyA | EpsilonA -> []
   | AnyA -> [ L.mk_true ]

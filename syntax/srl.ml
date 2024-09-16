@@ -26,8 +26,58 @@ module F (L : Lit.T) = struct
   let mk_regex_any = AnyA
   let mk_regex_all = StarA AnyA
 
-  let smart_seq (a1, a2) =
-    match a1 with EmptyA -> EmptyA | EpsilonA -> a2 | _ -> SeqA (a1, a2)
+  let mk_complementA = function
+    | EmptyA -> StarA AnyA
+    | StarA AnyA -> EmptyA
+    | ComplementA r -> r
+    | r -> ComplementA r
+
+  let rec mk_andA = function
+    | EmptyA, _ | _, EmptyA -> EmptyA
+    | StarA AnyA, r | r, StarA AnyA -> r
+    | r, s when equal_sfa r s -> r
+    | (LandA (r1, r2) as r), (LandA (s1, s2) as s) ->
+        (* merge two list of conjuncts *)
+        let rel = compare_sfa r1 s1 in
+        if rel = 0 then LandA (r1, mk_andA (r2, s2))
+        else if rel < 0 then LandA (r1, mk_andA (r2, s))
+        else LandA (s1, mk_andA (s2, r))
+    | (LandA (r1, r2) as r), s | s, (LandA (r1, r2) as r) ->
+        (* insert `s` into list of conjuncts *)
+        let rel = compare_sfa s r1 in
+        if rel = 0 then r
+        else if rel < 0 then LandA (s, r)
+        else LandA (r1, mk_andA (s, r2))
+    | r, s -> if compare_sfa r s < 0 then LandA (r, s) else LandA (s, r)
+
+  let rec mk_orA = function
+    | EmptyA, r | r, EmptyA -> r
+    | StarA AnyA, _ | _, StarA AnyA -> StarA AnyA
+    | r, s when equal_sfa r s -> r
+    | (LorA (r1, r2) as r), (LorA (s1, s2) as s) ->
+        (* merge two list of disjuncts *)
+        let rel = compare_sfa r1 s1 in
+        if rel = 0 then LorA (r1, mk_orA (r2, s2))
+        else if rel < 0 then LorA (r1, mk_orA (r2, s))
+        else LorA (s1, mk_orA (s2, r))
+    | (LorA (r1, r2) as r), s | s, (LorA (r1, r2) as r) ->
+        (* insert `s` into list of disjuncts *)
+        let rel = compare_sfa s r1 in
+        if rel = 0 then r
+        else if rel < 0 then LorA (s, r)
+        else LorA (r1, mk_orA (s, r2))
+    | r, s -> if compare_sfa r s < 0 then LorA (r, s) else LorA (s, r)
+
+  let rec mk_seqA = function
+    | EmptyA, _ | _, EmptyA -> EmptyA
+    | EpsilonA, r | r, EpsilonA -> r
+    | SeqA (r1, r2), r3 -> SeqA (r1, mk_seqA (r2, r3))
+    | r, s -> SeqA (r, s)
+
+  let mk_starA = function
+    | EmptyA | EpsilonA -> EpsilonA
+    | StarA r -> StarA r
+    | r -> StarA r
 
   (** syntactically determine if an SFA entails the other *)
   let rec entails = function
@@ -40,6 +90,19 @@ module F (L : Lit.T) = struct
 
   let compare l1 l2 = Sexplib.Sexp.compare (sexp_of_regex l1) (sexp_of_regex l2)
   let eq l1 l2 = 0 == compare l1 l2
+
+  let rec is_nullable = function
+    | EmptyA -> false
+    | EpsilonA -> true
+    | AnyA -> false
+    | EventA (GuardEvent _) -> false
+    | EventA (EffEvent _) -> false
+    | LorA (r, s) -> is_nullable r || is_nullable s
+    | LandA (r, s) -> is_nullable r && is_nullable s
+    | SeqA (r, s) -> is_nullable r && is_nullable s
+    | StarA _ -> true
+    | ComplementA r -> not (is_nullable r)
+    | SetMinusA (r, s) -> is_nullable r && not (is_nullable s)
 
   let rec is_empty a =
     match a with

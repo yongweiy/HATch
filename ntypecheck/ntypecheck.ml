@@ -45,5 +45,11 @@ let struc_infer_one opctx ctx x if_rec body =
 let opt_to_typed_structure opctx ctx l =
   let l = map_imps (struc_infer_one opctx ctx) l in
   let l = map_rtys (rty_check opctx []) l in
+  let l =
+    map_srl_properties
+      (fun args ->
+        Srlcheck.check opctx @@ NTypectx.new_to_rights NTypectx.empty args)
+      l
+  in
   let l = map_aximos (Qualifiercheck.type_check_qualifier opctx []) l in
   Coersion.Structure.force_structure l
