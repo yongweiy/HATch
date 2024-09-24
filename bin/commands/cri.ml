@@ -367,6 +367,19 @@ let typecheck_cmds =
             normalized_ @@ ntyped_ @@ print_source_code_ s [ source_file ]
           in
           ()) );
+    ( "print-raw-ri",
+      cmd_config_source "print representation invariant"
+      @@ fun meta_config_file source_file () ->
+      match load_raw_code_from_file source_file with
+      | [ LtlfPred { name; args; ltlf_body } ] when String.equal name "rI" ->
+          Printf.printf "%s%s\n"
+            (String.concat
+            @@ List.map
+                 ~f:(fun x ->
+                   Nt.(Printf.sprintf "∀(%s : %s)." x.x @@ layout x.ty))
+                 args)
+            (StructureRaw.layout_ltlf ltlf_body)
+      | _ -> failwith "bad representation invariant" );
     ( "ri-type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->
           let ri_input, s, dt_stat = prepare_ri meta_config_file source_file in
