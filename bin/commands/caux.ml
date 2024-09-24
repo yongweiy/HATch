@@ -66,7 +66,7 @@ let cmd_symb_exec_config_source summary f =
              SFA being appended during symbolic execution"
       and accel_bound =
         flag "-accel-bound"
-          (optional_with_default 5 int)
+          (optional_with_default 0 int)
           ~doc:
             "<int> Set the bound on the number of reduction steps within one \
              iteration to be accelerated"
