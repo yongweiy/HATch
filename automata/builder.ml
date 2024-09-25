@@ -66,23 +66,25 @@ module F (L : Literal.T) = struct
       | SeqA (r, s) -> next r
       | StarA r -> next r
       | ComplementA r ->
-          let lits = next r in
-          (L.mk_not @@ L.mk_or_list lits) :: lits
+        let lits = next r in
+        (L.mk_not @@ L.mk_or_list lits) :: lits
       | SetMinusA (AnyA, EventA sev) -> [ L.mk_not @@ L.of_sevent sev ]
       | SetMinusA (r, s) -> next @@ mk_andA (r, mk_complementA s)
     in
     let rec aux r g =
       if G.mem_vertex g [ r ] then g
       else
+        let () = Printf.printf "%s\n" @@ layout_regex r in
+        let () = flush stdout in
         next r
         |> List.map (fun l -> (l, L.quotient l r))
         |> List.sort_and_combine
-             (fun (_, r) (_, s) -> compare_regex r s)
-             (fun (l_r, r) (l_s, s) -> (L.mk_or l_r l_s, r))
+          (fun (_, r) (_, s) -> compare_regex r s)
+          (fun (l_r, r) (l_s, s) -> (L.mk_or l_r l_s, r))
         |> List.fold_left
-             (fun g (l, s) ->
-               G.add_edge_e (aux s g) @@ G.E.create [ r ] l [ s ])
-             (G.add_vertex g [ r ])
+          (fun g (l, s) ->
+             G.add_edge_e (aux s g) @@ G.E.create [ r ] l [ s ])
+          (G.add_vertex g [ r ])
     in
     fun r ->
       let graph = aux r G.empty in
