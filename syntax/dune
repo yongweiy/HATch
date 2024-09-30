@@ -26,6 +26,6 @@
    qn
    syntax
  )
- (preprocess (pps ppx_optcomp ppx_compare ppx_sexp_conv ppx_hash))
+ (preprocess (pps ppx_optcomp ppx_compare ppx_sexp_conv ppx_hash ppx_jane))
  (libraries env)
 )
