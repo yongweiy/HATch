@@ -4,6 +4,7 @@ module F (L : Lit.T) = struct
   open Ppx_compare_lib.Builtin
   open Ppx_hash_lib.Std.Hash.Builtin
   open Sugar
+  open Zzdatatype.Datatype
 
   type prop =
     | Lit of lit
@@ -22,14 +23,95 @@ module F (L : Lit.T) = struct
   let mk_false = Lit mk_lit_false
   let is_true p = match get_cbool p with Some true -> true | _ -> false
   let is_false p = match get_cbool p with Some false -> true | _ -> false
+  let is_neg p1 p2 = equal_prop p1 (Not p2) || equal_prop p2 (Not p1)
+  let some_if_not_true p = if is_true p then None else Some p
 
-  let mk_not = function
+  let to_conjuncts = function
+    | And ps -> ps
+    | p when p = mk_true -> []
+    | p -> [ p ]
+
+  let to_disjuncts = function
+    | Or ps -> ps
+    | p when p = mk_false -> []
+    | p -> [ p ]
+
+  let of_conjuncts = function
+    | [] -> mk_true
+    | ps when List.exists is_false ps -> mk_false
+    | [ p ] -> p
+    | ps -> And ps
+
+  let of_disjuncts = function
+    | [] -> mk_false
+    | ps when List.exists is_true ps -> mk_true
+    | [ p ] -> p
+    | ps -> Or ps
+
+  (** syntactically determine lits whose validity entails the validity
+      of the CNF qualifier  *)
+  let rec to_lits = function
+    | Or _ -> []
+    | And ps -> List.concat_map to_lits ps
+    | p -> [ p ]
+
+  let reduce_once_with_lits lits =
+    let aux_disjunct p =
+      if List.exists (is_neg p) lits then None
+      else if List.exists (equal_prop p) lits then Some mk_true
+      else Some p
+    in
+    let aux_conjunct =
+      to_disjuncts
+      >> List.filter_map aux_disjunct
+      >> List.sort compare_prop >> of_disjuncts >> some_if_not_true
+    in
+    let aux_cnf =
+      to_conjuncts
+      >> List.filter_map aux_conjunct
+      >> List.sort compare_prop
+      >> List.sorted_merge ~cmp:compare_prop lits
+      >> of_conjuncts
+    in
+    aux_cnf
+
+  let rec reduce_until prop =
+    (* Printf.printf !"before\n%{sexp: prop}\n" prop; *)
+    let lits = to_lits prop in
+    (* Printf.printf !"lits\n%{sexp: prop list}\n" lits; *)
+    let prop' = reduce_once_with_lits lits prop in
+    (* Printf.printf !"after\n%{sexp: prop}\n" prop'; *)
+    if equal_prop prop prop' then prop else reduce_until prop'
+
+  let mk_and =
+    List.map to_conjuncts
+    >> List.fold_left (List.sorted_merge_uniq ~cmp:compare_prop) []
+    >> of_conjuncts >> reduce_until
+
+  let mk_or =
+    let eliminate_contradicting_lits lits =
+      let contradicts =
+        List.concat_map (function [@warning "-8"] [ p1; p2 ] ->
+            if is_neg p1 p2 then [ p1; p2 ] else [])
+        @@ List.combination_l lits 2
+      in
+      List.filter (fun p -> not @@ List.mem ~eq:equal_prop p contradicts) lits
+    in
+    let build_conjunct =
+      List.map to_disjuncts
+      >> List.fold_left (List.sorted_merge_uniq ~cmp:compare_prop) []
+      >> eliminate_contradicting_lits >> of_disjuncts
+    in
+    (* (A ∧ B) ∨ (C ∧ D) = (A ∨ C) ∧ (A ∨ D) ∧ (B ∨ C) ∧ (B ∨ D) *)
+    List.map_product_l to_conjuncts >> List.map build_conjunct >> mk_and
+
+  let rec mk_not = function
     | Not p -> p
     | p when is_true p -> mk_false
     | p when is_false p -> mk_true
+    | And ps -> mk_or (List.map mk_not ps)
+    | Or ps -> And (List.map mk_not ps)
     | p -> Not p
-
-  let is_neg p1 p2 = equal_prop p1 (mk_not p2)
 
   let smart_and l =
     if List.exists is_false l then mk_false

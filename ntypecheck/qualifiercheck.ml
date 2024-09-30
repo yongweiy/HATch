@@ -132,8 +132,8 @@ let type_check_qualifier (opctx : NOpTypectx.ctx) (ctx : NTypectx.ctx)
     | Implies (e1, e2) -> Implies (aux ctx e1, aux ctx e2)
     | Ite (e1, e2, e3) -> Ite (aux ctx e1, aux ctx e2, aux ctx e3)
     | Not e -> Not (aux ctx e)
-    | And es -> And (List.map (aux ctx) es)
-    | Or es -> Or (List.map (aux ctx) es)
+    | And es -> And (List.sort compare_prop @@ List.map (aux ctx) es)
+    | Or es -> Or (List.sort compare_prop @@ List.map (aux ctx) es)
     | Iff (e1, e2) -> Iff (aux ctx e1, aux ctx e2)
     | Forall (u, body) ->
         let ctx' = NTypectx.new_to_right ctx u in

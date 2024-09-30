@@ -62,7 +62,7 @@ module M : T = struct
   let to_prop { events; op_pred } =
     match op_pred with
     | Whitelist [] ->
-        smart_or
+        mk_or
         @@ List.map
              (fun { op; vs; v; phi } -> smart_multi_exists (v :: vs) phi)
              events
@@ -92,7 +92,7 @@ module M : T = struct
       (fun ev1 ev2 ->
         if String.equal ev1.op ev2.op then
           let ev = if List.is_empty ev1.vs then ev2 else ev1 in
-          Some { ev with phi = smart_add_to ev2.phi ev1.phi }
+          Some { ev with phi = mk_and [ev2.phi; ev1.phi] }
         else None)
       evs1 evs2
 
@@ -101,7 +101,7 @@ module M : T = struct
       (fun ev1 ev2 ->
         if String.equal ev1.op ev2.op then
           let ev = if List.is_empty ev1.vs then ev2 else ev1 in
-          Some { ev with phi = smart_or [ ev2.phi; ev1.phi ] }
+          Some { ev with phi = mk_or [ ev2.phi; ev1.phi ] }
         else None)
       evs1 evs2
 
@@ -119,7 +119,7 @@ module M : T = struct
           events = [];
           op_pred =
             Blacklist
-              (smart_add_to phi2 phi1, StrList.union ops_exclude1 ops_exclude2);
+              (mk_and [phi2; phi1], StrList.union ops_exclude1 ops_exclude2);
         }
 
   let union_op_pred pred1 pred2 =
@@ -153,7 +153,7 @@ module M : T = struct
             @@ StrList.subtract ops_exclude1 ops_exclude2;
           op_pred =
             Blacklist
-              (smart_or [ phi1; phi2 ], StrList.union ops_exclude1 ops_exclude2);
+              (mk_or [ phi1; phi2 ], StrList.union ops_exclude1 ops_exclude2);
         }
 
   let filter_events = function
@@ -161,7 +161,7 @@ module M : T = struct
     | Blacklist (phi, ops) ->
         List.filter_map @@ fun ev ->
         if List.mem ev.op ops then None
-        else Some { ev with phi = smart_add_to phi ev.phi }
+        else Some { ev with phi = mk_and [phi; ev.phi] }
 
   let events_union_op_pred evs op_pred =
     match op_pred with
@@ -178,7 +178,7 @@ module M : T = struct
             List.map
               (fun ev ->
                 if List.mem ev.op ops then ev
-                else { ev with phi = smart_or [ ev.phi; phi ] })
+                else { ev with phi = mk_or [ ev.phi; phi ] })
               evs;
           op_pred =
             Blacklist (phi, StrList.union ops @@ List.map (fun ev -> ev.op) evs);
