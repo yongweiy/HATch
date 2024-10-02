@@ -24,6 +24,9 @@ module type T = sig
   val entails_sevent : t -> sevent -> bool
   val quotient : t -> regex -> regex
   val to_prop : t -> Rty.prop
+
+  val notbot_opt :
+    ?rctx:RTypectx.ctx -> substs:(string * string) list -> t -> t option
 end
 
 module M : T = struct
@@ -92,7 +95,7 @@ module M : T = struct
       (fun ev1 ev2 ->
         if String.equal ev1.op ev2.op then
           let ev = if List.is_empty ev1.vs then ev2 else ev1 in
-          Some { ev with phi = mk_and [ev2.phi; ev1.phi] }
+          Some { ev with phi = mk_and [ ev2.phi; ev1.phi ] }
         else None)
       evs1 evs2
 
@@ -119,7 +122,7 @@ module M : T = struct
           events = [];
           op_pred =
             Blacklist
-              (mk_and [phi2; phi1], StrList.union ops_exclude1 ops_exclude2);
+              (mk_and [ phi2; phi1 ], StrList.union ops_exclude1 ops_exclude2);
         }
 
   let union_op_pred pred1 pred2 =
@@ -161,7 +164,7 @@ module M : T = struct
     | Blacklist (phi, ops) ->
         List.filter_map @@ fun ev ->
         if List.mem ev.op ops then None
-        else Some { ev with phi = mk_and [phi; ev.phi] }
+        else Some { ev with phi = mk_and [ phi; ev.phi ] }
 
   let events_union_op_pred evs op_pred =
     match op_pred with

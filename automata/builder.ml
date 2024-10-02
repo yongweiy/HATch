@@ -50,11 +50,12 @@ module F (L : Literal.T) = struct
     fprintf ppf "@[<v 2>init:@ %a@ finals:@ %a@ graph:@ %a@]" pp_regexes init
       (pp_print_list pp_regexes) finals Dot.fprint_graph graph
 
-  let to_dot_file filename t =
+  let to_dot_file filename {init; finals; graph} =
     let oc = open_out filename in
-    Dot.output_graph oc t.graph;
+    G.init := init; G.finals := finals;
+    Dot.output_graph oc graph;
     close_out oc
-      
+
   let of_regex =
     let rec next = function
       | EmptyA | EpsilonA -> []
@@ -66,8 +67,8 @@ module F (L : Literal.T) = struct
       | SeqA (r, s) -> next r
       | StarA r -> next r
       | ComplementA r ->
-        let lits = next r in
-        (L.mk_not @@ L.mk_or_list lits) :: lits
+          let lits = next r in
+          (L.mk_not @@ L.mk_or_list lits) :: lits
       | SetMinusA (AnyA, EventA sev) -> [ L.mk_not @@ L.of_sevent sev ]
       | SetMinusA (r, s) -> next @@ mk_andA (r, mk_complementA s)
     in
@@ -79,12 +80,12 @@ module F (L : Literal.T) = struct
         next r
         |> List.map (fun l -> (l, L.quotient l r))
         |> List.sort_and_combine
-          (fun (_, r) (_, s) -> compare_regex r s)
-          (fun (l_r, r) (l_s, s) -> (L.mk_or l_r l_s, r))
+             (fun (_, r) (_, s) -> compare_regex r s)
+             (fun (l_r, r) (l_s, s) -> (L.mk_or l_r l_s, r))
         |> List.fold_left
-          (fun g (l, s) ->
-             G.add_edge_e (aux s g) @@ G.E.create [ r ] l [ s ])
-          (G.add_vertex g [ r ])
+             (fun g (l, s) ->
+               G.add_edge_e (aux s g) @@ G.E.create [ r ] l [ s ])
+             (G.add_vertex g [ r ])
     in
     fun r ->
       let graph = aux r G.empty in
@@ -95,5 +96,31 @@ module F (L : Literal.T) = struct
       in
       { init = [ r ]; finals; graph }
 
-  let intersect a1 a2 = failwith "TODO"
+  (** intersect two automaton structures *)
+  let intersect a1 a2 =
+    let rec aux v1 v2 g =
+      let v = v1 @ v2 in
+      if G.mem_vertex g v then g
+      else
+        G.fold_succ_e
+          (fun (_, l1, v1') g ->
+            G.fold_succ_e
+              (fun (_, l2, v2') g ->
+                match L.(notbot_opt ~substs:[] @@ mk_and l1 l2) with
+                | Some l ->
+                    G.add_edge_e (aux v1' v2' g) @@ G.E.create v l @@ v1' @ v2'
+                | None -> g)
+              a2.graph v2 g)
+          a1.graph v1
+        @@ G.add_vertex g v
+    in
+    let graph = aux a1.init a2.init G.empty in
+    let finals =
+      List.fold_product
+        (fun finals v1 v2 ->
+          let v = v1 @ v2 in
+          if G.mem_vertex graph v then v :: finals else finals)
+        a1.finals a2.finals []
+    in
+    { init = a1.init @ a2.init; finals; graph }
 end
