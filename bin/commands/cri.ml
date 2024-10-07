@@ -88,7 +88,7 @@ let load_property { automata_preds; _ } property_file =
     @ code
   in
   let () =
-    Env.show_debug_preprocess @@ fun _ ->
+    MetaConfig.show_debug_preprocess @@ fun _ ->
     Printf.printf "\nProperty:\n";
     Printf.printf "\n%s\n" @@ StructureRaw.layout_structure code
   in
