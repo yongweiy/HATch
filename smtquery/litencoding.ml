@@ -34,7 +34,7 @@ let rec typed_lit_to_z3 ctx lit =
       | Op.BuiltinOp "/", [ a; b ] -> Arithmetic.mk_div ctx a b
       | Op.BuiltinOp opname, args ->
           let () =
-            if List.exists (String.equal opname) (Env.get_uninterops ()) then ()
+            if List.exists (String.equal opname) (MetaConfig.get_uninterops ()) then ()
             else failwith (spf "unknown operator: %s" opname)
           in
           (* let () = Printf.printf ">>>> op(%s): %s\n" opname (Nt.layout op.ty) in *)

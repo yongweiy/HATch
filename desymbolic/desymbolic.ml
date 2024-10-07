@@ -15,7 +15,7 @@ let model_verify_bool sub_rty_bool (vs, prop) =
   let rhs_rty = Rty.mk_bot Nt.unit_ty in
   let b = not (sub_rty_bool bindings (lhs_rty, rhs_rty)) in
   let () =
-    Env.show_log "desymbolic" @@ fun _ ->
+    MetaConfig.show_log "desymbolic" @@ fun _ ->
     Pp.printf "%s |- %s ≮: @{<bold>%s@}\n@{<bold>Result:@} %b\n"
       (List.split_by_comma
          (fun { rty; _ } -> spf "%s" (Rty.layout_rty rty))
@@ -75,7 +75,7 @@ let partial_evaluate_sevent global_tab se =
 
 let partial_evaluate_regex global_tab regex =
   let () =
-    Env.show_log "regex_simpl" @@ fun _ ->
+    MetaConfig.show_log "regex_simpl" @@ fun _ ->
     Pp.printf "@{<bold>regex before:@} %s\n" (layout_regex regex)
   in
   let rec aux regex =
@@ -116,7 +116,7 @@ let desymbolic_sevent global_embedding dts se =
 let desymbolic_local global_embedding dts regex =
   let open NRegex in
   let () =
-    Env.show_log "regex_simpl" @@ fun _ ->
+    MetaConfig.show_log "regex_simpl" @@ fun _ ->
     Pp.printf "@{<bold>regex before:@} %s\n" (layout_regex regex)
   in
   let rec aux regex =
@@ -134,12 +134,12 @@ let desymbolic_local global_embedding dts regex =
   in
   let res = aux regex in
   let () =
-    Env.show_log "regex_simpl" @@ fun _ ->
+    MetaConfig.show_log "regex_simpl" @@ fun _ ->
     Pp.printf "@{<bold>regex after:@} %s\n" (reg_to_string res)
   in
   let res = simp res in
   let () =
-    Env.show_log "regex_simpl" @@ fun _ ->
+    MetaConfig.show_log "regex_simpl" @@ fun _ ->
     Pp.printf "@{<bold>regex simpl:@} %s\n" (reg_to_string res)
   in
   res
@@ -222,32 +222,32 @@ let mk_mt_tab (checker : ?vs:string typed list -> prop -> bool)
   (*   StrMap.map (fun (_, features) -> Array.of_list features) local_features *)
   (* in *)
   let () =
-    Env.show_log "desymbolic" @@ fun _ ->
+    MetaConfig.show_log "desymbolic" @@ fun _ ->
     Printf.printf "[Global DT]:\n";
     Head.pprint_tab global_features
   in
   let test_num, global_dt = DT.dynamic_classify checker global_features in
   let global_tab = DT.dt_to_tab (global_features, global_dt) in
   let () =
-    Env.show_log "desymbolic" @@ fun _ ->
+    MetaConfig.show_log "desymbolic" @@ fun _ ->
     Printf.printf "[Global DT]\n";
     print_opt_stat (List.length global_tab, test_num) global_features
   in
   let () =
-    Env.show_log "desymbolic" @@ fun _ ->
+    MetaConfig.show_log "desymbolic" @@ fun _ ->
     print_global_fv global_features global_tab
   in
   let local_dts =
     StrMap.mapi
       (fun op (vs, features) ->
         let () =
-          Env.show_log "desymbolic" @@ fun _ ->
+          MetaConfig.show_log "desymbolic" @@ fun _ ->
           Printf.printf "[%s DT]:\n" op;
           Head.pprint_tab features
         in
         let test_num, dt = DT.dynamic_classify (checker ~vs) features in
         let () =
-          Env.show_log "desymbolic" @@ fun _ ->
+          MetaConfig.show_log "desymbolic" @@ fun _ ->
           Printf.printf "[%s DT]\n" op;
           print_opt_stat (0, test_num) features
         in
@@ -263,7 +263,7 @@ let mk_mt_tab (checker : ?vs:string typed list -> prop -> bool)
             (fun op (vs, dt) ->
               let features = snd @@ StrMap.find "mk_mt_tab" local_features op in
               let () =
-                Env.show_log "desymbolic" @@ fun _ ->
+                MetaConfig.show_log "desymbolic" @@ fun _ ->
                 Printf.printf "[Refine %s DT]:\n[Under]:%s\n" op
                   (layout_prop prop);
                 Head.pprint_tab features
@@ -273,12 +273,12 @@ let mk_mt_tab (checker : ?vs:string typed list -> prop -> bool)
               in
               let dt = DT.dt_to_tab (features, dt) in
               let () =
-                Env.show_log "desymbolic" @@ fun _ ->
+                MetaConfig.show_log "desymbolic" @@ fun _ ->
                 Printf.printf "[Refine %s DT]\n" op;
                 print_opt_stat (List.length dt, test_num) features
               in
               let () =
-                Env.show_log "desymbolic" @@ fun _ ->
+                MetaConfig.show_log "desymbolic" @@ fun _ ->
                 print_local_fv idx (op, features) dt
               in
               dt)
@@ -302,7 +302,7 @@ let desymbolic tab regex =
 
 let do_desymbolic checker (srl1, srl2) =
   let head = ctx_ctx_init (LorA (srl1, srl2)) in
-  let () = Env.show_log "desymbolic" @@ fun _ -> Head.pprint_head head in
+  let () = MetaConfig.show_log "desymbolic" @@ fun _ -> Head.pprint_head head in
   let mt_tab = mk_mt_tab checker head in
   let srl1 = desymbolic mt_tab srl1 in
   let srl2 = desymbolic mt_tab srl2 in

@@ -120,7 +120,7 @@ module Naive : T = struct
 
   let hatch ~mode ({ rctx; curr; comp } as config) =
     let discard cfg =
-      Env.show_debug_hatch (fun _ ->
+      MetaConfig.show_debug_hatch (fun _ ->
           Pp.printf "%s\n-----------------------------\n" @@ layout_config cfg);
       None
     in
@@ -325,7 +325,7 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
  *)
   let hatch ~mode ({ cont; comp; _ } as config) =
     let discard cfg =
-      Env.show_debug_hatch (fun _ ->
+      MetaConfig.show_debug_hatch (fun _ ->
           Pp.printf "%s\n-----------------------------\n" @@ layout_config cfg);
       None
     in

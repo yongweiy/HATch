@@ -159,7 +159,7 @@ let to_z3_one_reg ctx r =
   let () = parse_reg encoding r in
   let len = !(encoding.next) in
   let () =
-    Env.show_log "smt_regex" @@ fun _ -> Printf.printf "RegZ3 len: %i\n" len
+    MetaConfig.show_log "smt_regex" @@ fun _ -> Printf.printf "RegZ3 len: %i\n" len
   in
   (* let () = if len > 200 then failwith "end" else () in *)
   let r = merge_concat r in

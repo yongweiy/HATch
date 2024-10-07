@@ -83,7 +83,7 @@ module F (L : Lit.T) = struct
 
   let gather { global_lits; local_lits } sevent =
     let () =
-      Env.show_log "gather" @@ fun _ -> Printf.printf ">>>>> gather:\n"
+      MetaConfig.show_log "gather" @@ fun _ -> Printf.printf ">>>>> gather:\n"
     in
     match sevent with
     | GuardEvent phi ->

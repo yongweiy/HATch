@@ -38,20 +38,20 @@ let cached (cache : ('a, bool * int) Hashtbl.t) (check : 'a -> bool) (vc : 'a) =
 let check_bool vc =
   let runtime, res = Sugar.clock (fun () -> check vc) in
   let () =
-    Env.show_debug_stat @@ fun _ -> Printf.printf "check_bool: %f\n" runtime
+    MetaConfig.show_debug_stat @@ fun _ -> Printf.printf "check_bool: %f\n" runtime
   in
   match res with
   | None -> true
   | Some _ ->
       (* | Some model -> *)
-      (* ( Env.show_debug_queries @@ fun _ -> *)
+      (* ( MetaConfig.show_debug_queries @@ fun _ -> *)
       (*   Printf.printf "model:\n%s\n" (Z3.Model.to_string model) ); *)
       false
 
 let check_sat_bool vc =
   let runtime, res = Sugar.clock (fun () -> check_sat vc) in
   let () =
-    Env.show_debug_stat @@ fun _ -> Printf.printf "check_sat_bool: %f\n" runtime
+    MetaConfig.show_debug_stat @@ fun _ -> Printf.printf "check_sat_bool: %f\n" runtime
   in
   match res with
   | None -> false
@@ -70,7 +70,7 @@ let check_inclusion (r1, r2) = Check.inclusion_query ctx r1 r2
 let check_inclusion_bool (r1, r2) =
   let runtime, (size, res) = Sugar.clock (fun () -> check_inclusion (r1, r2)) in
   let () =
-    Env.show_log "smt_regex" @@ fun _ ->
+    MetaConfig.show_log "smt_regex" @@ fun _ ->
     Printf.printf "check_inclusion_bool: %f\n" runtime
   in
   let res =
@@ -78,9 +78,9 @@ let check_inclusion_bool (r1, r2) =
     | None -> true
     (* | Some _ -> *)
     | Some mt_list ->
-        (* ( Env.show_debug_queries @@ fun _ -> *)
+        (* ( MetaConfig.show_debug_queries @@ fun _ -> *)
         (*   Printf.printf "model:\n%s\n" (Z3.Model.to_string model) ); *)
-        ( Env.show_log "smt_regex" @@ fun _ ->
+        ( MetaConfig.show_log "smt_regex" @@ fun _ ->
           Pp.printf
             "@{<orange>counterexample word of language inclusion:@} %s\n"
             (Check.layout_counterexample mt_list) );
@@ -91,14 +91,14 @@ let check_inclusion_bool (r1, r2) =
 let check_inclusion_counterexample (r1, r2) =
   let runtime, (size, res) = Sugar.clock (fun () -> check_inclusion (r1, r2)) in
   let () =
-    Env.show_debug_stat @@ fun _ ->
+    MetaConfig.show_debug_stat @@ fun _ ->
     Printf.printf "check_inclusion_counterexample: %f\n" runtime
   in
   let res =
     match res with
     | None -> None
     | Some mt_list ->
-        ( Env.show_log "smt_regex" @@ fun _ ->
+        ( MetaConfig.show_log "smt_regex" @@ fun _ ->
           Pp.printf
             "@{<orange>counterexample word of language inclusion:@} %s\n"
             (Check.layout_counterexample mt_list) );

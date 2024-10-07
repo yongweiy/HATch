@@ -10,7 +10,7 @@ open RtyRaw
 
 let rec hty_check opctx ctx (hty : hty) : hty =
   let () =
-    Env.show_log "ntyping" @@ fun _ ->
+    MetaConfig.show_log "ntyping" @@ fun _ ->
     Printf.printf ">>>>>>>>>>>>Hty Check %s\n" (To_rty.layout_hty hty)
   in
   match hty with
@@ -39,7 +39,7 @@ and arr_check opctx ctx (arr : arr) : arr * string Nt.typed option =
 
 and rty_check opctx ctx (hty : rty) : rty =
   let () =
-    Env.show_log "ntyping" @@ fun _ ->
+    MetaConfig.show_log "ntyping" @@ fun _ ->
     Printf.printf ">>>>>>>>>>>>Rty Check %s\n" (To_rty.layout_rty hty)
   in
   match hty with

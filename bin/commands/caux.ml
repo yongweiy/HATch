@@ -17,14 +17,14 @@ let load_raw_code_from_file qfile =
   code
 
 let load_builtin_opctx () =
-  let pcode = load_raw_code_from_file @@ Env.get_builtin_normal_type () in
+  let pcode = load_raw_code_from_file @@ MetaConfig.get_builtin_normal_type () in
   let opnctx = StructureRaw.mk_normal_top_ctx pcode in
   let opnctx = List.map ~f:(fun (x, ty) -> (Op.force_id_to_op x, ty)) opnctx in
   opnctx
 
 let load_code_from_file qfile =
   let preds =
-    load_raw_code_from_file @@ Env.get_builtin_automata_pred_type ()
+    load_raw_code_from_file @@ MetaConfig.get_builtin_automata_pred_type ()
   in
   StructureRaw.ltlf_to_srl @@ StructureRaw.inline_ltlf_pred @@ preds
   @ load_raw_code_from_file qfile

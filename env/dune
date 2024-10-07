@@ -9,7 +9,7 @@
  (name env)
  (wrapped false)
  (modules
-   env
+   metaConfig
    stat
  )
  (libraries core language_utils)

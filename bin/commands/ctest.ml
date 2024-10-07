@@ -3,7 +3,7 @@ open Caux
 open Language
 
 let print_raw_rty_ meta_config_file source_file =
-  let () = Env.load_meta meta_config_file in
+  let () = MetaConfig.load_meta meta_config_file in
   let code = load_raw_code_from_file source_file in
   let () =
     List.iter
@@ -13,7 +13,7 @@ let print_raw_rty_ meta_config_file source_file =
   ()
 
 let print_raw_rty_to_srl_ meta_config_file source_file =
-  let () = Env.load_meta meta_config_file in
+  let () = MetaConfig.load_meta meta_config_file in
   let code = load_raw_code_from_file source_file in
   let code = StructureRaw.ltlf_to_srl code in
   let () =
@@ -24,10 +24,10 @@ let print_raw_rty_to_srl_ meta_config_file source_file =
   ()
 
 let print_raw_rty_without_pred_ meta_config_file source_file =
-  let () = Env.load_meta meta_config_file in
+  let () = MetaConfig.load_meta meta_config_file in
   let code = load_raw_code_from_file source_file in
   let preds =
-    load_raw_code_from_file @@ Env.get_builtin_automata_pred_type ()
+    load_raw_code_from_file @@ MetaConfig.get_builtin_automata_pred_type ()
   in
   let code = StructureRaw.inline_ltlf_pred (preds @ code) in
   let () =
@@ -38,7 +38,7 @@ let print_raw_rty_without_pred_ meta_config_file source_file =
   ()
 
 let print_rty_ meta_config_file source_file =
-  let () = Env.load_meta meta_config_file in
+  let () = MetaConfig.load_meta meta_config_file in
   let opnctx = load_builtin_opctx () in
   let code = load_code_from_file source_file in
   let code = StructureRaw.ltlf_to_srl code in

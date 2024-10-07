@@ -8,7 +8,7 @@ open RtyRaw.SE
 
 let check opctx ctx sevent =
   let () =
-    Env.show_log "ntyping" @@ fun _ ->
+    MetaConfig.show_log "ntyping" @@ fun _ ->
     Printf.printf ">>>>>>SE Check %s\n" (To_se.layout sevent)
   in
   match sevent with

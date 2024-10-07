@@ -30,13 +30,13 @@ let elrond verifier features fvtab =
     match DT.pick_by_label fvtab DT.MayNeg with
     | Some fv ->
         let () =
-          Env.show_log "elim_ghost" @@ fun _ ->
+          MetaConfig.show_log "elim_ghost" @@ fun _ ->
           Pp.printf "@{<bold>@{<orange> pick_maybepos: %s@}@}\n"
             (DT.layout_raw_fv fv)
         in
         let () = DT.label_as fvtab fv DT.Neg in
         let () =
-          Env.show_log "elim_ghost" @@ fun _ ->
+          MetaConfig.show_log "elim_ghost" @@ fun _ ->
           Pp.printf "@{<bold>@{<yellow> fvtab@}@}\n";
           DT.pprint_fvtab features fvtab
         in
@@ -44,14 +44,14 @@ let elrond verifier features fvtab =
         let prop = P.simpl @@ DT.to_prop features dt in
         if verifier prop then
           let () =
-            Env.show_log "elim_ghost" @@ fun _ ->
+            MetaConfig.show_log "elim_ghost" @@ fun _ ->
             Pp.printf "@{<bold>@{<orange> label %s as - @}@}\n"
               (DT.layout_raw_fv fv)
           in
           loop ()
         else
           let () =
-            Env.show_log "elim_ghost" @@ fun _ ->
+            MetaConfig.show_log "elim_ghost" @@ fun _ ->
             Pp.printf "@{<bold>@{<orange> label %s as + @}@}\n"
               (DT.layout_raw_fv fv)
           in
@@ -112,7 +112,7 @@ let ghost_infer_one typectx (lpre : regex) (gvar : string Nt.typed)
     List.slow_rm_dup (fun (_, lit1) (_, lit2) -> eq_lit lit1 lit2) lits
   in
   let () =
-    Env.show_log "elim_ghost" @@ fun _ ->
+    MetaConfig.show_log "elim_ghost" @@ fun _ ->
     Printf.printf "lits:\n%s\n"
     @@ List.split_by "\n"
          (fun (x, lit) -> spf "%s:%s -> %s" x.x (layout x.ty) (layout_lit lit))
@@ -126,7 +126,7 @@ let ghost_infer_one typectx (lpre : regex) (gvar : string Nt.typed)
       lits
   in
   let () =
-    Env.show_log "elim_ghost" @@ fun _ ->
+    MetaConfig.show_log "elim_ghost" @@ fun _ ->
     Printf.printf "type_safe_lits:\n%s\n"
     @@ List.split_by "\n" (fun lit -> spf "%s" (layout_lit lit)) type_safe_lits
   in
@@ -136,7 +136,7 @@ let ghost_infer_one typectx (lpre : regex) (gvar : string Nt.typed)
   (* let mk_solution x phi = (x,  #:: (mk_from_prop x.Nt.ty (fun _ -> phi)) in *)
   let verifier phi =
     let () =
-      Env.show_log "elim_ghost" @@ fun _ ->
+      MetaConfig.show_log "elim_ghost" @@ fun _ ->
       Pp.printf "@{<bold>@{<yellow>verifier %s@}@}\n" (layout_prop phi)
     in
     let rpre = close_fv (gvar, phi) rpre in
@@ -189,7 +189,7 @@ let ghost_infer typectx (lpre : regex) (args : value typed list) (rty : rty) =
   | [] -> Some (typectx, hty_force_rty rty)
   | _ ->
       let () =
-        Env.show_log "elim_ghost" @@ fun _ ->
+        MetaConfig.show_log "elim_ghost" @@ fun _ ->
         Printf.printf "[%s] %s\n"
           (List.split_by_comma (fun x -> spf "%s:%s" x.x (layout x.ty)) gvars)
           (layout_hty rty)
@@ -200,7 +200,7 @@ let ghost_infer typectx (lpre : regex) (args : value typed list) (rty : rty) =
           rty args
       in
       let () =
-        Env.show_log "elim_ghost" @@ fun _ ->
+        MetaConfig.show_log "elim_ghost" @@ fun _ ->
         Printf.printf "ress: %s\n" (layout_hty ress)
       in
       let rpre =

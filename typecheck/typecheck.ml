@@ -49,7 +49,7 @@ let check (opctx', rctx') structure normalized_structure =
       (fun id (name, rty) ->
         let id = id + 1 in
         let () =
-          Env.show_debug_typing @@ fun _ -> Pp.printf "@{<bold>Task %i:@}\n" id
+          MetaConfig.show_debug_typing @@ fun _ -> Pp.printf "@{<bold>Task %i:@}\n" id
         in
         match
           List.find_opt
@@ -94,7 +94,7 @@ let check (opctx', rctx') structure normalized_structure =
               match res with Some () -> true | None -> false
             in
             let () =
-              Env.show_debug_typing @@ fun _ ->
+              MetaConfig.show_debug_typing @@ fun _ ->
               pprint_res_one (id, name, res, typecheck_time)
             in
             let () = Stat.settTypeCheck (if_type_checked, typecheck_time) in
