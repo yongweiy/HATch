@@ -157,7 +157,7 @@ and multi_app_type_infer_aux typectx (f_hty : rty) (appargs : value typed list)
         match arr with
         | NormalArr x ->
             let () =
-              Env.show_log "debug_infer" @@ fun _ ->
+              MetaConfig.show_log "debug_infer" @@ fun _ ->
               Printf.printf "value_type_check %s <== %s\n" (layout_value apparg)
                 (layout_rty x.rty)
             in
@@ -172,7 +172,7 @@ and multi_app_type_infer_aux typectx (f_hty : rty) (appargs : value typed list)
               typectx_new_to_right typectx { rx = x'; rty = mk_top ty }
             in
             let () =
-              Env.show_log "debug_infer" @@ fun _ ->
+              MetaConfig.show_log "debug_infer" @@ fun _ ->
               Printf.printf "GhostArr ==> ctx: %s\n"
                 (RTypectx.layout_typed_l typectx'.rctx)
             in
@@ -222,7 +222,7 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
             match is_new_adding (pre', post') with
             | Some newadding ->
                 let () =
-                  Env.show_debug_typing @@ fun _ ->
+                  MetaConfig.show_debug_typing @@ fun _ ->
                   Pp.printf "@{<bold>@{<orange>newadding:@}@} %s\n"
                     (layout_regex newadding)
                 in
@@ -230,7 +230,7 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
             | None ->
                 let res = LandA (SeqA (pre, StarA AnyA), post') in
                 let () =
-                  Env.show_debug_typing @@ fun _ ->
+                  MetaConfig.show_debug_typing @@ fun _ ->
                   Pp.printf "@{<bold>@{<orange>with pre:@}@} %s\n"
                     (layout_regex res)
                 in
@@ -254,12 +254,12 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
       Elim_ghost.force_without_ghost typectx f_rty appopargs hty
     in
     let () =
-      Env.show_log "debug_infer" @@ fun _ ->
+      MetaConfig.show_log "debug_infer" @@ fun _ ->
       Printf.printf "op rty: %s\n" (layout_rty f_rty)
     in
     let* typectx', rhs_hty = multi_app_type_infer_aux typectx f_rty appopargs in
     let () =
-      Env.show_log "debug_infer" @@ fun _ ->
+      MetaConfig.show_log "debug_infer" @@ fun _ ->
       Printf.printf "==> ctx: %s\n" (RTypectx.layout_typed_l typectx'.rctx)
     in
     let res = let_aux typectx' (lhs, rhs_hty) letbody hty in
@@ -283,7 +283,7 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
             List.map (fun x -> x.ty) typectx.introduced_gvars
           in
           let () =
-            Env.show_log "ghost" @@ fun _ ->
+            MetaConfig.show_log "ghost" @@ fun _ ->
             Printf.printf "gvars: %s;\nintroduced_gvars: %s;\nrty: %s\n"
               (layout_typed_l (fun x -> x) gvars)
               (layout_typed_l (fun x -> x) typectx.introduced_gvars)
@@ -339,7 +339,7 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
         ([], Rty fty) args
     in
     let () =
-      Env.show_debug_typing @@ fun _ ->
+      MetaConfig.show_debug_typing @@ fun _ ->
       Printf.printf "rethty: %s\n" (layout_hty rethty)
     in
     let { v; phi } = hty_force_cty rethty in
@@ -348,7 +348,7 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
     let a_rty = mk_unit_rty_from_prop phi in
     if subtyping_rty_is_bot_bool __FILE__ __LINE__ typectx a_rty then
       let () =
-        Env.show_debug_typing @@ fun _ ->
+        MetaConfig.show_debug_typing @@ fun _ ->
         Pp.printf "@{<bold>@{<orange>matched case (%s) is unreachable@}@}\n"
           constructor.x
       in
@@ -358,7 +358,7 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
       let typectx' = typectx_new_to_rights typectx (xs @ [ a ]) in
       let res = comp_htriple_check typectx' exp hty in
       let () =
-        Env.show_debug_typing @@ fun _ ->
+        MetaConfig.show_debug_typing @@ fun _ ->
         Pp.printf "@{<bold>@{<orange>matched case (%s): %b@}@}\n" constructor.x
           (match res with Some _ -> true | None -> false)
       in
@@ -405,7 +405,7 @@ and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
                       hty)
               in
               let () =
-                Env.show_debug_debug @@ fun _ ->
+                MetaConfig.show_debug_debug @@ fun _ ->
                 Pp.printf "@{<bold>comp_htriple_check_letperform: @}%f\n"
                   runtime
               in

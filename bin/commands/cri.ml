@@ -40,14 +40,14 @@ let mk_ri_inputs source_file =
   { dir; dt; lib; ri_file; interface_file }
 
 let mk_inputs_setting meta_config_file =
-  let () = Env.load_meta meta_config_file in
+  let () = MetaConfig.load_meta meta_config_file in
   {
-    oppurenctx_files = [ Env.get_builtin_normal_type () ];
+    oppurenctx_files = [ MetaConfig.get_builtin_normal_type () ];
     opeffnctx_files = [];
-    oppurerctx_files = [ Env.get_builtin_pure_type () ];
-    opeffrctx_files = [ Env.get_builtin_eff_type () ];
-    automata_pred_files = [ Env.get_builtin_automata_pred_type () ];
-    rctx_files = [ Env.get_builtin_libfunc_type () ];
+    oppurerctx_files = [ MetaConfig.get_builtin_pure_type () ];
+    opeffrctx_files = [ MetaConfig.get_builtin_eff_type () ];
+    automata_pred_files = [ MetaConfig.get_builtin_automata_pred_type () ];
+    rctx_files = [ MetaConfig.get_builtin_libfunc_type () ];
   }
 
 type inputs_setting = {
@@ -96,7 +96,7 @@ let load_opeffrctx inputs_setting filename =
 (*   (List.map ~f:(fun (x, rty) -> (x, Rty.erase_rty rty)) rctx, rctx) *)
 
 let pprint_setting { opnctx; automata_preds; oprctx; nctx; rctx } =
-  (* Env.show_debug_preprocess @@ fun _ -> *)
+  (* MetaConfig.show_debug_preprocess @@ fun _ -> *)
   Printf.printf "\nTop Operation Normal Type Context:\n";
   NOpTypectx.pretty_print_lines opnctx;
   Printf.printf "\nTop Function Normal Type Context:\n";
@@ -134,7 +134,7 @@ let init_setting
   let oprctx = oprctx1 @ oprctx2 in
   let rctx = load_rctx setting rctx_files in
   let nctx = List.map ~f:(fun (x, rty) -> (x, Rty.erase_rty rty)) rctx in
-  let axs = load_axioms_from_file setting.opnctx @@ Env.get_axioms () in
+  let axs = load_axioms_from_file setting.opnctx @@ MetaConfig.get_axioms () in
   let () = Rty.Ax.init_builtin_axs axs in
   { setting with oprctx; nctx; rctx }
 
@@ -145,7 +145,7 @@ let print_source_code_ inputs_setting source_files =
     { setting with nctx = setting.nctx @ StructureRaw.mk_normal_top_ctx code }
   in
   let () =
-    Env.show_debug_preprocess @@ fun _ ->
+    MetaConfig.show_debug_preprocess @@ fun _ ->
     pprint_setting setting;
     Printf.printf "\nSource Code:\n";
     Printf.printf "\n%s\n" @@ StructureRaw.layout_structure code
@@ -157,7 +157,7 @@ let ntyped_ (setting, code) =
     Ntypecheck.opt_to_typed_structure setting.opnctx setting.nctx code
   in
   let () =
-    Env.show_debug_preprocess @@ fun _ ->
+    MetaConfig.show_debug_preprocess @@ fun _ ->
     Printf.printf "\nBasic Typed:\n";
     Printf.printf "%s\n" @@ Structure.layout_structure code
   in
@@ -168,7 +168,7 @@ open Stat
 let normalized_ ri_input (setting, code) =
   let normalized = Normalize.get_normalized_code code in
   let () =
-    Env.show_debug_preprocess @@ fun _ ->
+    MetaConfig.show_debug_preprocess @@ fun _ ->
     Printf.printf "\nNormalized:\n";
     List.iter
       ~f:(fun (name, e) ->
@@ -204,7 +204,7 @@ let type_check_ (ri_input, s) source_file =
   let () = Stat.init_interfaceDynamic ri_input.interface_file in
   let ress = Typecheck.check (setting.oprctx, setting.rctx) code normalized in
   let () =
-    Env.show_log "result" @@ fun _ ->
+    MetaConfig.show_log "result" @@ fun _ ->
     List.iter
       ~f:(fun res ->
         Printf.printf "DT(%s)  " ri_input.dt;
@@ -240,7 +240,7 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
   in
   if not deriv then
     let module NaiveEngine = Engine (Srlexec.Config.Naive) in
-    Env.show_log "result" @@ fun _ ->
+    MetaConfig.show_log "result" @@ fun _ ->
     List.iter ~f:(fun res ->
         Printf.printf "DT(%s)  " ri_input.dt;
         Typecheck.pprint_res_one res)
@@ -259,7 +259,7 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
         end)
     in
     let module DerivEngine = Engine (Config) in
-    Env.show_log "result" @@ fun _ ->
+    MetaConfig.show_log "result" @@ fun _ ->
     List.iter ~f:(fun res ->
         Printf.printf "DT(%s)  " ri_input.dt;
         Typecheck.pprint_res_one res)

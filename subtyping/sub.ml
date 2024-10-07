@@ -8,11 +8,11 @@ let debug_counter = ref 0
 let check_srl ~tTrans (srl1, srl2) =
   (* let sizeA = 1 + NRegex.stat_size srl1 + NRegex.stat_size srl1 in *)
   let () =
-    Env.show_debug_info @@ fun _ ->
+    MetaConfig.show_debug_info @@ fun _ ->
     Pp.printf "@{<bold>Symbolic Automton 1:@} %s\n" (NRegex.reg_to_string srl1)
   in
   let () =
-    Env.show_debug_info @@ fun _ ->
+    MetaConfig.show_debug_info @@ fun _ ->
     Pp.printf "@{<bold>Symbolic Automton 2:@} %s\n" (NRegex.reg_to_string srl2)
   in
   let tInclusion, (sizeRawA, res) =
@@ -23,16 +23,16 @@ let check_srl ~tTrans (srl1, srl2) =
     | None -> true
     | Some _ ->
         (* let () = *)
-        (*   Env.show_log "smt_regex" @@ fun _ -> *)
+        (*   MetaConfig.show_log "smt_regex" @@ fun _ -> *)
         (*   Printf.printf "sub_srl_bool_aux R: %s\n" *)
         (*     (RTypectx.layout_typed_l rctx) *)
         (* in *)
-        (* ( Env.show_debug_debug @@ fun _ -> *)
+        (* ( MetaConfig.show_debug_debug @@ fun _ -> *)
         (*   Desymbolic.display_trace rctx ctx mt_list ); *)
         false
   in
   let () =
-    Env.show_debug_queries @@ fun _ ->
+    MetaConfig.show_debug_queries @@ fun _ ->
     Pp.printf "@{<bold>Inclusion Check Result:@} %b\n" res
   in
   let stat = Stat.{ sizeA = sizeRawA; tTrans; tInclusion } in
@@ -105,7 +105,7 @@ and sub_srl_bool rctx (srl1, srl2) =
   (* in *)
   let srl1' = simpl srl1 in
   (* let () = *)
-  (*   Env.show_log "desymbolic" @@ fun _ -> *)
+  (*   MetaConfig.show_log "desymbolic" @@ fun _ -> *)
   (*   Pp.printf "@{<bold>[simpl] regex before:@} %s\n" (layout_regex srl1); *)
   (*   Pp.printf "@{<bold>[simpl] regex after:@} %s\n" (layout_regex srl1') *)
   (* in *)
@@ -120,14 +120,14 @@ and sub_srl_bool rctx (srl1, srl2) =
     | srl1, srl2 -> sub_srl_bool_aux rctx (srl1, srl2)
   in
   let () =
-    Env.show_debug_queries @@ fun _ ->
+    MetaConfig.show_debug_queries @@ fun _ ->
     Printf.printf "R: %s\nResult:%b\n" (RTypectx.layout_typed_l rctx) res
   in
   res
 
 and sub_srl_bool_aux rctx (srl1, srl2) =
   let () =
-    Env.show_debug_info @@ fun _ ->
+    MetaConfig.show_debug_info @@ fun _ ->
     Printf.printf "sub_srl_bool_aux R: %s\n" (RTypectx.layout_typed_l rctx)
   in
   let sub_rty_bool' bindings (tau1, tau2) =
@@ -145,7 +145,7 @@ and sub_srl_bool_aux rctx (srl1, srl2) =
 
 let sub_srl_under_constr_aux ~constr (srl1, srl2) =
   let () =
-    Env.show_debug_info @@ fun _ ->
+    MetaConfig.show_debug_info @@ fun _ ->
     Printf.printf "sub_srl_under_constr_aux R: %s\n"
       (RTypectx.layout_prop constr)
   in
@@ -172,7 +172,7 @@ let sub_srl_under_constr ~constr (srl1, srl2) =
     | srl1, srl2 -> sub_srl_under_constr_aux ~constr (srl1, srl2)
   in
   let () =
-    Env.show_debug_queries @@ fun _ ->
+    MetaConfig.show_debug_queries @@ fun _ ->
     Printf.printf "R: %s\nResult:%b\n" (RTypectx.layout_prop constr) res
   in
   res

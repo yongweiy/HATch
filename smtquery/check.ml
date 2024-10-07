@@ -102,13 +102,13 @@ let smt_sat_solve ctx vc =
   in
   let time_t, res = Sugar.clock (fun () -> smt_solve ctx assertions) in
   let () =
-    Env.show_debug_stat @@ fun _ -> Pp.printf "Z3 solving time: %0.4fs\n" time_t
+    MetaConfig.show_debug_stat @@ fun _ -> Pp.printf "Z3 solving time: %0.4fs\n" time_t
   in
   res
 
 let smt_neg_and_solve ctx vc =
   (* let () = *)
-  (*   Env.show_debug_queries @@ fun _ -> *)
+  (*   MetaConfig.show_debug_queries @@ fun _ -> *)
   (*   Printf.printf "Query: %s\n" @@ Language.Rty.layout_prop vc *)
   (* in *)
   let uninterops = Language.Rty.get_uninterops vc in
@@ -121,7 +121,7 @@ let smt_neg_and_solve ctx vc =
   (* in *)
   let time_t, res = Sugar.clock (fun () -> smt_solve ctx assertions) in
   let () =
-    Env.show_debug_stat @@ fun _ -> Pp.printf "Z3 solving time: %0.4fs\n" time_t
+    MetaConfig.show_debug_stat @@ fun _ -> Pp.printf "Z3 solving time: %0.4fs\n" time_t
   in
   res
 
@@ -137,7 +137,7 @@ let debug_counter = ref 0
 let handle_check_res query_action =
   let time_t, res = Sugar.clock query_action in
   let () =
-    Env.show_debug_stat @@ fun _ ->
+    MetaConfig.show_debug_stat @@ fun _ ->
     Pp.printf "@{<bold>Solving time: %.2f@}\n" time_t
   in
   (* let () = *)
@@ -147,7 +147,7 @@ let handle_check_res query_action =
   match res with
   | SmtUnsat -> None
   | SmtSat model ->
-      ( Env.show_debug_stat @@ fun _ ->
+      ( MetaConfig.show_debug_stat @@ fun _ ->
         Printf.printf "model:\n%s\n"
         @@ Sugar.short_str 100 @@ Z3.Model.to_string model );
       Some model
@@ -159,18 +159,18 @@ let mk_q_version1 ctx r1 r2 =
   let q1 = Seq.mk_seq_in_re ctx sequence r1 in
   let q2 = Seq.mk_seq_in_re ctx sequence r2 in
   let () =
-    Env.show_debug_queries @@ fun _ ->
+    MetaConfig.show_debug_queries @@ fun _ ->
     Printf.printf "Query:\n%s\n%s\n" (Expr.to_string q1) (Expr.to_string q2)
   in
   (encoding, [ q1; Boolean.mk_not ctx q2 ])
 
 let mk_q_version2 ctx r1 r2 =
   let () =
-    Env.show_log "smt_regex" @@ fun _ ->
+    MetaConfig.show_log "smt_regex" @@ fun _ ->
     Printf.printf "R1:\n%s\n" (Nregex.T.reg_to_string r1)
   in
   let () =
-    Env.show_log "smt_regex" @@ fun _ ->
+    MetaConfig.show_log "smt_regex" @@ fun _ ->
     Printf.printf "R2:\n%s\n" (Nregex.T.reg_to_string r2)
   in
   let r12 = Language.NRegex.(Intersect [ r1; Complement r2 ]) in
@@ -179,17 +179,17 @@ let mk_q_version2 ctx r1 r2 =
   let sequence = Expr.mk_const_s ctx sequence_name (Seq.mk_string_sort ctx) in
   let q = Seq.mk_seq_in_re ctx sequence r in
   (* let () = *)
-  (*   Env.show_log "smt_regex" @@ fun _ -> *)
+  (*   MetaConfig.show_log "smt_regex" @@ fun _ -> *)
   (*   Printf.printf "R1:\n%s\n" *)
   (*     (Expr.to_string @@ Regencoding.to_z3 ctx encoding r1) *)
   (* in *)
   (* let () = *)
-  (*   Env.show_log "smt_regex" @@ fun _ -> *)
+  (*   MetaConfig.show_log "smt_regex" @@ fun _ -> *)
   (*   Printf.printf "R2:\n%s\n" *)
   (*     (Expr.to_string @@ Regencoding.to_z3 ctx encoding r2) *)
   (* in *)
   (* let () = *)
-  (*   Env.show_log "smt_regex" @@ fun _ -> *)
+  (*   MetaConfig.show_log "smt_regex" @@ fun _ -> *)
   (*   Printf.printf "Query:\n%s\n" (Expr.to_string q) *)
   (* in *)
   (encoding, encoded_size, [ q ])
@@ -225,7 +225,7 @@ let inclusion_query ctx r1 r2 =
   let res =
     match res with
     | None ->
-        ( Env.show_log "smt_regex" @@ fun _ ->
+        ( MetaConfig.show_log "smt_regex" @@ fun _ ->
           Pp.printf "@{<orange>inclusion is valid [%f(s)]:@}\n" runtime );
         (* let () = *)
         (*   if 1 == !debug_counter then failwith "end" *)
@@ -237,7 +237,7 @@ let inclusion_query ctx r1 r2 =
         (*   if 1 == !debug_counter then failwith "end" *)
         (*   else debug_counter := !debug_counter + 1 *)
         (* in *)
-        (* ( Env.show_log "smt_regex" @@ fun _ -> *)
+        (* ( MetaConfig.show_log "smt_regex" @@ fun _ -> *)
         (*   Printf.printf "model:\n%s\n" (Z3.Model.to_string model) ); *)
         let str =
           match Z3aux.get_string_by_name model sequence_name with
@@ -245,7 +245,7 @@ let inclusion_query ctx r1 r2 =
           | None -> _failatwith __FILE__ __LINE__ "die"
         in
         let mt_list = Regencoding.RegZ3.code_trace encoding str in
-        (* ( Env.show_debug_queries @@ fun _ -> *)
+        (* ( MetaConfig.show_debug_queries @@ fun _ -> *)
         (*   Pp.printf "@{<orange>counterexample word of language inclusion:@} %s\n" *)
         (*     (layout_counterexample mt_list) ); *)
         (* let () = *)

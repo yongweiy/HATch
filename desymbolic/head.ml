@@ -116,14 +116,14 @@ let make_tab addtional_global_lits regex =
     List.slow_rm_dup (fun x y -> L.eq_lit x.x y.x) global_args
   in
   let () =
-    Env.show_log "desymbolic" @@ fun _ ->
+    MetaConfig.show_log "desymbolic" @@ fun _ ->
     Printf.printf "global_args: %s\n"
       (List.split_by_comma (fun x -> layout_lit x.x) global_args)
   in
   let euf_constraints = build_euf global_args in
   let pops = get_partail_op local_lits in
   let () =
-    Env.show_log "desymbolic" @@ fun _ ->
+    MetaConfig.show_log "desymbolic" @@ fun _ ->
     Printf.printf "pops: %s\n"
     @@ List.split_by_comma (fun x -> Op.to_string x.x) pops
   in
@@ -140,5 +140,5 @@ let make_tab addtional_global_lits regex =
 
 let ctx_ctx_init regex =
   let tab = make_tab [] regex in
-  let () = Env.show_log "desymbolic" @@ fun _ -> pprint_head tab in
+  let () = MetaConfig.show_log "desymbolic" @@ fun _ -> pprint_head tab in
   tab

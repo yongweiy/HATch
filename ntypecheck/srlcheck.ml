@@ -9,7 +9,7 @@ open RtyRaw.SRL
 
 let rec check opctx ctx (srl : regex) : regex =
   let () =
-    Env.show_log "ntyping" @@ fun _ ->
+    MetaConfig.show_log "ntyping" @@ fun _ ->
     Printf.printf ">>>>>>>>>SRL Check %s\n" (To_srl.layout srl)
   in
   match srl with

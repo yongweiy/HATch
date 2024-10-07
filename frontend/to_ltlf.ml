@@ -1,4 +1,3 @@
-module MetaEnv = Env
 open Ocaml5_parser
 open Parsetree
 open Zzdatatype.Datatype
@@ -33,16 +32,16 @@ let pprint ltlf =
     match ltlf with
     | EventL se -> (To_se.layout se, true)
     | LastL -> ("LAST", true)
-    | FinalL a -> (spf "♢%s" (p_pprint a), true)
-    | GlobalL a -> (spf "☐%s" (p_pprint a), true)
+    | FinalL a -> (spf "F%s" (p_pprint a), true)
+    | GlobalL a -> (spf "G%s" (p_pprint a), true)
     | NegL a -> (spf "%s%s" psetting.sym_not (p_pprint a), true)
     | LandL (a1, a2) ->
         (spf "%s%s%s" (p_pprint a1) psetting.sym_and (p_pprint a2), false)
     | LorL (a1, a2) ->
         (spf "%s%s%s" (p_pprint a1) psetting.sym_or (p_pprint a2), false)
     | SeqL (a1, a2) -> (spf "%s;%s" (p_pprint a1) (p_pprint a2), false)
-    | NextL a -> (spf "◯%s" (p_pprint a), true)
-    | UntilL (a1, a2) -> (spf "%s𝒰 %s" (p_pprint a1) (p_pprint a2), false)
+    | NextL a -> (spf "X%s" (p_pprint a), true)
+    | UntilL (a1, a2) -> (spf "%sU%s" (p_pprint a1) (p_pprint a2), false)
     | SFAPred { name; args } ->
         (spf "%s(%s)" name (List.split_by_comma To_lit.layout args), true)
   and p_pprint a =

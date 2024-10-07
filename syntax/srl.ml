@@ -256,7 +256,7 @@ module F (L : Lit.T) = struct
           | _ -> SetMinusA (r1, r2))
     in
     (* let () = *)
-    (*   Env.show_log "desymbolic" @@ fun _ -> *)
+    (*   MetaConfig.show_log "desymbolic" @@ fun _ -> *)
     (*   if not (eq r res) then ( *)
     (*     Pp.printf "@{<bold>[--simpl] regex before:@} %s\n" (raw_p_pprint r); *)
     (*     Pp.printf "@{<bold>[--simpl] regex after:@} %s\n" (raw_p_pprint res)) *)

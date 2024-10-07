@@ -50,7 +50,7 @@ module F (L : Lit.T) = struct
 
   let get_lits prop =
     let () =
-      Env.show_log "gather" @@ fun _ -> Printf.printf ">>>>> get_lits:\n"
+      MetaConfig.show_log "gather" @@ fun _ -> Printf.printf ">>>>> get_lits:\n"
     in
     let rec aux e res =
       match e with

@@ -262,7 +262,7 @@ let update_dt_dynamic_interfaces old one_b =
 open Sugar
 
 let update_dt_static_stat (stat : dt_static_stat) =
-  let statfile = Env.get_statfile () in
+  let statfile = MetaConfig.get_statfile () in
   let static_stat, dynamic_stat = load_create statfile in
   let old, rest =
     List.partition
@@ -283,7 +283,7 @@ let update_dt_static_stat (stat : dt_static_stat) =
   save_stat statfile (static_stat, dynamic_stat)
 
 let update_dt_dynamic_stat (dt, lib, stat) =
-  let statfile = Env.get_statfile () in
+  let statfile = MetaConfig.get_statfile () in
   let static_stat, dynamic_stat = load_create statfile in
   let old, rest =
     List.partition
@@ -329,7 +329,7 @@ let update_dt_dynamic_stat (dt, lib, stat) =
 (* save_stat (static_stat, dynamic_stat) *)
 
 (* let update_dt_static_stat (stat : dt_static_stat) = *)
-(*   let statfile = Env.get_statfile () in *)
+(*   let statfile = MetaConfig.get_statfile () in *)
 (*   let static_j, dynamic_j = load_create statfile in *)
 (*   let old, rest = *)
 (*     List.partition *)

@@ -163,10 +163,10 @@ struct
     |> List.mapi (fun id (name, rty) ->
            let id = id + 1 in
            let () =
-             Env.show_debug_typing @@ fun _ ->
+             MetaConfig.show_debug_typing @@ fun _ ->
              Pp.printf "@{<bold>Task %i:@}\n" id
            in
-           match List.assoc_opt name normalized_structure with
+           match List.assoc_opt ~eq:String.equal name normalized_structure with
            | None ->
                failwith "cannot find the implemetation of the given assertion"
            | Some comp ->

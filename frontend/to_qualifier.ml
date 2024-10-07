@@ -1,4 +1,3 @@
-module MetaEnv = Env
 open Ocaml5_parser
 open Parsetree
 module Type = Normalty.Frontend

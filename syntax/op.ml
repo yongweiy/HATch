@@ -13,7 +13,7 @@ let to_string = function DtOp op -> op | EffOp op -> op | BuiltinOp op -> op
 let mk_eq_op = BuiltinOp "=="
 (* let known_pure_operators = [ "not"; "mod"; "parent"; "isDir"; "addChild" ] *)
 
-let is_uninterop str = List.exists (String.equal str) (Env.get_uninterops ())
+let is_uninterop str = List.exists (String.equal str) (MetaConfig.get_uninterops ())
 
 let is_pure_op str =
   if is_uninterop str then true

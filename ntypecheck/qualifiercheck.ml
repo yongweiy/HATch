@@ -61,7 +61,7 @@ let rec type_infer_lit (opctx : NOpTypectx.ctx) (ctx : NTypectx.ctx) (lit : lit)
 and type_check_lit (opctx : NOpTypectx.ctx) (ctx : NTypectx.ctx) (lit, ty) :
     lit typed =
   let () =
-    Env.show_log "ntyping" @@ fun _ ->
+    MetaConfig.show_log "ntyping" @@ fun _ ->
     Printf.printf "Check %s <<= %s\n" (To_lit.layout lit) (Nt.layout ty)
   in
   match lit with
@@ -90,7 +90,7 @@ and type_check_lit (opctx : NOpTypectx.ctx) (ctx : NTypectx.ctx) (lit, ty) :
         List.split @@ List.map (fun x -> type_infer_lit opctx ctx x.x) args
       in
       let () =
-        Env.show_log "ntyping" @@ fun _ ->
+        MetaConfig.show_log "ntyping" @@ fun _ ->
         Printf.printf ">> %s(%s)\n" (Op.to_string f.x)
           (List.split_by_comma Nt.layout argsty)
       in
@@ -103,7 +103,7 @@ and type_check_lit (opctx : NOpTypectx.ctx) (ctx : NTypectx.ctx) (lit, ty) :
         | _ -> check_op opctx f
       in
       let () =
-        Env.show_log "ntyping" @@ fun _ ->
+        MetaConfig.show_log "ntyping" @@ fun _ ->
         Printf.printf ">> %s:%s\n" (Op.to_string f.x) (Nt.layout fty)
       in
       let argsty, retty = _solve_by_argsty __FILE__ __LINE__ fty argsty in
@@ -124,7 +124,7 @@ let type_check_qualifier (opctx : NOpTypectx.ctx) (ctx : NTypectx.ctx)
   let ty = Nt.bool_ty in
   let rec aux ctx qualifier =
     let () =
-      Env.show_log "ntyping" @@ fun _ ->
+      MetaConfig.show_log "ntyping" @@ fun _ ->
       Printf.printf ">>>Qualifier Check %s\n" (To_qualifier.layout qualifier)
     in
     match qualifier with

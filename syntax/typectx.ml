@@ -89,14 +89,14 @@ module F (I : CtxId) = struct
     Printf.sprintf "%s⊢\n%s <:\n%s\n" ctx r1 r2
 
   let pretty_print_infer f ctx (e, (r : 'a)) =
-    Env.show_debug_typing (fun _ ->
+    MetaConfig.show_debug_typing (fun _ ->
         let () = Pp.printf "@{<bold>Type Infer:@}\n" in
         pretty_print f ctx;
         Pp.printf "⊢ @{<hi_magenta>%s@} ⇨ " (short_str 100 e);
         Pp.printf "@{<cyan>%s@}\n\n" @@ f r)
 
   let pretty_print_judge f ctx (e, (r : 'a)) =
-    Env.show_debug_typing (fun _ ->
+    MetaConfig.show_debug_typing (fun _ ->
         let () = Pp.printf "@{<bold>Type Check:@}\n" in
         pretty_print f ctx;
         Pp.printf "⊢ @{<hi_magenta>%s@} ⇦ " (short_str 10000 e);

@@ -19,7 +19,7 @@ let layout_qv { cx; cty } =
 let aux_sub_cty uqvs { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
   (* let open P in *)
   let () =
-    Env.show_debug_queries @@ fun _ ->
+    MetaConfig.show_debug_queries @@ fun _ ->
     Printf.printf "uqvs: %s\n" @@ List.split_by_comma layout_qv uqvs
   in
   let phi2 = subst_prop_id (v2.x, v1.x) phi2 in
@@ -29,7 +29,7 @@ let aux_sub_cty uqvs { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
     match v1.ty with Nt.Ty_unit -> query | _ -> Forall (v1, query)
   in
   let () =
-    Env.show_debug_queries @@ fun _ ->
+    MetaConfig.show_debug_queries @@ fun _ ->
     Printf.printf "query: %s\n" (layout_prop query)
   in
   let fvs = fv_prop query in
@@ -40,7 +40,7 @@ let aux_sub_cty uqvs { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
   (* in *)
   let res = Smtquery.cached_check_bool query in
   let () =
-    Env.show_debug_queries @@ fun _ ->
+    MetaConfig.show_debug_queries @@ fun _ ->
     Pp.printf "query result: %s\n" @@ if res then "✓" else "✗"
   in
   res
