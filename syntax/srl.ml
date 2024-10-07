@@ -35,6 +35,9 @@ module F (L : Lit.T) = struct
   let rec mk_andA = function
     | EmptyA, _ | _, EmptyA -> EmptyA
     | StarA AnyA, r | r, StarA AnyA -> r
+    (* the only two rules not included in literature *)
+    | ComplementA r, s when equal_sfa r s -> EmptyA
+    | s, ComplementA r when equal_sfa r s -> EmptyA
     | r, s when equal_sfa r s -> r
     | (LandA (r1, r2) as r), (LandA (s1, s2) as s) ->
         (* merge two list of conjuncts *)
