@@ -22,10 +22,10 @@ open Sugar
 let pprint_res_one (id, name, res, timef) =
   match res with
   | Some _ ->
-      Printf.printf "Task %i(%s): exec time %f(s), type check succeeded\n" id
+      Printf.printf "Task %i(%s): exec time %f(s), check passed\n" id
         name timef
   | None ->
-      Printf.printf "Task %i(%s): exec time %f(s), type check failed\n" id name
+      Printf.printf "Task %i(%s): exec time %f(s), check failed\n" id name
         timef
 
 (* let pprint_res = List.iter pprint_res_one *)

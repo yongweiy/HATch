@@ -61,9 +61,9 @@ module Naive : T = struct
   let layout_config ?(chop_rctx = 0) { rctx; curr; comp } =
     String.concat "\n"
       [
-        "rctx = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
-        "curr = " ^ layout_regex curr;
-        "comp = " ^ layout_comp comp;
+        "Phi    = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
+        "R_curr = " ^ layout_regex curr;
+        "expr   =\n" ^ layout_comp comp;
       ]
 
   let print_config ?(chop_rctx = 0) config =
@@ -193,10 +193,10 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
   let layout_config ?(chop_rctx = 0) { rctx; prefix; cont; comp } =
     String.concat "\n"
       [
-        "rctx = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
-        "prefix = " ^ Tr.layout_trace prefix;
-        "cont = " ^ ContSFA.layout_deriv cont;
-        "comp = " ^ layout_comp comp;
+        "Phi    = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
+        "Trace  = " ^ Tr.layout_trace prefix;
+        "R_cont = " ^ ContSFA.layout_deriv cont;
+        "expr   =\n" ^ layout_comp comp;
       ]
 
   let print_config ?(chop_rctx = 0) config =
@@ -307,9 +307,7 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
           EffSFA.enum ~substs ~len_range:(0, AppendBound.value)
           @@ EffSFA.init pre
         in
-        if EffSFA.is_nullable d' then (
-          Pp.printf "@{<yellow>init@} %s\n" @@ Tr.layout_trace prefix;
-          Some { rctx; prefix; cont; comp })
+        if EffSFA.is_nullable d' then Some { rctx; prefix; cont; comp }
         else None
     | _ ->
         append ~substs pre
