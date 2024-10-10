@@ -72,3 +72,10 @@ let[@libRty] node_eq ?l:(a = (true : [%v: Node.t]) [@over])
 let[@libRty] cell_eq ?l:(a = (true : [%v: Cell.t]) [@over])
     ?l:(b = (true : [%v: Cell.t]) [@over]) : [%v: bool] =
   iff v (a == b)
+
+let[@libRty] ptr_eq ?l:(a = (true : [%v: Ptr.t]) [@over])
+    ?l:(b = (true : [%v: Ptr.t]) [@over]) : [%v: bool] =
+  iff v (a == b)
+
+let[@libRty] is_nullptr ?l:(a = (true : [%v: Ptr.t]) [@over])
+  : [%v: bool] = true

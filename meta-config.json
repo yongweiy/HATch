@@ -28,8 +28,7 @@
         "node_eq",
         "cell_eq",
         "ptr_eq",
-        "is_nullptr",
-        "nullptr"
+        "is_nullptr"
     ],
     "prim_path": {
         "qualifier_builtin_type": "data/predefined/qualifier_builtin_type.ml",

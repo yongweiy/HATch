@@ -14,3 +14,6 @@ let[@axiom] elem3 ((a [@forall]) : Elem.t) ((b [@forall]) : Elem.t) =
 let[@axiom] elem4 ((a [@forall]) : Elem.t) ((b [@forall]) : Elem.t)
     ((c [@forall]) : Elem.t) =
   implies (elem_lt a b && elem_lt b c) (elem_lt a c)
+
+let[@axiom] ptr1 ((a [@forall]) : Ptr.t) ((b [@forall]) : Ptr.t) =
+  implies (is_nullptr a && ptr_eq a b) (is_nullptr b)
