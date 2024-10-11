@@ -61,7 +61,8 @@ module Naive : T = struct
   let layout_config ?(chop_rctx = 0) { rctx; curr; comp } =
     String.concat "\n"
       [
-        "Phi    = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
+        "Phi    = " ^ RTypectx.layout_typed_l
+        @@ applyn ~n:chop_rctx List.tl rctx;
         "R_curr = " ^ layout_regex curr;
         "expr   =\n" ^ layout_comp comp;
       ]
@@ -82,6 +83,7 @@ module Naive : T = struct
     { config with rctx = RTypectx.new_to_rights config.rctx rxs }
 
   let reachable { rctx; curr; _ } =
+    (* Printf.printf "%s\n" @@ RTypectx.layout_typed_l rctx; *)
     not @@ Subtyping.sub_srl_bool rctx (curr, EmptyA)
 
   let abort config =
@@ -193,7 +195,8 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
   let layout_config ?(chop_rctx = 0) { rctx; prefix; cont; comp } =
     String.concat "\n"
       [
-        "Phi    = " ^ RTypectx.layout_typed_l @@ applyn ~n:chop_rctx List.tl rctx;
+        "Phi    = " ^ RTypectx.layout_typed_l
+        @@ applyn ~n:chop_rctx List.tl rctx;
         "Trace  = " ^ Tr.layout_trace prefix;
         "R_cont = " ^ ContSFA.layout_deriv cont;
         "expr   =\n" ^ layout_comp comp;
