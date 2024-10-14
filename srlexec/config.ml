@@ -357,8 +357,10 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
         | _ -> Some config)
 
   let output_dot name =
-    EffSFA.output @@ open_out @@ name ^ "_eff.dot";
-    ContSFA.output @@ open_out @@ name ^ "_cont.dot"
+    EffSFA.output @@ open_out @@ Filename.concat "dot-output" name ^ "_eff.dot";
+    ContSFA.output @@ open_out
+    @@ Filename.concat "dot-output" name
+    ^ "_cont.dot"
 
   type witness = {
     kind : [ `Preemptive | `Terminated ];

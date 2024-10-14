@@ -1,4 +1,5 @@
 #+exclude_tags: pandoc
+#+options: ^:{}
 
 This is the artifact of /Derivative-Guided Symbolic Execution/ under
 submission to POPL 2025.  The derivative-guided symbolic execution
@@ -6,41 +7,54 @@ engine *HATch*, along with its derivative-free variant, are provided.
 Please follow the instructions below for installation and reproduction
 of experiment results.
 
-* Requirement and Installation
+* Getting Started
 
-We recommend the use of machines with at least 8 GB memory.  The
-artifact depends on [[https://opam.ocaml.org/doc/Install.html][opam]] (version 2.X) to build, and [[https://www.gnu.org/software/emacs/download.html][Emacs]] (version
-29) Lisp for producing experiment results.  A VDI disk image file is
-attached with the environment set up and can be opened in VirtualBox
-or similar.
+We recommend the use of machines with at least 8 GB memory -- *HATch*
+raises errors when memory usage exceeds 8GB.  All experiments were
+performed on AMD Ryzen 7 PRO 6850U with 32 GB RAM.  The artifact is
+provided as a [[https://docs.docker.com/get-docker/][Docker]] image.  Before proceeding, try =docker run
+hello-world= to ensure that Docker works as intended.
+
+You may either load the pre-built docker image:
+
+#+begin_src shell
+  docker load < ../hatch.tar.gz
+#+end_src
+
+or build the docker image on your own:
+
+#+begin_src shell
+  docker build . --tag hatch
+#+end_src
+
 
 To install *HATch* manually, one may create an OCaml compiler switch,
 activate the environment in the current shell, install dependencies,
 and build the artifact, as follows:
 
 #+begin_src shell
-  opam switch create hatch 4.14.0+flambda
+  opam switch -y create hatch 4.14.0+flambda
   eval $(opam env)
-  opam install core core_unix ppx_jane ppx_inline_test ppx_assert ppx_sexp_conv ppx_optcomp ppx_hash ppx_compare ppx_let yojson dolog ocolor z3 qcheck choice oseq ocamlgraph
+  opam install -y containers core core_unix ppx_jane ppx_inline_test ppx_assert ppx_sexp_conv ppx_optcomp ppx_hash ppx_compare ppx_let yojson dolog ocolor z3 qcheck choice oseq ocamlgraph
   dune build
 #+end_src
 
 * Falsify Individual ADT implementations
-#+PROPERTY: header-args:shell :results verbatim code :prologue exec 2>&1
+#+PROPERTY: header-args:shell :results verbatim code :prologue exec 2>&1 :epilogue true
 
 Folder =data/ri= stores various benchmarks in its subfolders, each
 corresponding to an abstract data type (ADT) and its underlying
 stateful representation type.  Specifically, Each subfolder contains
 
 - a safety property represented by a symbolic regular expression in
-  `ri.ml`
+  =ri.ml=
 - the implementation of one or more methods of the ADT, both correct
-  (without `_buggy` postfix) and buggy (with `_buggy` postfix)
+  (without =_buggy= postfix) and buggy (with =_buggy= postfix)
 - the refinement-type-style specification that manifest the safety
   properties and accompany the implementation in the same file
 
 
-See [[*Experiments][Experiments]] for the complete list of methods associated with each
+See [[*Experiments]] for the complete list of methods associated with each
 pair of ADT and its representation type.
 
 One may run *HATch* on the implementation of buggy methods like
@@ -48,50 +62,43 @@ One may run *HATch* on the implementation of buggy methods like
 
 #+name: hatch
 #+begin_src shell :var bench="" :post get_time(str="fail", out=*this*)
-  timeout -v 1m dune exec -- bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -empty-aware -exec-bound 20 -eff-append-bound 5
+  timeout -v 1m _build/default/bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -empty-aware -exec-bound 20 -eff-append-bound 5
 #+end_src
 
 In seconds, *HATch* falsifies the implementation by finding an execution path with
 
-- `Phi` : the path condition collected along the execution path
-- `Trace` : the trace of symbolic events that witness the execution
+- =Phi= : the path condition collected along the execution path
+- =Trace= : the trace of symbolic events that witness the execution
   path
-- `R_cont` : a symbolic regular expression accepting traces that the
+- =R_cont= : a symbolic regular expression accepting traces that the
   execution can produce without violating the safety property 
-- `expr` : the term under execution
+- =expr= : the term under execution
   
 #+call: hatch[:post]("LinkedList_KVStore/remove_aux")
 
 #+RESULTS:
 #+begin_src shell
-Preemptive Hatch
-Phi    = b_0:{v:Ptr.t | true}, a_0:{v:Ptr.t | true}, hd:{v:Ptr.t | ¬is_nullptr b_0}, vl:{v:Elem.t | true}, a_3:{v:Ptr.t | true}, next_2:{v:Ptr.t | v == a_3}, x_26_2:{v:bool | ¬v}, a_6:{v:Elem.t | true}, x_27_2:{v:Elem.t | v == a_6}, x_28_2:{v:bool | (v <=> x_27_2 == vl) ∧ v}, a_9:{v:Ptr.t | true}, x_29_2:{v:Ptr.t | v == a_9}
-Trace  = ⟨putNext x_0 x_1 = vret | x_0 == a_0 ∧ x_1 == b_0 ∧ ¬(x_0 == hd ∧ x_1 == a_3) ∧ x_0 == next_2 ∧ x_1 == a_9⟩; ⟨putNext x_0 x_1 = vret | ¬(x_0 == a_0 ∧ x_1 == b_0) ∧ ¬x_0 == a_0 ∧ x_0 == hd ∧ x_1 == a_3 ∧ ¬(x_0 == next_2 ∧ x_1 == a_9) ∧ ¬x_0 == next_2⟩; ⟨putVal x_0 x_1 = vret | x_0 == next_2 ∧ x_1 == a_6⟩; ⟨getNext x_0 = vret | vret == a_3 ∧ x_0 == hd⟩; ⟨getVal x_0 = vret | vret == a_6 ∧ x_0 == next_2⟩; ⟨getNext x_0 = vret | vret == a_9 ∧ x_0 == next_2⟩; ⟨putNext x_0 x_1 = vret | x_0 == hd ∧ x_1 == x_29_2 ∧ ¬((¬(¬x_0 == a_0 ∧ x_1 == b_0) ∧ ¬(¬x_1 == b_0 ∧ x_0 == a_0)) ∨ (¬(¬x_0 == a_0 ∧ x_1 == b_0) ∧ ¬x_1 == b_0 ∧ x_0 == a_0))⟩
+[1mPreemptive Hatch[0m
+Phi    = _a2_0:{v:Ptr.t | true}, _a1_0:{v:Ptr.t | true}, hd:{v:Ptr.t | ¬is_nullptr _a2_0}, vl:{v:Elem.t | true}, _a_3:{v:Ptr.t | true}, next_2:{v:Ptr.t | v == _a_3}, x_26_2:{v:bool | ¬v}, _a_6:{v:Elem.t | true}, x_27_2:{v:Elem.t | v == _a_6}, x_28_2:{v:bool | (v <=> x_27_2 == vl) ∧ v}, _a_9:{v:Ptr.t | true}, x_29_2:{v:Ptr.t | v == _a_9}
+Trace  = ⟨putNext x_0 x_1 = vret | x_0 == _a1_0 ∧ x_1 == _a2_0 ∧ ¬(x_0 == hd ∧ x_1 == _a_3) ∧ x_0 == next_2 ∧ x_1 == _a_9⟩; ⟨putNext x_0 x_1 = vret | ¬(x_0 == _a1_0 ∧ x_1 == _a2_0) ∧ ¬x_0 == _a1_0 ∧ x_0 == hd ∧ x_1 == _a_3 ∧ ¬(x_0 == next_2 ∧ x_1 == _a_9) ∧ ¬x_0 == next_2⟩; ⟨putVal x_0 x_1 = vret | x_0 == next_2 ∧ x_1 == _a_6⟩; ⟨getNext x_0 = vret | vret == _a_3 ∧ x_0 == hd⟩; ⟨getVal x_0 = vret | vret == _a_6 ∧ x_0 == next_2⟩; ⟨getNext x_0 = vret | vret == _a_9 ∧ x_0 == next_2⟩; ⟨putNext x_0 x_1 = vret | x_0 == hd ∧ x_1 == x_29_2 ∧ ¬((¬(¬x_0 == _a1_0 ∧ x_1 == _a2_0) ∧ ¬(¬x_1 == _a2_0 ∧ x_0 == _a1_0)) ∨ (¬(¬x_0 == _a1_0 ∧ x_1 == _a2_0) ∧ ¬x_1 == _a2_0 ∧ x_0 == _a1_0))⟩
 R_cont = ∅
 expr   =
 (let (f_1 : unit) = (() : unit) in (f_1 : unit) : unit)
-DT(LinkedList)  Task 1(remove_aux): exec time 1.754225(s), check failed
+DT(LinkedList)  Task 1(remove_aux): exec time 1.803346(s), check failed
 #+end_src
 
-In this case, `Phi` and `Trace` are satisfiable, e.g., the associated
-state is reachable, and `R_cont` is empty.  Therefore, *HATch*
-determines that the execution path is falsified.
+In this case, =Phi= and =Trace= together are satisfiable -- the
+associated state is reachable -- and =R_cont= is empty.  Therefore,
+*HATch* determines that the execution path is falsified.
 
 The derivative-free variant of =HATch= can be run as follows:
 
 #+name: naive
 #+begin_src shell :var bench="" :post get_time(str="fail", out=*this*)
-  timeout -v 1m dune exec -- bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -no-deriv -exec-bound 20
+  timeout -v 1m _build/default/bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -no-deriv -exec-bound 20
 #+end_src
 
-And it
-#+call: naive[:post]("ConnectedGraph_Set/add_node")
-
-#+RESULTS:
-#+begin_src shell
-timeout: sending signal TERM to command ‘dune’
-#+end_src
-
+And it times out after 1 minute.
 #+call: naive[:post]("LinkedList_KVStore/remove_aux")
 
 #+RESULTS:
@@ -99,15 +106,15 @@ timeout: sending signal TERM to command ‘dune’
 timeout: sending signal TERM to command ‘dune’
 #+end_src
 
-The baseline verifier that is designed to check automata-augmented
- refinement type can be run as follows:
+We regard prior work on type checking automata-augmented refinement
+type as the baseline verifier, which can be run as follows:
 
 #+name: verify
 #+begin_src shell :var bench="" :post get_time(str="fail", out=*this*)
-  timeout -v 1m dune exec -- bin/main.exe ri-type-check meta-config.json data/ri/${bench}_buggy.ml
+  timeout -v 1m _build/default/bin/main.exe ri-type-check meta-config.json data/ri/${bench}_buggy.ml
 #+end_src
 
-The verifier times out after 1 minute.
+The verifier also times out after 1 minute.
 #+call: verify[:post]("LinkedList_KVStore/remove_aux")
 
 #+RESULTS:
@@ -143,99 +150,64 @@ We use the following script to compute the speedup of *HATch*.
 
 * Experiments
 
-The data of Table 1 in the paper is produced
-using [[https://orgmode.org/worg/org-contrib/babel/][org-babel shipped with Emacs]] and shown below.
+The following table lists all methods whose buggy implementation are
+falsified by *HATch* (first column).  The next three columns are also
+illustrated in Table 1 of the paper while the last two columns are
+omitted.
 
-|-------------------------------------+-------+---------+---------+-------+-------|
-| program                             | HATch | SpeedUp | SpeedUp | Naive |   HAT |
-|-------------------------------------+-------+---------+---------+-------+-------|
-| Stack_LinkedList/cons               |  0.51 | \times4.9    | \times3.2    |  2.50 |  1.64 |
-| Stack_LinkedList/concat_aux         |  0.25 | O/M     | \times13.2   |   O/M |  3.29 |
-| Stack_KVStore/cons                  |  1.11 | T/O     | \times4.6    |   T/O |  5.09 |
-| Stack_KVStore/concat_aux            |  0.94 | O/M     | \times6.5    |   O/M |  6.08 |
-| Queue_LinkedList/append             |  0.73 | \times2.5    | \times2.7    |  1.85 |  1.97 |
-| Queue_Graph/append                  |  1.75 | T/O     | \times7.4    |   T/O | 12.89 |
-| Set_KVStore/insert                  |  0.87 | T/O     | \times1.4    |   T/O |  1.25 |
-| Set_Tree/insert_aux                 |  1.10 | \times40.7   | \times11.1   | 44.72 | 12.24 |
-| Heap_LinkedList/insert_aux          |  0.11 | \times12.9   | \times13.2   |  1.42 |  1.45 |
-| Heap_Tree/insert_aux                |  1.00 | \times2.4    | \times2.5    |  2.44 |  2.50 |
-| MinSet_Set/minset_singleton         |  1.14 | \times1.3    | \times1.3    |  1.48 |  1.50 |
-| MinSet_Set/minset_insert            |  1.32 | \times9.0    | \times9.9    | 11.93 | 13.10 |
-| MinSet_KVStore/minset_singleton     |  0.66 | T/O     | \times4.3    |   T/O |  2.83 |
-| MinSet_KVStore/minset_insert        |  1.95 | \times10.7   | \times14.9   | 20.79 | 29.04 |
-| LazySet_Tree/insert_aux             |  1.09 | \times4.8    | \times11.5   |  5.25 | 12.58 |
-| LazySet_Set/lazy_insert             |  0.49 | \times1.2    | \times1.3    |  0.60 |  0.65 |
-| LazySet_KVStore/insert_aux          |  0.88 | \times49.8   | \times1.5    | 43.81 |  1.34 |
-| DFA_KVStore/add_transition          |  0.66 | \times29.9   | \times29.9   | 19.73 | 19.72 |
-| DFA_KVStore/del_transition          |  1.04 | \times15.0   | \times15.2   | 15.60 | 15.86 |
-| DFA_Graph/add_transition            |  0.98 | \times12.9   | \times12.8   | 12.62 | 12.51 |
-| DFA_Graph/del_transition            |  0.97 | \times16.5   | \times16.5   | 15.96 | 16.05 |
-| ConnectedGraph_Set/singleton        |  0.27 | T/O     | \times16.4   |   T/O |  4.44 |
-| ConnectedGraph_Set/add_node         |  1.31 | O/M     | \times9.9    |   O/M | 12.96 |
-| ConnectedGraph_Set/add_transition   |  1.44 | O/M     | \times11.2   |   O/M | 16.07 |
-| ConnectedGraph_Graph/singleton      |  1.13 | \times1.7    | \times1.8    |  1.97 |  1.99 |
-| ConnectedGraph_Graph/add_node       |  2.05 | \times6.0    | \times6.1    | 12.37 | 12.47 |
-| ConnectedGraph_Graph/add_transition |  2.38 | \times20.0   | \times16.2   | 47.58 | 38.53 |
-| ColoredGraph_Graph/add_edge         |  3.68 | T/O     | T/O     |   T/O |   T/O |
-| ColoredGraph_KVStore/add_edge       |  7.82 | T/O     | T/O     |   T/O |   T/O |
-| LinkedList_KVStore/remove           |  7.03 | O/M     | T/O     |   O/M |   T/O |
-|-------------------------------------+-------+---------+---------+-------+-------|
-#+TBLFM: $5='(org-sbe "naive" (path $$1))::$2='(org-sbe "hatch" (path $$1))::$6='(org-sbe "verify" (path $$1))
-#+TBLFM: $3='(org-sbe "ratio" (x $$5) (y $$2))::$4='(org-sbe "ratio" (x $$6) (y $$2))
+|-------------------------------------+---------+---------+----------+----------+----------|
+| <l>                                 |     <r> |     <r> |      <r> |      <r> |      <r> |
+| ADT_ReprType/method                 |   HATch |   Naive | SpeedUp/ | Verifier | SpeedUp/ |
+|                                     | time(s) | time(s) |    Naive |  time(s) | Verifier |
+|-------------------------------------+---------+---------+----------+----------+----------|
+| Stack_LinkedList/cons               |    0.29 |    0.91 |     \times3.1 |     1.03 |     \times3.6 |
+| Stack_LinkedList/concat_aux         |    0.17 |    7.40 |    \times43.5 |     2.08 |    \times12.2 |
+| Stack_KVStore/cons                  |    0.76 |   10.87 |    \times14.3 |     3.20 |     \times4.2 |
+| Stack_KVStore/concat_aux            |    0.58 |     T/O |      T/O |     3.85 |     \times6.6 |
+| Queue_LinkedList/append             |    0.49 |    1.21 |     \times2.5 |     1.25 |     \times2.6 |
+| Queue_Graph/append                  |    1.11 |   14.45 |    \times13.0 |     8.15 |     \times7.3 |
+| Set_KVStore/insert                  |    0.56 |   24.97 |    \times44.6 |     0.79 |     \times1.4 |
+| Set_Tree/insert_aux                 |    0.70 |    3.33 |     \times4.8 |     7.75 |    \times11.1 |
+| Heap_LinkedList/insert_aux          |    0.07 |    0.90 |    \times12.9 |     0.92 |    \times13.1 |
+| Heap_Tree/insert_aux                |    0.64 |    1.52 |     \times2.4 |     1.58 |     \times2.5 |
+| MinSet_Set/minset_singleton         |    0.72 |    0.91 |     \times1.3 |     0.92 |     \times1.3 |
+| MinSet_Set/minset_insert            |    0.82 |    8.09 |     \times9.9 |     7.89 |     \times9.6 |
+| MinSet_KVStore/minset_singleton     |    0.42 |    7.53 |    \times17.9 |     1.78 |     \times4.2 |
+| MinSet_KVStore/minset_insert        |    1.17 |   13.23 |    \times11.3 |    18.22 |    \times15.6 |
+| LazySet_Tree/insert_aux             |    0.70 |    3.32 |     \times4.7 |     7.82 |    \times11.2 |
+| LazySet_Set/lazy_insert             |    0.31 |    0.40 |     \times1.3 |     0.42 |     \times1.4 |
+| LazySet_KVStore/insert_aux          |    0.56 |   25.37 |    \times45.3 |     0.79 |     \times1.4 |
+| DFA_KVStore/add_transition          |    0.41 |   12.59 |    \times30.7 |    12.59 |    \times30.7 |
+| DFA_KVStore/del_transition          |    0.66 |    9.95 |    \times15.1 |     9.93 |    \times15.0 |
+| DFA_Graph/add_transition            |    0.64 |    8.00 |    \times12.5 |     8.75 |    \times13.7 |
+| DFA_Graph/del_transition            |    1.19 |   11.63 |     \times9.8 |    10.28 |     \times8.6 |
+| ConnectedGraph_Set/singleton        |    0.18 |   54.51 |   \times302.8 |     2.82 |    \times15.7 |
+| ConnectedGraph_Set/add_node         |    0.83 |     O/M |      O/M |     8.31 |    \times10.0 |
+| ConnectedGraph_Set/add_transition   |    0.91 |     O/M |      O/M |    10.29 |    \times11.3 |
+| ConnectedGraph_Graph/singleton      |    0.72 |    1.28 |     \times1.8 |     1.25 |     \times1.7 |
+| ConnectedGraph_Graph/add_node       |    1.25 |    7.65 |     \times6.1 |     7.61 |     \times6.1 |
+| ConnectedGraph_Graph/add_transition |    1.50 |   23.93 |    \times16.0 |    31.09 |    \times20.7 |
+| ColoredGraph_Graph/add_edge         |    2.31 |     T/O |      T/O |      T/O |      T/O |
+| ColoredGraph_KVStore/add_edge       |    4.88 |     T/O |      T/O |      T/O |      T/O |
+| LinkedList_KVStore/remove_aux       |    4.98 |     T/O |      T/O |      N/A |      N/A |
+|-------------------------------------+---------+---------+----------+----------+----------|
+#+TBLFM: $3='(org-sbe "naive" (bench $$1))::$2='(org-sbe "hatch" (bench $$1))::$5='(org-sbe "verify" (bench $$1))::$4='(org-sbe "ratio" (x $$3) (y $$2))::$6='(org-sbe "ratio" (x $$5) (y $$2))
 
-One may regenerate the content of the table in place using the
-following script assuming a recent installation of =Emacs= and =pandoc=.
+The data in the table is produced using [[https://orgmode.org/worg/org-contrib/babel/][org-babel shipped with Emacs]].
+With a recent installation of *Emacs* (for scripting) and *pandoc* (for
+conversion to markdown), one may rerun all experiments (takes about 20
+minutes on AMD Ryzen 7 PRO 6850U) and regenerate this file, including
+the above table, using the following shell commands.
 
-#+begin_src shell
+#+begin_src shell :results silent
   emacs --batch -l ob -l ob-shell --eval "
     (let ((org-confirm-babel-evaluate nil))
       (dolist (file command-line-args-left)
-        (with-current-buffer (find-file-noselect file)
-          (org-table-recalculate-buffer-tables)
-          (save-buffer))))
+	(with-current-buffer (find-file-noselect file)
+	  (org-table-recalculate-buffer-tables)
+	  (save-buffer))))
   " README.org
-  pandoc -s README.org -o README.md
+  pandoc -s README.org --to=gfm -o README.md
 #+end_src
-
-* Print Raw Safety Properties :pandoc:
-
-#+name: replace
-#+begin_src elisp :var out="" :results output
-  ;;; replace | with \vert in the output of org-babel
-  (princ (replace-regexp-in-string "==" "\\\\equal" (replace-regexp-in-string "|" "\\\\vert" out)))
-  (terpri)
-#+end_src
-
-#+name: print-property
-#+begin_src shell :var bench="" :post replace(out=*this*)
-  dune exec -- bin/main.exe print-raw-ri meta-config.json data/ri/${bench}/ri.ml
-#+end_src
-
-|----------------------+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| ADT / ReprType       | Safety Property in Text                                                            | Safety Property in $\textrm{LTL}_f$                                                                                                                                                                                                                                                                |
-|----------------------+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Stack/LinkedList     | Elements are stored at unique locations.                                           | G¬⟨setNext m n \mid m \equal n⟩                                                                                                                                                                                                                                                                          |
-| Stack/KVStore        | Elements are linked linearly.                                                      | ∀(p : Cell.t).G¬(⟨putC k v \mid v \equal p⟩ ∧ XF⟨putC k v \mid v \equal p⟩)                                                                                                                                                                                                                                   |
-| Queue/LinkedList     | Elements are stored at unique locations.                                           | G¬⟨setNext m n \mid m \equal n⟩                                                                                                                                                                                                                                                                          |
-| Queue/Graph          | Degrees of vertices are at most one.                                               | ∀(n : Node.t).G¬⟨connect a b \mid a \equal b⟩ ∧ (G¬(⟨connect a b \mid a \equal n⟩ ∧ XF⟨connect a b \mid a \equal n⟩) ∧ G¬(⟨connect a b \mid b \equal n⟩ ∧ XF⟨connect a b \mid b \equal n⟩))                                                                                                                                    |
-| Set/KVStore          | Each key is associated with a distinct value.                                      | ∀(a : Elem.t).G¬(⟨put k v \mid v \equal a⟩ ∧ XF⟨put k v \mid v \equal a⟩)                                                                                                                                                                                                                                     |
-| Set/Tree             | The underlying tree is a binary search tree.                                       | G(¬⟨addLeft m n \mid m \leq n⟩ ∧ ¬⟨addRight m n \mid m \geq n⟩)                                                                                                                                                                                                                                           |
-| Heap/LinkedList      | Elements are sorted and stored at unique locations.                                | G¬⟨setNext m n \mid m \geq n⟩                                                                                                                                                                                                                                                                          |
-| Heap/Tree            | Parent nodes' values are smaller than their children's.                            | G(¬⟨addLeft m n \mid m \leq n⟩ ∧ ¬⟨addRight m n \mid m \geq n⟩)                                                                                                                                                                                                                                           |
-| MinSet/Set           | The cached element has been inserted and is no larger than other elements.         | ∀(m : Elem.t).G(¬(⟨write x \mid x \equal m⟩ ∧ XG¬⟨write x \mid true⟩) ∨ Min(m)) ∧ (¬G¬⟨write x \mid true⟩ ∨ G¬⟨insert k \mid true⟩)                                                                                                                                                                        |
-| MinSet/KVStore       | The cached element has been put and is no larger than other elements.              | ∀(m : Elem.t).(¬Written(m) ∨ Min(m)) ∧ (¬G¬⟨write x \mid true⟩ ∨ G¬⟨put k v \mid true⟩)                                                                                                                                                                                                              |
-| LazySet/Tree         | The underlying tree is a binary search tree.                                       | G(¬⟨addLeft m n \mid m \leq n⟩ ∧ ¬⟨addRight m n \mid m \geq n⟩)                                                                                                                                                                                                                                           |
-| LazySet/Set          | The same element is never inserted twice.                                          | ∀(elem : Elem.t).G¬(⟨insert k \mid k \equal elem⟩ ∧ XF⟨insert k \mid k \equal elem⟩)                                                                                                                                                                                                                          |
-| LazySet/KVStore      | Each key is associated with a distinct value.                                      | ∀(elem : Elem.t).G¬(⟨put k v \mid v \equal elem⟩ ∧ XF⟨put k v \mid v \equal elem⟩)                                                                                                                                                                                                                            |
-| DFA/KVStore          | Each state is associated with a non-empty list of next states via unique labels.   | ∀(a : Node.t).∀(c : Char.t).G¬(⟨put m (l, n) \mid m \equal a ∧ l \equal c⟩ ∧ (G¬⟨del m l \mid m \equal a ∧ l \equal c⟩ ∧ XF⟨put m (l, n) \mid m \equal a ∧ l \equal c⟩))                                                                                                                                                            |
-| DFA/Graph            | The outgoing edges of each state are labeled by different characters.              | ∀(a : Node.t).∀(c : Char.t).¬F(⟨connect m l n \mid m \equal a ∧ l \equal c⟩ ∧ X(¬⟨disconnect m l n \mid m \equal a ∧ l \equal c⟩U⟨connect m l n \mid m \equal a ∧ l \equal c⟩))                                                                                                                                                    |
-| ConnectedGraph/Set   | Edges (pairs of vertices) are uniquely stored with connected vertices being valid. | ∀(a : Node.t).∀(b : Node.t).G¬(⟨insert (m, n) \mid m \equal a ∧ n \equal b⟩ ∧ XF⟨insert (m, n) \mid m \equal a ∧ n \equal b⟩)                                                                                                                                                                                            |
-| ConnectedGraph/Graph | All vertices are connected in the graph.                                           | ∀(a : Node.t).¬IsNode(a) ∨ (HasEdgeIn(a) ∨ HasEdgeOut(a))                                                                                                                                                                                                                                           |
-| ColoredGraph/Graph   | Vertices are colored before being connected to vertices with different colors.     | ∀(a : Node.t).∀(b : Node.t).∀(c : Color.t).G¬⟨connect m n \mid m \equal a ∧ n \equal b⟩ ∨ ((¬⟨connect m n \mid m \equal a ∧ n \equal b⟩U⟨addNode n l \mid n \equal a⟩) ∧ ((¬⟨connect m n \mid m \equal a ∧ n \equal b⟩U⟨addNode n l \mid n = b⟩) ∧ (¬(node_has_color(a, c) ∧ node_has_color(b, c)) ∨ G¬⟨connect m n \mid m \equal a ∧ n \equal b⟩))) |
-| ColoredGraph/KVStore | Each vertex is associated with a list of vertices with different colors.           | ∀(a : Node.t).∀(b : Node.t).∀(c : Color.t).G¬(HasEdge(a, b) ∧ (Colored(a, c) ∧ Colored(b, c)))                                                                                                                                                                                                      |
-| LinkedList/KVStore   | Each node has at most one predecessor.                                             | \forall(a : Ptr.t).\forall(b : Ptr.t).G(\neg⟨putNext m n \mid m = a \wedge n = b⟩ \vee X((G¬⟨putNext m n \mid m = a \wedge n \neq b⟩) \vee (\neg⟨putNext m n \mid m \neq a \wedge n \equal b⟩U⟨putNext m n \mid m = a \wedge n \neq b⟩)))                                                                                                                       |
-|----------------------+------------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-#+TBLFM: $3='(org-sbe "print-property" (bench $$1))
-
 
 
