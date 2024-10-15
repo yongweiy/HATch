@@ -32,6 +32,3 @@ setup.log
 
 # Local OPAM switch
 _opam/
-
-# dot graph files
-dot-output/*

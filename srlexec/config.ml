@@ -357,6 +357,7 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
         | _ -> Some config)
 
   let output_dot name =
+    if not @@ Sys.file_exists "dot-output" then Sys.mkdir "dot-output" 0o755;
     EffSFA.output @@ open_out @@ Filename.concat "dot-output" name ^ "_eff.dot";
     ContSFA.output @@ open_out
     @@ Filename.concat "dot-output" name
