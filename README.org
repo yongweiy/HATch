@@ -27,45 +27,45 @@ or build the docker image on your own:
   docker build . --tag hatch
 #+end_src
 
-
-To install *HATch* manually, one may create an OCaml compiler switch,
-activate the environment in the current shell, install dependencies,
-and build the artifact, as follows:
+Then start a shell environment in the docker image:
 
 #+begin_src shell
-  opam switch -y create hatch 4.14.0+flambda
-  eval $(opam env)
-  opam install -y containers core core_unix ppx_jane ppx_inline_test ppx_assert ppx_sexp_conv ppx_optcomp ppx_hash ppx_compare ppx_let yojson dolog ocolor z3 qcheck choice oseq ocamlgraph
-  dune build
+  docker run -i --rm -t hatch
+#+end_src
+
+Lastly, compile *HATch* and find the executable at `_build/default/bin/main.exe`:
+
+#+begin_src shell
+  dune build --profile release
 #+end_src
 
 * Falsify Individual ADT implementations
 #+PROPERTY: header-args:shell :results verbatim code :prologue exec 2>&1 :epilogue true
 
-Folder =data/ri= stores various benchmarks in its subfolders, each
+Directory =data/ri= stores various benchmarks in its subfolders, each
 corresponding to an abstract data type (ADT) and its underlying
-stateful representation type.  Specifically, Each subfolder contains
+stateful representation type.  Consider the implementation of =Stack=
+using =LinkedList=, the sub-directory =data/ri/Stack_LinkedList= contains:
 
-- a safety property represented by a symbolic regular expression in
-  =ri.ml=
-- the implementation of one or more methods of the ADT, both correct
-  (without =_buggy= postfix) and buggy (with =_buggy= postfix)
-- the refinement-type-style specification that manifest the safety
-  properties and accompany the implementation in the same file
+- the auxiliary definitions of common symbolic regular expressions in
+  =automata_preds.ml=;
+- the specification of =LinkedList='s methods in =lib_rty.ml=;
+- the safety property represented by a symbolic regular expression in
+  =ri.ml=, and;
+- the definition of =Stack='s methods, e.g., =cons.ml= and =concat_aux.ml=,
+  and their respective buggy variant (=_buggy= postfix), with
+  accompanying specification that manifest the safety property.
 
-
-See [[*Experiments]] for the complete list of methods associated with each
-pair of ADT and its representation type.
-
-One may run *HATch* on the implementation of buggy methods like
-=Stack_LinkedList/remove_aux= (in place of =${bench}=) as follows:
-
+  
+Now we have *HATch* falsify the buggy implementation of
+=data/ri/Stack_LinkedList/cons= (in place of =${bench}= below):
+  
 #+name: hatch
 #+begin_src shell :var bench="" :post get_time(str="fail", out=*this*)
   timeout -v 1m _build/default/bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -empty-aware -exec-bound 20 -eff-append-bound 5
 #+end_src
 
-In seconds, *HATch* falsifies the implementation by finding an execution path with
+*HATch* falsifies the implementation by finding an execution path with
 
 - =Phi= : the path condition collected along the execution path
 - =Trace= : the trace of symbolic events that witness the execution
@@ -74,53 +74,63 @@ In seconds, *HATch* falsifies the implementation by finding an execution path wi
   execution can produce without violating the safety property 
 - =expr= : the term under execution
   
-#+call: hatch[:post]("LinkedList_KVStore/remove_aux")
+#+call: hatch[:post]("Stack_LinkedList/cons")
 
 #+RESULTS:
 #+begin_src shell
-[1mPreemptive Hatch[0m
-Phi    = _a2_0:{v:Ptr.t | true}, _a1_0:{v:Ptr.t | true}, hd:{v:Ptr.t | ¬is_nullptr _a2_0}, vl:{v:Elem.t | true}, _a_3:{v:Ptr.t | true}, next_2:{v:Ptr.t | v == _a_3}, x_26_2:{v:bool | ¬v}, _a_6:{v:Elem.t | true}, x_27_2:{v:Elem.t | v == _a_6}, x_28_2:{v:bool | (v <=> x_27_2 == vl) ∧ v}, _a_9:{v:Ptr.t | true}, x_29_2:{v:Ptr.t | v == _a_9}
-Trace  = ⟨putNext x_0 x_1 = vret | x_0 == _a1_0 ∧ x_1 == _a2_0 ∧ ¬(x_0 == hd ∧ x_1 == _a_3) ∧ x_0 == next_2 ∧ x_1 == _a_9⟩; ⟨putNext x_0 x_1 = vret | ¬(x_0 == _a1_0 ∧ x_1 == _a2_0) ∧ ¬x_0 == _a1_0 ∧ x_0 == hd ∧ x_1 == _a_3 ∧ ¬(x_0 == next_2 ∧ x_1 == _a_9) ∧ ¬x_0 == next_2⟩; ⟨putVal x_0 x_1 = vret | x_0 == next_2 ∧ x_1 == _a_6⟩; ⟨getNext x_0 = vret | vret == _a_3 ∧ x_0 == hd⟩; ⟨getVal x_0 = vret | vret == _a_6 ∧ x_0 == next_2⟩; ⟨getNext x_0 = vret | vret == _a_9 ∧ x_0 == next_2⟩; ⟨putNext x_0 x_1 = vret | x_0 == hd ∧ x_1 == x_29_2 ∧ ¬((¬(¬x_0 == _a1_0 ∧ x_1 == _a2_0) ∧ ¬(¬x_1 == _a2_0 ∧ x_0 == _a1_0)) ∨ (¬(¬x_0 == _a1_0 ∧ x_1 == _a2_0) ∧ ¬x_1 == _a2_0 ∧ x_0 == _a1_0))⟩
+Preemptive Hatch
+Phi    = x:{v:Elem.t | true}, s:{v:Cell.t | true}, x_30_2:{v:bool | ¬v}, _x_5:{v:Cell.t | true}, c_2:{v:Cell.t | v == _x_5}, x_31_2:{v:bool | v <=> c_2 == s}, x_32_2:{v:bool | (v <=> ¬x_31_2) ∧ v}, x_30_11:{v:bool | ¬v}, _x_14:{v:Cell.t | true}, c_11:{v:Cell.t | v == _x_14}, x_31_11:{v:bool | v <=> c_11 == s}, x_32_11:{v:bool | (v <=> ¬x_31_11) ∧ ¬v}
+Trace  = ⟨hasPrev x_0 = vret | ¬vret⟩; ⟨newCell x_0 = vret | vret == _x_5 ∧ ¬vret == c_11⟩; ⟨hasPrev x_0 = vret | ¬vret⟩; ⟨newCell x_0 = vret | vret == _x_14 ∧ vret == c_11⟩; ⟨putCellContent x_0 x_1 = vret | x_0 == c_11 ∧ x_1 == x⟩; ⟨setNext x_0 x_1 = vret | x_0 == c_11 ∧ x_1 == s ∧ x_0 == x_1⟩
 R_cont = ∅
 expr   =
-(let (f_1 : unit) = (() : unit) in (f_1 : unit) : unit)
-DT(LinkedList)  Task 1(remove_aux): exec time 1.803346(s), check failed
+(let (f_1 : Cell.t) =
+   (let (c'_2 : Cell.t) = (c_11 : Cell.t) in (c'_2 : Cell.t) : Cell.t) in
+ (f_1 : Cell.t) : Cell.t)
+DT(Stack)  Task 1(cons): exec time 0.519420(s), check failed
 #+end_src
 
-In this case, =Phi= and =Trace= together are satisfiable -- the
-associated state is reachable -- and =R_cont= is empty.  Therefore,
-*HATch* determines that the execution path is falsified.
+In this case, =Phi= and =Trace= together are satisfiable -- the associated
+state is reachable -- and =R_cont= is empty.  Therefore, *HATch*
+determines that the execution path is falsified.
 
-The derivative-free variant of =HATch= can be run as follows:
+The derivative-free variant of =HATch= can also falsify the buggy
+implementation, though it takes longer:
 
 #+name: naive
 #+begin_src shell :var bench="" :post get_time(str="fail", out=*this*)
   timeout -v 1m _build/default/bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -no-deriv -exec-bound 20
 #+end_src
 
-And it times out after 1 minute.
-#+call: naive[:post]("LinkedList_KVStore/remove_aux")
+#+call: naive[:post]("Stack_LinkedList/cons")
 
 #+RESULTS:
 #+begin_src shell
-timeout: sending signal TERM to command ‘dune’
+Terminated Hatch
+Phi    = x:{v:Elem.t | true}, s:{v:Cell.t | true}, x_30_2:{v:bool | ¬v}, _x_5:{v:Cell.t | true}, c_2:{v:Cell.t | v == _x_5}, x_31_2:{v:bool | v <=> c_2 == s}, x_32_2:{v:bool | (v <=> ¬x_31_2) ∧ ¬v}
+R_curr = ((((((((.\⟨setNext x_0 x_1 = vret | x_0 == x_1⟩)* ∧ (.*;(⟨setNext x_0 x_1 = vret | x_1 == s⟩;.*))ᶜ);⟨hasPrev x_0 = vret | ¬vret⟩) ∧ .*);⟨newCell x_0 = vret | vret == _x_5⟩) ∧ (.*;(⟨newCell x_0 = vret | vret == c_2⟩;.*)));⟨putCellContent x_0 x_1 = vret | x_0 == c_2 ∧ x_1 == x⟩) ∧ .*);⟨setNext x_0 x_1 = vret | x_0 == c_2 ∧ x_1 == s⟩
+expr   =
+(c_2 : Cell.t)
+DT(Stack)  Task 1(cons): exec time 1.592408(s), check failed
 #+end_src
 
 We regard prior work on type checking automata-augmented refinement
-type as the baseline verifier, which can be run as follows:
+type as the baseline verifier:
 
 #+name: verify
 #+begin_src shell :var bench="" :post get_time(str="fail", out=*this*)
   timeout -v 1m _build/default/bin/main.exe ri-type-check meta-config.json data/ri/${bench}_buggy.ml
 #+end_src
 
-The verifier also times out after 1 minute.
-#+call: verify[:post]("LinkedList_KVStore/remove_aux")
+Compared to *HATch*, the verifier also takes longer time to falsify the same buggy implementation:
+#+call: verify[:post]("Stack_LinkedList/cons")
 
 #+RESULTS:
 #+begin_src shell
-timeout: sending signal TERM to command ‘dune’
+DT(Stack)  Task 1(cons): exec time 1.556991(s), check failed
 #+end_src
+
+See Section [[*Experiments][Experiments]] for the complete list of methods associated
+with each pair of ADT and its representation type.
 
 * Post-Processing Scripts :pandoc:
 
@@ -209,5 +219,4 @@ the above table, using the following shell commands.
   " README.org
   pandoc -s README.org --to=gfm -o README.md
 #+end_src
-
 

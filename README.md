@@ -4,178 +4,178 @@ submission to POPL 2025. The derivative-guided symbolic execution engine
 follow the instructions below for installation and reproduction of
 experiment results.
 
-# Requirement and Installation
+# Getting Started
 
-We recommend the use of machines with at least 8 GB memory. The artifact
-depends on [opam](https://opam.ocaml.org/doc/Install.html) (version 2.X)
-to build, and [Emacs](https://www.gnu.org/software/emacs/download.html)
-(version
+We recommend the use of machines with at least 8 GB memory – **HATch**
+raises errors when memory usage exceeds 8GB. All experiments were
+performed on AMD Ryzen 7 PRO 6850U with 32 GB RAM. The artifact is
+provided as a [Docker](https://docs.docker.com/get-docker/) image.
+Before proceeding, try `docker run
+hello-world` to ensure that Docker works as intended.
 
-1.  Lisp for producing experiment results. A VDI disk image file is
-
-attached with the environment set up and can be opened in VirtualBox or
-similar.
-
-To install **HATch** manually, one may create an OCaml compiler switch,
-activate the environment in the current shell, install dependencies, and
-build the artifact, as follows:
+You may either load the pre-built docker image:
 
 ``` shell
-opam switch create hatch 4.14.0+flambda
-eval $(opam env)
-opam install core core_unix ppx_jane ppx_inline_test ppx_assert ppx_sexp_conv ppx_optcomp ppx_hash ppx_compare ppx_let yojson dolog ocolor z3 qcheck choice oseq ocamlgraph
-dune build
+docker load < ../hatch.tar.gz
+```
+
+or build the docker image on your own:
+
+``` shell
+docker build . --tag hatch
+```
+
+Then start a shell environment in the docker image:
+
+``` shell
+docker run -i --rm -t hatch
+```
+
+Lastly, compile **HATch** and find the executable at
+\`\_build/default/bin/main.exe\`:
+
+``` shell
+dune build --profile release
 ```
 
 # Falsify Individual ADT implementations
 
-```{=org}
-#+PROPERTY: header-args:shell :results verbatim code :prologue exec 2>&1
-```
-Folder `data/ri`{.verbatim} stores various benchmarks in its subfolders,
-each corresponding to an abstract data type (ADT) and its underlying
-stateful representation type. Specifically, Each subfolder contains
+Directory `data/ri` stores various benchmarks in its subfolders, each
+corresponding to an abstract data type (ADT) and its underlying stateful
+representation type. Consider the implementation of `Stack` using
+`LinkedList`, the sub-directory `data/ri/Stack_LinkedList` contains:
 
--   a safety property represented by a symbolic regular expression in
-    \`ri.ml\`
--   the implementation of one or more methods of the ADT, both correct
-    (without \`~buggy~\` postfix) and buggy (with \`~buggy~\` postfix)
--   the refinement-type-style specification that manifest the safety
-    properties and accompany the implementation in the same file
+- the auxiliary definitions of common symbolic regular expressions in
+  `automata_preds.ml`;
+- the specification of `LinkedList`'s methods in `lib_rty.ml`;
+- the safety property represented by a symbolic regular expression in
+  `ri.ml`, and;
+- the definition of `Stack`'s methods, e.g., `cons.ml` and
+  `concat_aux.ml`, and their respective buggy variant (`_buggy`
+  postfix), with accompanying specification that manifest the safety
+  property.
 
-See [*Experiments*]{.spurious-link target="*Experiments"} for the
-complete list of methods associated with each pair of ADT and its
-representation type.
+Now we have **HATch** falsify the buggy implementation of
+`data/ri/Stack_LinkedList/cons` (in place of `${bench}` below):
 
-One may run **HATch** on the implementation of buggy methods like
-`Stack_LinkedList/remove_aux`{.verbatim} (in place of
-`${bench}`{.verbatim}) as follows:
-
-``` {#hatch .shell var="bench=\"\"" post="get_time(str=\"fail\", out=*this*)"}
-timeout -v 1m dune exec -- bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -empty-aware -exec-bound 20 -eff-append-bound 5
+``` shell
+timeout -v 1m _build/default/bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -empty-aware -exec-bound 20 -eff-append-bound 5
 ```
 
-In seconds, **HATch** falsifies the implementation by finding an
-execution path with
+**HATch** falsifies the implementation by finding an execution path with
 
--   \`Phi\` : the path condition collected along the execution path
--   \`Trace\` : the trace of symbolic events that witness the execution
-    path
--   \`R~cont~\` : a symbolic regular expression accepting traces that
-    the execution can produce without violating the safety property
--   \`expr\` : the term under execution
+- `Phi` : the path condition collected along the execution path
+- `Trace` : the trace of symbolic events that witness the execution path
+- `R_cont` : a symbolic regular expression accepting traces that the
+  execution can produce without violating the safety property
+- `expr` : the term under execution
 
-```{=org}
-#+call: hatch[:post]("LinkedList_KVStore/remove_aux")
-```
 ``` shell
 Preemptive Hatch
-Phi    = b_0:{v:Ptr.t | true}, a_0:{v:Ptr.t | true}, hd:{v:Ptr.t | ¬is_nullptr b_0}, vl:{v:Elem.t | true}, a_3:{v:Ptr.t | true}, next_2:{v:Ptr.t | v == a_3}, x_26_2:{v:bool | ¬v}, a_6:{v:Elem.t | true}, x_27_2:{v:Elem.t | v == a_6}, x_28_2:{v:bool | (v <=> x_27_2 == vl) ∧ v}, a_9:{v:Ptr.t | true}, x_29_2:{v:Ptr.t | v == a_9}
-Trace  = ⟨putNext x_0 x_1 = vret | x_0 == a_0 ∧ x_1 == b_0 ∧ ¬(x_0 == hd ∧ x_1 == a_3) ∧ x_0 == next_2 ∧ x_1 == a_9⟩; ⟨putNext x_0 x_1 = vret | ¬(x_0 == a_0 ∧ x_1 == b_0) ∧ ¬x_0 == a_0 ∧ x_0 == hd ∧ x_1 == a_3 ∧ ¬(x_0 == next_2 ∧ x_1 == a_9) ∧ ¬x_0 == next_2⟩; ⟨putVal x_0 x_1 = vret | x_0 == next_2 ∧ x_1 == a_6⟩; ⟨getNext x_0 = vret | vret == a_3 ∧ x_0 == hd⟩; ⟨getVal x_0 = vret | vret == a_6 ∧ x_0 == next_2⟩; ⟨getNext x_0 = vret | vret == a_9 ∧ x_0 == next_2⟩; ⟨putNext x_0 x_1 = vret | x_0 == hd ∧ x_1 == x_29_2 ∧ ¬((¬(¬x_0 == a_0 ∧ x_1 == b_0) ∧ ¬(¬x_1 == b_0 ∧ x_0 == a_0)) ∨ (¬(¬x_0 == a_0 ∧ x_1 == b_0) ∧ ¬x_1 == b_0 ∧ x_0 == a_0))⟩
+Phi    = x:{v:Elem.t | true}, s:{v:Cell.t | true}, x_30_2:{v:bool | ¬v}, _x_5:{v:Cell.t | true}, c_2:{v:Cell.t | v == _x_5}, x_31_2:{v:bool | v <=> c_2 == s}, x_32_2:{v:bool | (v <=> ¬x_31_2) ∧ v}, x_30_11:{v:bool | ¬v}, _x_14:{v:Cell.t | true}, c_11:{v:Cell.t | v == _x_14}, x_31_11:{v:bool | v <=> c_11 == s}, x_32_11:{v:bool | (v <=> ¬x_31_11) ∧ ¬v}
+Trace  = ⟨hasPrev x_0 = vret | ¬vret⟩; ⟨newCell x_0 = vret | vret == _x_5 ∧ ¬vret == c_11⟩; ⟨hasPrev x_0 = vret | ¬vret⟩; ⟨newCell x_0 = vret | vret == _x_14 ∧ vret == c_11⟩; ⟨putCellContent x_0 x_1 = vret | x_0 == c_11 ∧ x_1 == x⟩; ⟨setNext x_0 x_1 = vret | x_0 == c_11 ∧ x_1 == s ∧ x_0 == x_1⟩
 R_cont = ∅
 expr   =
-(let (f_1 : unit) = (() : unit) in (f_1 : unit) : unit)
-DT(LinkedList)  Task 1(remove_aux): exec time 1.754225(s), check failed
+(let (f_1 : Cell.t) =
+   (let (c'_2 : Cell.t) = (c_11 : Cell.t) in (c'_2 : Cell.t) : Cell.t) in
+ (f_1 : Cell.t) : Cell.t)
+DT(Stack)  Task 1(cons): exec time 0.519420(s), check failed
 ```
 
-In this case, \`Phi\` and \`Trace\` are satisfiable, e.g., the
-associated state is reachable, and \`R~cont~\` is empty. Therefore,
+In this case, `Phi` and `Trace` together are satisfiable – the
+associated state is reachable – and `R_cont` is empty. Therefore,
 **HATch** determines that the execution path is falsified.
 
-The derivative-free variant of `HATch`{.verbatim} can be run as follows:
+The derivative-free variant of `HATch` can also falsify the buggy
+implementation, though it takes longer:
 
-``` {#naive .shell var="bench=\"\"" post="get_time(str=\"fail\", out=*this*)"}
-timeout -v 1m dune exec -- bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -no-deriv -exec-bound 20
-```
-
-And it
-
-```{=org}
-#+call: naive[:post]("ConnectedGraph_Set/add_node")
-```
 ``` shell
-timeout: sending signal TERM to command ‘dune’
+timeout -v 1m _build/default/bin/main.exe symb-exec meta-config.json data/ri/${bench}_buggy.ml -no-deriv -exec-bound 20
 ```
 
-```{=org}
-#+call: naive[:post]("LinkedList_KVStore/remove_aux")
-```
 ``` shell
-timeout: sending signal TERM to command ‘dune’
+Terminated Hatch
+Phi    = x:{v:Elem.t | true}, s:{v:Cell.t | true}, x_30_2:{v:bool | ¬v}, _x_5:{v:Cell.t | true}, c_2:{v:Cell.t | v == _x_5}, x_31_2:{v:bool | v <=> c_2 == s}, x_32_2:{v:bool | (v <=> ¬x_31_2) ∧ ¬v}
+R_curr = ((((((((.\⟨setNext x_0 x_1 = vret | x_0 == x_1⟩)* ∧ (.*;(⟨setNext x_0 x_1 = vret | x_1 == s⟩;.*))ᶜ);⟨hasPrev x_0 = vret | ¬vret⟩) ∧ .*);⟨newCell x_0 = vret | vret == _x_5⟩) ∧ (.*;(⟨newCell x_0 = vret | vret == c_2⟩;.*)));⟨putCellContent x_0 x_1 = vret | x_0 == c_2 ∧ x_1 == x⟩) ∧ .*);⟨setNext x_0 x_1 = vret | x_0 == c_2 ∧ x_1 == s⟩
+expr   =
+(c_2 : Cell.t)
+DT(Stack)  Task 1(cons): exec time 1.592408(s), check failed
 ```
 
-The baseline verifier that is designed to check automata-augmented
-refinement type can be run as follows:
+We regard prior work on type checking automata-augmented refinement type
+as the baseline verifier:
 
-``` {#verify .shell var="bench=\"\"" post="get_time(str=\"fail\", out=*this*)"}
-timeout -v 1m dune exec -- bin/main.exe ri-type-check meta-config.json data/ri/${bench}_buggy.ml
-```
-
-The verifier times out after 1 minute.
-
-```{=org}
-#+call: verify[:post]("LinkedList_KVStore/remove_aux")
-```
 ``` shell
-timeout: sending signal TERM to command ‘dune’
+timeout -v 1m _build/default/bin/main.exe ri-type-check meta-config.json data/ri/${bench}_buggy.ml
 ```
+
+Compared to **HATch**, the verifier also takes longer time to falsify
+the same buggy implementation:
+
+``` shell
+DT(Stack)  Task 1(cons): exec time 1.556991(s), check failed
+```
+
+See Section <span class="spurious-link"
+target="*Experiments">*Experiments*</span> for the complete list of
+methods associated with each pair of ADT and its representation type.
 
 # Experiments
 
-The data of Table 1 in the paper is produced using [org-babel shipped
-with Emacs](https://orgmode.org/worg/org-contrib/babel/) and shown
-below.
+The following table lists all methods whose buggy implementation are
+falsified by **HATch** (first column). The next three columns are also
+illustrated in Table 1 of the paper while the last two columns are
+omitted.
 
-  program                                 HATch   SpeedUp   SpeedUp   Naive   HAT
-  --------------------------------------- ------- --------- --------- ------- -------
-  Stack~LinkedList~/cons                  0.51     × 4.9     × 3.2    2.50    1.64
-  Stack~LinkedList~/concat~aux~           0.25    O/M        × 13.2   O/M     3.29
-  Stack~KVStore~/cons                     1.11    T/O        × 4.6    T/O     5.09
-  Stack~KVStore~/concat~aux~              0.94    O/M        × 6.5    O/M     6.08
-  Queue~LinkedList~/append                0.73     × 2.5     × 2.7    1.85    1.97
-  Queue~Graph~/append                     1.75    T/O        × 7.4    T/O     12.89
-  Set~KVStore~/insert                     0.87    T/O        × 1.4    T/O     1.25
-  Set~Tree~/insert~aux~                   1.10     × 40.7    × 11.1   44.72   12.24
-  Heap~LinkedList~/insert~aux~            0.11     × 12.9    × 13.2   1.42    1.45
-  Heap~Tree~/insert~aux~                  1.00     × 2.4     × 2.5    2.44    2.50
-  MinSet~Set~/minset~singleton~           1.14     × 1.3     × 1.3    1.48    1.50
-  MinSet~Set~/minset~insert~              1.32     × 9.0     × 9.9    11.93   13.10
-  MinSet~KVStore~/minset~singleton~       0.66    T/O        × 4.3    T/O     2.83
-  MinSet~KVStore~/minset~insert~          1.95     × 10.7    × 14.9   20.79   29.04
-  LazySet~Tree~/insert~aux~               1.09     × 4.8     × 11.5   5.25    12.58
-  LazySet~Set~/lazy~insert~               0.49     × 1.2     × 1.3    0.60    0.65
-  LazySet~KVStore~/insert~aux~            0.88     × 49.8    × 1.5    43.81   1.34
-  DFA~KVStore~/add~transition~            0.66     × 29.9    × 29.9   19.73   19.72
-  DFA~KVStore~/del~transition~            1.04     × 15.0    × 15.2   15.60   15.86
-  DFA~Graph~/add~transition~              0.98     × 12.9    × 12.8   12.62   12.51
-  DFA~Graph~/del~transition~              0.97     × 16.5    × 16.5   15.96   16.05
-  ConnectedGraph~Set~/singleton           0.27    T/O        × 16.4   T/O     4.44
-  ConnectedGraph~Set~/add~node~           1.31    O/M        × 9.9    O/M     12.96
-  ConnectedGraph~Set~/add~transition~     1.44    O/M        × 11.2   O/M     16.07
-  ConnectedGraph~Graph~/singleton         1.13     × 1.7     × 1.8    1.97    1.99
-  ConnectedGraph~Graph~/add~node~         2.05     × 6.0     × 6.1    12.37   12.47
-  ConnectedGraph~Graph~/add~transition~   2.38     × 20.0    × 16.2   47.58   38.53
-  ColoredGraph~Graph~/add~edge~           3.68    T/O       T/O       T/O     T/O
-  ColoredGraph~KVStore~/add~edge~         7.82    T/O       T/O       T/O     T/O
-  LinkedList~KVStore~/remove              7.03    O/M       T/O       O/M     T/O
+|                                     |         |         |          |          |          |
+|:------------------------------------|--------:|--------:|---------:|---------:|---------:|
+| ADT_ReprType/method                 |   HATch |   Naive | SpeedUp/ | Verifier | SpeedUp/ |
+|                                     | time(s) | time(s) |    Naive |  time(s) | Verifier |
+| Stack_LinkedList/cons               |    0.29 |    0.91 |    × 3.1 |     1.03 |    × 3.6 |
+| Stack_LinkedList/concat_aux         |    0.17 |    7.40 |   × 43.5 |     2.08 |   × 12.2 |
+| Stack_KVStore/cons                  |    0.76 |   10.87 |   × 14.3 |     3.20 |    × 4.2 |
+| Stack_KVStore/concat_aux            |    0.58 |     T/O |      T/O |     3.85 |    × 6.6 |
+| Queue_LinkedList/append             |    0.49 |    1.21 |    × 2.5 |     1.25 |    × 2.6 |
+| Queue_Graph/append                  |    1.11 |   14.45 |   × 13.0 |     8.15 |    × 7.3 |
+| Set_KVStore/insert                  |    0.56 |   24.97 |   × 44.6 |     0.79 |    × 1.4 |
+| Set_Tree/insert_aux                 |    0.70 |    3.33 |    × 4.8 |     7.75 |   × 11.1 |
+| Heap_LinkedList/insert_aux          |    0.07 |    0.90 |   × 12.9 |     0.92 |   × 13.1 |
+| Heap_Tree/insert_aux                |    0.64 |    1.52 |    × 2.4 |     1.58 |    × 2.5 |
+| MinSet_Set/minset_singleton         |    0.72 |    0.91 |    × 1.3 |     0.92 |    × 1.3 |
+| MinSet_Set/minset_insert            |    0.82 |    8.09 |    × 9.9 |     7.89 |    × 9.6 |
+| MinSet_KVStore/minset_singleton     |    0.42 |    7.53 |   × 17.9 |     1.78 |    × 4.2 |
+| MinSet_KVStore/minset_insert        |    1.17 |   13.23 |   × 11.3 |    18.22 |   × 15.6 |
+| LazySet_Tree/insert_aux             |    0.70 |    3.32 |    × 4.7 |     7.82 |   × 11.2 |
+| LazySet_Set/lazy_insert             |    0.31 |    0.40 |    × 1.3 |     0.42 |    × 1.4 |
+| LazySet_KVStore/insert_aux          |    0.56 |   25.37 |   × 45.3 |     0.79 |    × 1.4 |
+| DFA_KVStore/add_transition          |    0.41 |   12.59 |   × 30.7 |    12.59 |   × 30.7 |
+| DFA_KVStore/del_transition          |    0.66 |    9.95 |   × 15.1 |     9.93 |   × 15.0 |
+| DFA_Graph/add_transition            |    0.64 |    8.00 |   × 12.5 |     8.75 |   × 13.7 |
+| DFA_Graph/del_transition            |    1.19 |   11.63 |    × 9.8 |    10.28 |    × 8.6 |
+| ConnectedGraph_Set/singleton        |    0.18 |   54.51 |  × 302.8 |     2.82 |   × 15.7 |
+| ConnectedGraph_Set/add_node         |    0.83 |     O/M |      O/M |     8.31 |   × 10.0 |
+| ConnectedGraph_Set/add_transition   |    0.91 |     O/M |      O/M |    10.29 |   × 11.3 |
+| ConnectedGraph_Graph/singleton      |    0.72 |    1.28 |    × 1.8 |     1.25 |    × 1.7 |
+| ConnectedGraph_Graph/add_node       |    1.25 |    7.65 |    × 6.1 |     7.61 |    × 6.1 |
+| ConnectedGraph_Graph/add_transition |    1.50 |   23.93 |   × 16.0 |    31.09 |   × 20.7 |
+| ColoredGraph_Graph/add_edge         |    2.31 |     T/O |      T/O |      T/O |      T/O |
+| ColoredGraph_KVStore/add_edge       |    4.88 |     T/O |      T/O |      T/O |      T/O |
+| LinkedList_KVStore/remove_aux       |    4.98 |     T/O |      T/O |      N/A |      N/A |
 
-```{=org}
-#+TBLFM: $5='(org-sbe "naive" (path $$1))::$2='(org-sbe "hatch" (path $$1))::$6='(org-sbe "verify" (path $$1))
-```
-```{=org}
-#+TBLFM: $3='(org-sbe "ratio" (x $$5) (y $$2))::$4='(org-sbe "ratio" (x $$6) (y $$2))
-```
-One may regenerate the content of the table in place using the following
-script assuming a recent installation of `Emacs`{.verbatim} and
-`pandoc`{.verbatim}.
+The data in the table is produced using [org-babel shipped with
+Emacs](https://orgmode.org/worg/org-contrib/babel/). With a recent
+installation of **Emacs** (for scripting) and **pandoc** (for conversion
+to markdown), one may rerun all experiments (takes about 20 minutes on
+AMD Ryzen 7 PRO 6850U) and regenerate this file, including the above
+table, using the following shell commands.
 
 ``` shell
 emacs --batch -l ob -l ob-shell --eval "
   (let ((org-confirm-babel-evaluate nil))
     (dolist (file command-line-args-left)
-      (with-current-buffer (find-file-noselect file)
-        (org-table-recalculate-buffer-tables)
-        (save-buffer))))
+  (with-current-buffer (find-file-noselect file)
+    (org-table-recalculate-buffer-tables)
+    (save-buffer))))
 " README.org
-pandoc -s README.org -o README.md
+pandoc -s README.org --to=gfm -o README.md
 ```
