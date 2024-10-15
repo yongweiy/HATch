@@ -79,3 +79,6 @@ let[@libRty] ptr_eq ?l:(a = (true : [%v: Ptr.t]) [@over])
 
 let[@libRty] is_nullptr ?l:(a = (true : [%v: Ptr.t]) [@over])
   : [%v: bool] = true
+
+let[@libRty] get_nullptr ?l:(a = (true : [%v: unit]) [@over])
+  : [%v: Ptr.t] = is_nullptr v

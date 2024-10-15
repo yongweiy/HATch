@@ -42,6 +42,7 @@ val cell_eq : Cell.t -> Cell.t -> bool
 (* pointer *)
 val ptr_eq : Ptr.t -> Ptr.t -> bool
 val is_nullptr : Ptr.t -> bool
+val get_nullptr : unit -> Ptr.t
 
 (* eff operator **)
 
