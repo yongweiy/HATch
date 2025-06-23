@@ -4,7 +4,7 @@ module F (L : Lit.T) = struct
   include Ax
 
   type cty = { v : string Nt.typed; phi : prop } [@@deriving sexp]
-  type 'a ctyped = { cx : 'a; cty : cty }
+  type 'a ctyped = { cx : 'a; cty : cty } [@@deriving sexp]
 
   (* open Sugar *)
 

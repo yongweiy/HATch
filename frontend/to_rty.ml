@@ -20,10 +20,17 @@ and pprint_arr = function
 
 and pprint_hty = function
   | Rty rty -> pprint_rty rty
+  | TMonad { ret; trans } ->
+      spf "(%s:%s)!%s" ret.rx (pprint_rty ret.rty) (pprint_trans trans)
   | Htriple { pre; resrty; post } ->
       spf "[%s]%s[%s]" (To_srl.pprint pre) (pprint_rty resrty)
         (To_srl.pprint post)
   | Inter (hty1, hty2) -> spf "%s ⊓ %s" (pprint_hty hty1) (pprint_hty hty2)
+
+and pprint_trans = function
+  | PreAndPost (pre, post) ->
+    spf "[%s/%s]" (To_srt.pprint_srl pre) (To_srt.pprint_srl post)
+  | PreToPost fwd -> spf "[%s]" (To_srt.pprint fwd)
 
 (* let hty_of_ocamlexpr expr = *)
 (*   let ltlf_hty = To_ltlf_hty.hty_of_ocamlexpr expr in *)
@@ -78,8 +85,22 @@ and rty_of_ocamlexpr_aux expr =
   in
   aux expr
 
+and trans_of_ocamlexpr_aux expr =
+  match expr.pexp_desc with
+  | Pexp_construct (id, Some e)
+    when String.equal "Post" @@ To_id.longid_to_id id ->
+      PreAndPost (StarL (AtomL LAlg.mk_top), To_srt.of_ocamlexpr_srl e)
+  | _ -> PreToPost (To_srt.of_ocamlexpr expr)
+
 and hty_of_ocamlexpr_aux expr =
   match expr.pexp_desc with
+  | Pexp_record ([ (id1, e1); (id2, e2) ], None) -> (
+      let id1, id2 = map2 To_id.longid_to_id (id1, id2) in
+      let ret = id1 #:: (rty_of_ocamlexpr_aux e1) in
+      let trans = trans_of_ocamlexpr_aux e2 in
+      match id2 with
+      | "trans" -> TMonad { ret; trans }
+      | _ -> failwith "syntax error")
   | Pexp_record ([ (id1, e1); (id2, e2); (id3, e3) ], None) -> (
       let id1, id2, id3 = map3 To_id.longid_to_id (id1, id2, id3) in
       let pre, post = map2 To_srl.of_ocamlexpr (e1, e3) in

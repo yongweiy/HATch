@@ -136,10 +136,14 @@ let type_check_qualifier (opctx : NOpTypectx.ctx) (ctx : NTypectx.ctx)
     | Or es -> Or (List.sort compare_prop @@ List.map (aux ctx) es)
     | Iff (e1, e2) -> Iff (aux ctx e1, aux ctx e2)
     | Forall (u, body) ->
-        let ctx' = NTypectx.new_to_right ctx u in
+        let ctx' =
+          NTypectx.new_to_right ctx @@ Coersion.Aux.force __FILE__ __LINE__ u
+        in
         Forall (u, aux ctx' body)
     | Exists (u, body) ->
-        let ctx' = NTypectx.new_to_right ctx u in
+        let ctx' =
+          NTypectx.new_to_right ctx @@ Coersion.Aux.force __FILE__ __LINE__ u
+        in
         Exists (u, aux ctx' body)
   in
   aux ctx qualifier

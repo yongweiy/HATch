@@ -14,7 +14,7 @@ open Sugar
 (*   let stat = *)
 (*     Stat.init (is_rec, num_vars, num_branchs, num_effects, num_events, num_lits) *)
 (*   in *)
-(*   let () = Smtquery.stat_init () in *)
+(*   let () = Smt.stat_init () in *)
 (*   let () = Baux.stat_init () in *)
 (*   let () = Desymbolic.stat_init () in *)
 (*   () *)
@@ -76,7 +76,7 @@ let check (opctx', rctx') structure normalized_structure =
             (* let () = Printf.printf "%s\n" @@ R.layout_rty rty in *)
             (* let () = failwith "end" in *)
             (* let () = do_stat comp rty in *)
-            (* let () = Smtquery.stat_init () in *)
+            (* let () = Smt.stat_init () in *)
             (* let () = Baux.stat_init () in *)
             (* let () = Desymbolic.stat_init () in *)
             let typecheck_time, res =
@@ -87,7 +87,7 @@ let check (opctx', rctx') structure normalized_structure =
             in
             (* let stat = *)
             (*   Stat.update_dynamic_stat stat typecheck_time *)
-            (*     (Smtquery.stat_get_cur ()) (Baux.stat_get_cur ()) *)
+            (*     (Smt.stat_get_cur ()) (Baux.stat_get_cur ()) *)
             (*     (Desymbolic.stat_get_cur ()) *)
             (* in *)
             let if_type_checked =

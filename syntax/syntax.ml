@@ -3,13 +3,15 @@ module OptNt = Lit.OptTy
 module LRaw = Lit.LitRaw
 module StructureRaw = Structure.F (LRaw)
 module RtyRaw = StructureRaw.R
-module LRtyRaw = StructureRaw.LR
+module LRtyRaw = StructureRaw.L
+
 (* module QualifierRaw = RtyRaw.P *)
 
 module Nt = Lit.Ty
 module L = Lit.Lit
 module Structure = Structure.F (L)
 module Rty = Structure.R
+module Smt = Smt.F(Rty.Ax)
 
 module TypedCorelang = struct
   include Corelang.F (L)

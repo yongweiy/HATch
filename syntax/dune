@@ -9,12 +9,17 @@
    corelang
    lit
    qualifier
+   smt
    axiom
    cty
    sevent
+   aevent
    sfa
    srl
    ltlf
+   srt
+   sft
+   efflang
    rty_tree
    rty
    ; ltlf_rty
@@ -27,5 +32,5 @@
    syntax
  )
  (preprocess (pps ppx_optcomp ppx_compare ppx_sexp_conv ppx_hash ppx_jane))
- (libraries env)
+ (libraries env z3 smtquery stateMachine)
 )

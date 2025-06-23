@@ -8,6 +8,9 @@
    coersion_se
    coersion_srl
    coersion_ltlf
+   coersion_srl
+   coersion_aevent
+   coersion_srt
    coersion_cty
    coersion_rty
    coersion_termlang

@@ -1,13 +1,11 @@
 (library
  (name smtquery)
  (wrapped true)
- (libraries language core env z3 desymbolic)
+ (libraries core env z3)
  (modules
+   sig
    z3aux
-   litencoding
-   propencoding
    z3reg
-   regencoding
    check
    smtquery
    z3hex

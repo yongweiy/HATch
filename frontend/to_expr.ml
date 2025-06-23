@@ -249,6 +249,8 @@ let expr_of_ocamlexpr expr =
         let rhs = aux e1 in
         let letbody = aux e2 in
         (Let { if_rec = false; lhs; rhs; letbody }) #: None
+    | Pexp_assert e ->
+        (Ite (aux e, (Const Constant.U) #: unit_ty, Err #: unit_ty)) #: unit_ty
     | _ ->
         raise
         @@ failwith

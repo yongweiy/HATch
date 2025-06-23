@@ -19,6 +19,7 @@ and pprint_arr = function
 
 and pprint_hty = function
   | Rty rty -> pprint_rty rty
+  | TMonad {ret; trans} -> _failatwith __FILE__ __LINE__ "unimp"
   | Htriple { pre; resrty; post } ->
       spf "[%s]%s[%s]" (To_ltlf.pprint pre) (pprint_rty resrty)
         (To_ltlf.pprint post)

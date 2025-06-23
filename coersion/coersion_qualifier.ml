@@ -12,8 +12,8 @@ let force qualifier =
     | Raw.And es -> And (List.map aux es)
     | Raw.Or es -> Or (List.map aux es)
     | Raw.Iff (e1, e2) -> Iff (aux e1, aux e2)
-    | Raw.Forall (u, e) -> Forall (u, aux e)
-    | Raw.Exists (u, e) -> Exists (u, aux e)
+    | Raw.Forall (u, e) -> Forall (Coersion_aux.force __FILE__ __LINE__ u, aux e)
+    | Raw.Exists (u, e) -> Exists (Coersion_aux.force __FILE__ __LINE__ u, aux e)
   in
   aux qualifier
 
@@ -27,7 +27,7 @@ let besome qualifier =
     | And es -> Raw.And (List.map aux es)
     | Or es -> Raw.Or (List.map aux es)
     | Iff (e1, e2) -> Raw.Iff (aux e1, aux e2)
-    | Forall (u, e) -> Raw.Forall (u, aux e)
-    | Exists (u, e) -> Raw.Exists (u, aux e)
+    | Forall (u, e) -> Raw.Forall (Coersion_aux.besome u, aux e)
+    | Exists (u, e) -> Raw.Exists (Coersion_aux.besome u, aux e)
   in
   aux qualifier

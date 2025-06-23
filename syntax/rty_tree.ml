@@ -1,4 +1,17 @@
-module SyntaxF (A : Sfa.SFA) (L : Lit.T) = struct
+(* TODO the module should be parameterized by the extension of rty to hty *)
+module SyntaxF
+    (A : sig
+      type sfa [@@deriving sexp]
+    end)
+    (Eff : sig
+      type eff [@@deriving sexp]
+    end)
+    (* (T : sig *)
+    (* type srl [@@deriving sexp] *)
+    (* type srt [@@deriving sexp] *)
+    (* end) *)
+    (L : Lit.T) =
+struct
   open Sexplib.Std
   module Cty = Cty.F (L)
   include Cty
@@ -12,7 +25,11 @@ module SyntaxF (A : Sfa.SFA) (L : Lit.T) = struct
     | ArrArr of rty
   [@@deriving sexp]
 
-  and hty = Rty of rty | Htriple of htriple | Inter of hty * hty
+  and hty =
+    | Rty of rty
+    | Monad of { ret : string rtyped; eff : Eff.eff }
+    | Htriple of htriple
+    | Inter of hty * hty
   [@@deriving sexp]
 
   and htriple = { pre : A.sfa; resrty : rty; post : A.sfa } [@@deriving sexp]
@@ -62,6 +79,7 @@ module SyntaxF (A : Sfa.SFA) (L : Lit.T) = struct
     (* let open Nt in *)
     match rty with
     | Rty rty -> erase_rty rty
+    | Monad { ret = { rty; _ }; _ } -> erase_rty rty
     | Htriple { resrty; _ } -> erase_rty resrty
     | Inter (hty1, hty2) ->
         let ty1 = erase_hty hty1 in

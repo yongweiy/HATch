@@ -14,6 +14,9 @@
    to_se
    to_srl
    to_ltlf
+   to_aevent
+   to_srt
+   to_sft
    to_cty
    to_ltlf_hty
    to_rty

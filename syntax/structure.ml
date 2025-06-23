@@ -1,7 +1,7 @@
 module F (L : Lit.T) = struct
   include Termlang.F (L)
   module R = Rty.F (L)
-  module LR = R.LRty
+  module L = R.LRty
 
   type rty_kind = RtyLib | RtyToCheck
 
@@ -30,7 +30,7 @@ module F (L : Lit.T) = struct
     | Func_dec of string Normalty.Ntyped.typed
     | FuncImp of { name : string; if_rec : bool; body : term typed }
     | Rty of { name : string; kind : rty_kind; rty : R.rty }
-    | LtlfRty of { name : string; kind : rty_kind; rty : LR.rty }
+    | LtlfRty of { name : string; kind : rty_kind; rty : L.rty }
     | Axiom of R.Ax.ax
 
   type structure = entry list
@@ -114,7 +114,7 @@ module F (L : Lit.T) = struct
         | RtyToCheck -> [])
     | LtlfRty { name; kind; rty } -> (
         match kind with
-        | RtyLib -> [ (name, LR.erase_rty rty) ]
+        | RtyLib -> [ (name, L.erase_rty rty) ]
         | RtyToCheck -> [])
     | Func_dec x -> [ (x.x, x.ty) ]
     | FuncImp _ | Type_dec _ | LtlfPred _ | SrlPred _ | LtlfProperty _

@@ -230,7 +230,7 @@ let type_check_ (ri_input, s) source_file =
       (ri_input.dt, ri_input.lib, !Stat.local_interface_dynamic_stat)
   in
   (* let () = Stat.dump default_stat_file ress in *)
-  (* let () = Printf.printf "%s\n" @@ Smtquery.(layout_cache check_bool_cache) in *)
+  (* let () = Printf.printf "%s\n" @@ Smt.(layout_cache check_bool_cache) in *)
   interfaceStaic
 
 let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
@@ -279,19 +279,13 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
         Typecheck.pprint_res_one res)
     @@ DerivEngine.main (setting.oprctx, setting.rctx) code normalized
 
-let infer_incorrectness_ (ri_input, s) property_file source_file =
+let type_infer_under_ setting source_files =
   let setting, code, normalized, interfaceStaic =
-    normalized_ @@ ntyped_ @@ print_source_code_ s [ source_file ]
+    normalized_ @@ ntyped_ @@ print_source_code_ setting source_files
   in
-  let[@warning "-8"] Structure.[ SrlProperty { name; args; srl_body } ] =
-    Ntypecheck.opt_to_typed_structure setting.opnctx setting.nctx
-    @@ load_property setting property_file
-  in
-  let open Automata in
-  let module A = Builder.F (Literal.M) in
-  let a = A.of_regex srl_body in
-  A.to_dot_file "property.dot" a;
-  interfaceStaic
+  let _ = Inferincor.infer (setting.oprctx, setting.rctx) code normalized in
+  ()
+
 (* Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ]; *)
 
 (* let () = *)
@@ -315,7 +309,7 @@ let infer_incorrectness_ (ri_input, s) property_file source_file =
 (* in*)
 
 (* let () = Stat.dump default_stat_file ress in *)
-(* let () = Printf.printf "%s\n" @@ Smtquery.(layout_cache check_bool_cache) in *)
+(* let () = Printf.printf "%s\n" @@ Smt.(layout_cache check_bool_cache) in *)
 
 let subtype_check_ (ri_input, s) source_file =
   let setting, code, normalized, _ =
@@ -397,6 +391,21 @@ let prepare_ri s source_file =
   let dt_stat = { dt; lib; numGhost; sizeRI; interfaceStatStatic = [] } in
   (ri_input, s, dt_stat)
 
+let prepare_incor s source_file =
+  let source_file' = String.split source_file ~on:'/' in
+  let dir, interface_file =
+    match Zzdatatype.Datatype.List.last_destruct_opt source_file' with
+    | Some (dir, name) -> (String.concat ~sep:"/" dir, name)
+    | None -> failwith "wrong path"
+  in
+  let libntyfile = sprintf "%s/lib_nty.ml" dir in
+  let librtyfile = sprintf "%s/lib_rty.ml" dir in
+  {
+    s with
+    opeffnctx_files = s.opeffnctx_files @ [ libntyfile ];
+    opeffrctx_files = s.opeffrctx_files @ [ librtyfile ];
+  }
+
 let typecheck_cmds =
   [
     ( "print-source-code",
@@ -458,16 +467,14 @@ let typecheck_cmds =
       let s = mk_inputs_setting meta_config_file in
       let ri_input, s, dt_stat = prepare_ri s source_file in
       symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ] );
-    ( "ri-infer-incorrectness",
+    ( "infer-incorrectness",
       cmd_config_source "infer incorrectness"
         (fun meta_config_file source_file () ->
           let s = mk_inputs_setting meta_config_file in
-          let ri_input, s, dt_stat = prepare_ri s source_file in
-          let interfaceStatStatic =
-            infer_incorrectness_ (ri_input, s) ri_input.ri_file source_file
-          in
-          let dt_stat = { dt_stat with interfaceStatStatic } in
-          let () = update_dt_static_stat dt_stat in
+          let s = prepare_incor s source_file in
+          let _ = type_infer_under_ s [ source_file ] in
+          (* let dt_stat = { dt_stat with interfaceStatStatic } in *)
+          (* let () = update_dt_static_stat dt_stat in *)
           ()) );
     ( "type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->

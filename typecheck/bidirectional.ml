@@ -191,6 +191,7 @@ and comp_type_check (typectx : typectx) (comp : comp typed) (hty : hty) :
       let* () = comp_type_check typectx comp hty1 in
       let* () = comp_type_check typectx comp hty2 in
       Some ()
+  | _ -> _failatwith __FILE__ __LINE__ "die"
 
 and comp_htriple_check (typectx : typectx) (comp : comp typed) (hty : hty) :
     unit option =

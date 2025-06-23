@@ -77,7 +77,7 @@ type layout_setting = {
   sym_iff : string;
   sym_forall : string;
   sym_exists : string;
-  layout_typedid : string Nt.typed -> string;
+  layout_typedid : string typed -> string;
   layout_mp : string -> string;
 }
 
@@ -92,7 +92,7 @@ let detailssetting =
     sym_iff = "<=>";
     sym_forall = "∀";
     sym_exists = "∃";
-    layout_typedid = Nt.(fun x -> spf "(%s:%s)" x.x (layout x.ty));
+    layout_typedid = (fun x -> spf "(%s:%s)" x.x (layout x.ty));
     layout_mp = (fun x -> x);
   }
 

@@ -1,52 +1,33 @@
-open Sexplib.Std
-open Ppx_compare_lib.Builtin
-open Ppx_hash_lib.Std.Hash.Builtin
-open Zzdatatype.Datatype
-open Sugar
-open Language
-open Rty
+module F (L : Lit.T) = struct
+  open Sexplib.Std
+  open Ppx_compare_lib.Builtin
+  open Ppx_hash_lib.Std.Hash.Builtin
+  open Zzdatatype.Datatype
+  open Sugar
+  open Common
 
-module type T = sig
-  type t [@@deriving sexp, compare, equal, hash]
+  (* open Srl.F (L) *)
+  open Sevent.F (L)
+  (* module Q = Qualifier.F (L) *)
 
-  val layout : t -> string
-  val of_sevent : sevent -> t
-  val subst : string * lit -> t -> t
-  val default : t
-  val mk_top : t
-  val mk_bot : t
-  val mk_not : t -> t
-  val mk_and : t -> t -> t
-  val mk_or : t -> t -> t
-  val mk_and_list : t list -> t
-  val mk_or_list : t list -> t
-  val join : t list -> t list -> t list
-  val entails_sevent : t -> sevent -> bool
-  val quotient : t -> regex -> regex
-  val to_prop : t -> Rty.prop
+  type phi = P.prop [@@deriving sexp, compare, equal, hash]
 
-  val notbot_opt :
-    ?rctx:RTypectx.ctx -> substs:(string * string) list -> t -> t option
-end
-
-module M : T = struct
-  type op_pred = Whitelist of string list | Blacklist of prop * string list
+  type op_pred = Whitelist of string list | Blacklist of phi * string list
   [@@deriving sexp, compare, equal, hash]
 
   let subst_op_pred yz = function
     | Whitelist ops -> Whitelist ops
-    | Blacklist (phi, ops) -> Blacklist (P.subst_prop yz phi, ops)
+    | Blacklist (phi, ops) -> Blacklist (subst_prop yz phi, ops)
 
-  type t = { events : eff_event list; op_pred : op_pred }
+  type pred = { events : eff_event list; op_pred : op_pred }
   [@@deriving sexp, compare, equal, hash]
   (** a literal denotes a disjunction of qualified events from `events`
     and other events whose `op` is conditioned by `op_filter`.
     a literal is well-formed if the disjuncted events are disjoint.
  *)
 
-  let mk_top = { events = []; op_pred = Blacklist (P.mk_true, []) }
+  let mk_top = { events = []; op_pred = Blacklist (mk_true, []) }
   let mk_bot = { events = []; op_pred = Whitelist [] }
-  let default = mk_bot
 
   let of_sevent = function
     | GuardEvent phi -> { events = []; op_pred = Blacklist (phi, []) }
@@ -54,13 +35,23 @@ module M : T = struct
 
   (** temporary holder for input/output args *)
   let mk_event_from_op ?(phi = P.mk_true) op =
-    { op; vs = []; v = Common.v_ret_name #: Nt.unit_ty; phi }
+    { op; vs = []; v = v_ret_name #: unit_ty; phi }
 
-  let subst yz { events; op_pred } =
+  let fv_op_pred = function
+    | Blacklist (phi, _) -> fv_prop phi
+    | Whitelist _ -> []
+
+  let fv_pred { events; op_pred } =
+    fv_op_pred op_pred @ List.concat_map fv_eff_event events
+
+  let subst_pred yz { events; op_pred } =
     {
-      events = List.map (SE.subst_ev yz) events;
+      events = List.map (subst_ev yz) events;
       op_pred = subst_op_pred yz op_pred;
     }
+
+  let normalize_name_pred { events; op_pred } =
+    { events = List.map normalize_name_eff_event events; op_pred }
 
   let to_prop { events; op_pred } =
     match op_pred with
@@ -71,20 +62,6 @@ module M : T = struct
              events
     | Whitelist _ -> P.mk_true
     | Blacklist (phi, _) -> phi
-
-  let layout { events; op_pred } =
-    let event_strs = List.map (fun ev -> layout_sevent (EffEvent ev)) events in
-    match op_pred with
-    | Whitelist ops_include ->
-        let strs = event_strs @ ops_include in
-        if List.is_empty strs then "⊥" else String.concat " | " strs
-    | Blacklist (phi, ops_exclude) when List.is_empty ops_exclude ->
-        _assert __FILE__ __LINE__ "layout_literal: disjointness"
-        @@ List.is_empty event_strs;
-        layout_prop phi
-    | Blacklist (phi, ops_exclude) ->
-        String.concat " | " @@ event_strs
-        @ [ layout_prop phi ^ "¬(" ^ String.concat " | " ops_exclude ^ ")" ]
 
   let of_sevent = function
     | GuardEvent phi -> { events = []; op_pred = Blacklist (phi, []) }
@@ -194,77 +171,73 @@ module M : T = struct
   (** It is sound to only consider either `guard` or `events`
     because of the way literals are emitted from the SFA.
    TODO: how much faster using syntactic approach instead of calling solver *)
-  let entails_sevent { events; op_pred } = function
+  let entails_sevent ~is_sat { events; op_pred } = function
     | GuardEvent phi' -> (
-        let entails_ev { op; vs; v; phi } =
-          Smtquery.check_bool @@ smart_implies phi phi'
-        in
+        let entails_ev { op; vs; v; phi } = is_sat @@ smart_implies phi phi' in
         match op_pred with
-        | Blacklist (phi, _) when Smtquery.check_bool @@ smart_implies phi phi'
-          ->
+        | Blacklist (phi, _) when is_sat @@ smart_implies phi phi' ->
             List.for_all entails_ev events
         | Blacklist _ -> false
         | Whitelist [] -> List.for_all entails_ev events
-        | Whitelist _ -> Smtquery.check_bool phi')
+        | Whitelist _ -> is_sat phi')
     | EffEvent ev' -> (
         match (events, op_pred) with
         | [ ev ], Whitelist [] when String.equal ev.op ev'.op ->
-            Smtquery.check_bool @@ smart_implies ev.phi ev'.phi
-        | [], Whitelist [ op ] when String.equal op ev'.op ->
-            Smtquery.check_bool ev'.phi
+            is_sat @@ smart_implies ev.phi ev'.phi
+        | [], Whitelist [ op ] when String.equal op ev'.op -> is_sat ev'.phi
         | _ -> false)
 
-  let quotient l r =
-    let rec aux = function
-      | EmptyA | EpsilonA -> EmptyA
-      | AnyA -> EpsilonA
-      | EventA sev -> if entails_sevent l sev then EpsilonA else EmptyA
-      | LorA (r, s) -> mk_orA (aux r, aux s)
-      | LandA (r, s) -> mk_andA (aux r, aux s)
-      | SeqA (r, s) when is_nullable r -> mk_orA (mk_seqA (aux r, s), aux s)
-      | SeqA (r, s) -> mk_seqA (aux r, s)
-      | StarA r -> mk_seqA (aux r, mk_starA r)
-      | ComplementA r -> mk_complementA (aux r)
-      | SetMinusA (r, s) -> aux @@ mk_andA (r, mk_complementA s)
-    in
-    aux r
+  let entails ~is_sat ev1 ev2 =
+    _failatwith __FILE__ __LINE__ "TODO: AEvent.entails unimplemented"
 
-  let check_prop ~rctx phi =
-    (* print_query ~rctx ~gvars phi; *)
-    (* let rctx = *)
-    (*   RTypectx.new_to_rights rctx *)
-    (*   @@ List.map (fun { x; ty } -> { rx = x; rty = Rty.mk_top ty }) gvars *)
-    (* in *)
-    (* let rctx = *)
-    (*   RTypectx.new_to_right rctx *)
-    (*     { rx = Rename.unique "a"; rty = Rty.mk_unit_rty_from_prop phi } *)
-    (* in *)
-    let lhs_rty = Rty.mk_top Nt.unit_ty in
-    (* let rhs_rty = Rty.mk_bot Nt.unit_ty in *)
-    let rhs_rty = Rty.mk_unit_rty_from_prop phi in
-    Subtyping.sub_rty_bool rctx (lhs_rty, rhs_rty)
+  (* let quotient l r = *)
+  (*   let rec aux = function *)
+  (*     | EmptyA | EpsilonA -> EmptyA *)
+  (*     | AnyA -> EpsilonA *)
+  (*     | EventA sev -> if entails_sevent l sev then EpsilonA else EmptyA *)
+  (*     | LorA (r, s) -> mk_orA (aux r, aux s) *)
+  (*     | LandA (r, s) -> mk_andA (aux r, aux s) *)
+  (*     | SeqA (r, s) when is_nullable r -> mk_orA (mk_seqA (aux r, s), aux s) *)
+  (*     | SeqA (r, s) -> mk_seqA (aux r, s) *)
+  (*     | StarA r -> mk_seqA (aux r, mk_starA r) *)
+  (*     | ComplementA r -> mk_complementA (aux r) *)
+  (*     | SetMinusA (r, s) -> aux @@ mk_andA (r, mk_complementA s) *)
+  (*   in *)
+  (*   aux r *)
 
-  let is_bot_ev ~rctx ~substs ({ op; vs; v; phi } : eff_event) =
-    check_prop ~rctx
-    @@ smart_multi_forall (v :: vs)
-    @@ mk_not
-    @@ List.fold_right subst_prop_id substs phi
+  (* let check_prop ~rctx phi = *)
+  (*   (\* print_query ~rctx ~gvars phi; *\) *)
+  (*   (\* let rctx = *\) *)
+  (*   (\*   RTypectx.new_to_rights rctx *\) *)
+  (*   (\*   @@ List.map (fun { x; ty } -> { rx = x; rty = Rty.mk_top ty }) gvars *\) *)
+  (*   (\* in *\) *)
+  (*   (\* let rctx = *\) *)
+  (*   (\*   RTypectx.new_to_right rctx *\) *)
+  (*   (\*     { rx = Rename.unique "a"; rty = Rty.mk_unit_rty_from_prop phi } *\) *)
+  (*   (\* in *\) *)
+  (*   let lhs_rty = Rty.mk_top Nt.unit_ty in *)
+  (*   (\* let rhs_rty = Rty.mk_bot Nt.unit_ty in *\) *)
+  (*   let rhs_rty = Rty.mk_unit_rty_from_prop phi in *)
+  (*   Subtyping.sub_rty_bool rctx (lhs_rty, rhs_rty) *)
+
+  let is_bot_ev ~is_bot ({ op; vs; v; phi } : eff_event) =
+    is_bot @@ smart_multi_forall (v :: vs) @@ mk_not phi
 
   (** determine if a literal is bottom, i.e., no satisfying events *)
-  let is_bot ~rctx ~substs { events; op_pred } =
+  let is_bot ~is_bot { events; op_pred } =
     match op_pred with
-    | Whitelist [] -> List.for_all (is_bot_ev ~rctx ~substs) events
-    | Blacklist (phi, _) when Smtquery.check_bool @@ mk_not phi ->
-        List.for_all (is_bot_ev ~rctx ~substs) events
+    | Whitelist [] -> List.for_all (is_bot_ev ~is_bot) events
+    | Blacklist (phi, _) when is_bot @@ mk_not phi ->
+        List.for_all (is_bot_ev ~is_bot) events
     | _ -> false
 
   (** an enhancement over `is_bot` by pruning out non-satisfiable branches
    TODO: add an option to enable over-approximation *)
-  let notbot_opt ?(rctx = []) ~substs ({ events; op_pred } as l) =
-    let events = List.filter (not << is_bot_ev ~rctx ~substs) events in
+  let simp_opt ~is_bot ({ events; op_pred } as l) =
+    let events = List.filter (not << is_bot_ev ~is_bot) events in
     match op_pred with
     | Whitelist [] when List.is_empty events -> None
-    | Blacklist (phi, _) when Smtquery.check_bool @@ mk_not phi ->
+    | Blacklist (phi, _) when is_bot @@ mk_not phi ->
         if List.is_empty events then None
         else Some { events; op_pred = Whitelist [] }
     | _ -> Some { l with events }
@@ -327,4 +300,57 @@ module M : T = struct
     List.cartesian_map mk_and lits1 lits2
     @ List.map (mk_and (mk_not @@ mk_or_list lits2)) lits1
     @ List.map (mk_and (mk_not @@ mk_or_list lits1)) lits2
+
+  type ev = { op : string; args : lit typed list; ret : lit typed }
+  [@@deriving sexp, compare, equal, hash]
+
+  type func = IdentityF | EventF of ev [@@deriving sexp, compare, equal, hash]
+
+  let mk_ident = IdentityF
+
+  let subst_func yz = function
+    | IdentityF -> IdentityF
+    | EventF { op; args; ret } ->
+        let aux = subst_lit yz in
+        EventF { op; args = List.map (( #-> ) aux) args; ret = aux #-> ret }
+
+  let fv_func = function
+    | IdentityF -> []
+    | EventF { op; args; ret } -> List.concat_map fv_typed_lit (ret :: args)
+
+  let ev_to_sev { op; args; ret } =
+    let tys = List.map (fun { ty; _ } -> ty) args in
+    let vs = vs_names_from_types tys in
+    let v = v_ret_name #: ret.ty in
+    let phi =
+      And
+        (List.map2
+           (fun y z -> Lit (mk_lit_eq_lit y.ty (AVar y.x) z.x))
+           (v :: vs) (ret :: args))
+    in
+    { op_pred = Whitelist []; events = [ { op; vs; v; phi } ] }
+
+  (** in case we need to check functionality of SFTs *)
+  let mk_disequal sev f g =
+    match (f, g) with
+    | IdentityF, IdentityF -> mk_bot
+    | IdentityF, EventF ev | EventF ev, IdentityF ->
+        mk_and sev @@ mk_not @@ ev_to_sev ev
+    | EventF ev1, EventF ev2 ->
+        let sev1 = ev_to_sev ev1 in
+        let sev2 = ev_to_sev ev2 in
+        mk_and sev
+        @@ mk_or (mk_and sev1 @@ mk_not sev2) (mk_and sev2 @@ mk_not sev1)
+
+  (** [compose f g = fun x -> f (g x)] *)
+  let compose f = function
+    | IdentityF -> f
+    | EventF ev -> ( match f with IdentityF -> EventF ev | EventF _ -> f)
+
+  let mk_preimage sev = function
+    | IdentityF -> sev
+    | EventF ev -> mk_and sev @@ ev_to_sev ev
+
+  (** Miss global constraint in theory but should be safe in practice *)
+  let mk_image sev = function IdentityF -> sev | EventF ev -> ev_to_sev ev
 end

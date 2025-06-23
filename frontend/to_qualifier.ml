@@ -18,10 +18,13 @@ let notated (name, t) =
   @@ Ptyp_extension (Location.mknoloc name, PTyp (Type.t_to_core_type t))
 
 let quantifier_to_patten (q, u) =
-  To_pat.dest_to_pat
-    (Ppat_constraint
-       ( To_pat.dest_to_pat (Ppat_var (Location.mknoloc u.Nt.x)),
-         notated (Qn.to_string q, u.Nt.ty) ))
+  match u.ty with
+  | None -> To_pat.dest_to_pat (Ppat_var (Location.mknoloc u.x))
+  | Some ty ->
+      To_pat.dest_to_pat
+        (Ppat_constraint
+           ( To_pat.dest_to_pat (Ppat_var (Location.mknoloc u.x)),
+             notated (Qn.to_string q, ty) ))
 
 open Zzdatatype.Datatype
 
@@ -122,7 +125,7 @@ let quantifier_of_ocamlexpr arg =
         | _ -> failwith "parsing: prop function"
       in
       let ty = Type.core_type_to_t ct in
-      (q, Nt.(arg #: ty))
+      (q, (arg #: (Some ty)))
   | _ -> _failatwith __FILE__ __LINE__ "quantifier needs type notation"
 
 let qualifier_of_ocamlexpr expr =

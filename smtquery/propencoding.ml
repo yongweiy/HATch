@@ -1,24 +1,6 @@
 open Z3
 open Z3aux
-open Language.Rty.P
 open Sugar
-
-let to_z3 ctx prop =
-  let rec aux prop =
-    match prop with
-    | Implies (p1, p2) -> Z3.Boolean.mk_implies ctx (aux p1) (aux p2)
-    | Ite (p1, p2, p3) -> Z3.Boolean.mk_ite ctx (aux p1) (aux p2) (aux p3)
-    | Not p -> Z3.Boolean.mk_not ctx (aux p)
-    | And ps -> Z3.Boolean.mk_and ctx (List.map aux ps)
-    | Or ps -> Z3.Boolean.mk_or ctx (List.map aux ps)
-    | Iff (p1, p2) -> Z3.Boolean.mk_iff ctx (aux p1) (aux p2)
-    | Forall (u, body) ->
-        make_forall ctx [ tpedvar_to_z3 ctx (u.ty, u.x) ] (aux body)
-    | Exists (u, body) ->
-        make_exists ctx [ tpedvar_to_z3 ctx (u.ty, u.x) ] (aux body)
-    | Lit lit -> Litencoding.typed_lit_to_z3 ctx lit #: Nt.bool_ty
-  in
-  aux prop
 
 (* tail recursoin version *)
 
@@ -67,6 +49,7 @@ let to_z3_tail ctx prop =
     | Or ps -> aux_multi (fun ps -> c (Z3.Boolean.mk_or ctx ps)) ps
     | Iff (p1, p2) ->
         aux (fun p2 -> aux (fun p1 -> c (Z3.Boolean.mk_iff ctx p1 p2)) p1) p2
+    | (Forall (u, body) | Exists (u, body)) when u.ty = Ty_Unit -> aux c body
     | Forall (u, body) ->
         aux
           (fun body ->

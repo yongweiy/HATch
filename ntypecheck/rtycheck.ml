@@ -15,6 +15,13 @@ let rec hty_check opctx ctx (hty : hty) : hty =
   in
   match hty with
   | Rty rty -> Rty (rty_check opctx ctx rty)
+  | TMonad { ret; trans } ->
+      let ret = { ret with rty = rty_check opctx ctx ret.rty } in
+      let ctx' =
+        Typectx.new_to_right ctx Nt.{ x = ret.rx; ty = erase_rty ret.rty }
+      in
+      let trans = trans_check opctx ctx' trans in
+      TMonad { ret; trans }
   | Htriple { pre; resrty; post } ->
       let pre = Srlcheck.check opctx ctx pre in
       let post = Srlcheck.check opctx ctx post in
@@ -28,6 +35,15 @@ let rec hty_check opctx ctx (hty : hty) : hty =
           (Nt.eq (erase_hty h1) (erase_hty h2))
       in
       Inter (h1, h2)
+
+and trans_check opctx ctx = function
+  | PreAndPost (pre, post) ->
+      let pre = Srtcheck.check_srl opctx ctx pre in
+      let post = Srtcheck.check_srl opctx ctx post in
+      PreAndPost (pre, post)
+  | PreToPost fwd ->
+      let fwd = Srtcheck.check opctx ctx fwd in
+      PreToPost fwd
 
 and arr_check opctx ctx (arr : arr) : arr * string Nt.typed option =
   match arr with

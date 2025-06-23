@@ -14,8 +14,8 @@ module F (L : Lit.T) = struct
     | And of prop list
     | Or of prop list
     | Iff of prop * prop
-    | Forall of string Normalty.Ntyped.typed * prop
-    | Exists of string Normalty.Ntyped.typed * prop
+    | Forall of string typed * prop
+    | Exists of string typed * prop
   [@@deriving sexp, compare, equal, hash]
 
   let get_cbool = function Lit (AC (Constant.B b)) -> Some b | _ -> None
@@ -112,6 +112,8 @@ module F (L : Lit.T) = struct
     | And ps -> mk_or (List.map mk_not ps)
     | Or ps -> And (List.map mk_not ps)
     | p -> Not p
+
+  let mk_implies p1 p2 = mk_or [ mk_not p1; p2 ]
 
   let smart_and l =
     if List.exists is_false l then mk_false
@@ -237,37 +239,30 @@ module F (L : Lit.T) = struct
   let get_eqprop_by_name prop x =
     match prop with Lit lit -> get_eqlit_by_name lit x | _ -> None
 
-  let smart_multi_exists (l : 'a Lit.Ty.typed list) prop =
+  let smart_multi_exists l prop =
     let fvs = fv_prop prop in
     List.fold_right
-      (fun (Normalty.Ntyped.{ x; ty } as u) prop ->
-        if ty = Ty_unit || List.mem x fvs then prop else Exists (u, prop))
+      (fun u prop -> if List.mem u.x fvs then Exists (u, prop) else prop)
       l prop
 
-  let smart_multi_forall (l : 'a Lit.Ty.typed list) prop =
+  let smart_multi_forall l prop =
     let fvs = fv_prop prop in
     List.fold_right
-      (fun (Normalty.Ntyped.{ x; ty } as u) prop ->
-        if ty = Ty_unit || List.mem x fvs then prop else Forall (u, prop))
+      (fun u prop ->
+        if (not @@ eq unit_ty u.ty) && List.mem u.x fvs then Forall (u, prop)
+        else prop)
       l prop
 
   let smart_sigma (u, xprop) prop =
-    let Normalty.Ntyped.{ x; ty } = u in
-    match ty with
-    | Normalty.Ntyped.Ty_unit -> smart_add_to xprop prop
-    | _ -> (
-        match get_eqprop_by_name xprop x with
-        | None -> Exists (u, smart_add_to xprop prop)
-        | Some z -> subst_prop (x, z) prop)
+    match get_eqprop_by_name xprop u.x with
+    | None -> Exists (u, smart_add_to xprop prop)
+    | Some z -> subst_prop (u.x, z) prop
 
   let smart_pi (u, xprop) prop =
-    let Normalty.Ntyped.{ x; ty } = u in
-    match ty with
-    | Normalty.Ntyped.Ty_unit -> smart_implies xprop prop
-    | _ -> (
-        match get_eqprop_by_name xprop x with
-        | None -> Forall (u, smart_implies xprop prop)
-        | Some z -> subst_prop (x, z) prop)
+    match get_eqprop_by_name xprop u.x with
+    | None when eq unit_ty u.ty -> smart_implies xprop prop
+    | None -> Forall (u, smart_implies xprop prop)
+    | Some z -> subst_prop (u.x, z) prop
 
   let find_boollit_assignment_from_prop_opt prop x =
     let rec aux e =
@@ -345,14 +340,13 @@ module F (L : Lit.T) = struct
   (* module Nt = Normalty.Ntyped *)
 
   let close_fv (x, phix) prop =
-    if not (List.exists (String.equal x.Normalty.Ntyped.x) (fv_prop prop)) then
-      prop
+    if not (List.exists (String.equal x.x) (fv_prop prop)) then prop
     else
       let lits = get_lits prop in
       let lits =
         List.filter_map
           (fun lit ->
-            match find_assignment_of_intvar lit x.Normalty.Ntyped.x with
+            match find_assignment_of_intvar lit x.x with
             | Some eqlit -> Some (lit, eqlit)
             | None -> None)
           lits

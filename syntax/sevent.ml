@@ -53,13 +53,15 @@ module F (L : Lit.T) = struct
 
   (* fv *)
 
+  let fv_eff_event { vs; phi; v; _ } =
+    List.filter (fun y ->
+        not (List.exists (fun x -> String.equal x.x y) (v :: vs)))
+    @@ fv_prop phi
+
   let fv sevent =
     match sevent with
     | GuardEvent phi -> fv_prop phi
-    | EffEvent { vs; phi; v; _ } ->
-        List.filter (fun y ->
-            not (List.exists (fun x -> String.equal x.x y) (v :: vs)))
-        @@ fv_prop phi
+    | EffEvent ev -> fv_eff_event ev
 
   (* gather lits *)
 
@@ -110,24 +112,22 @@ module F (L : Lit.T) = struct
 
   (* normalize name *)
 
+  let normalize_name_eff_event { op; vs; v; phi } =
+    let vs' = vs_names (List.length vs) in
+    let tmp = _safe_combine __FILE__ __LINE__ (v :: vs) (v_ret_name :: vs') in
+    let phi =
+      List.fold_left (fun phi (x', x) -> P.subst_prop_id (x'.x, x) phi) phi tmp
+    in
+    let vs, v =
+      match List.map (fun (v, x) -> { x; ty = v.ty }) tmp with
+      | [] -> _failatwith __FILE__ __LINE__ "die"
+      | v :: vs -> (vs, v)
+    in
+    { op; vs; v; phi }
+
   let normalize_name = function
     | GuardEvent phi -> GuardEvent phi
-    | EffEvent { op; vs; v; phi } ->
-        let vs' = vs_names (List.length vs) in
-        let tmp =
-          _safe_combine __FILE__ __LINE__ (v :: vs) (v_ret_name :: vs')
-        in
-        let phi =
-          List.fold_left
-            (fun phi (x', x) -> P.subst_prop_id (x'.x, x) phi)
-            phi tmp
-        in
-        let vs, v =
-          match List.map (fun (v, x) -> { x; ty = v.ty }) tmp with
-          | [] -> _failatwith __FILE__ __LINE__ "die"
-          | v :: vs -> (vs, v)
-        in
-        EffEvent { op; vs; v; phi }
+    | EffEvent ev -> EffEvent (normalize_name_eff_event ev)
 
   (* unify name *)
 

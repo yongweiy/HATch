@@ -1,9 +1,16 @@
 module F (L : Lit.T) = struct
-  (* open Sexplib.Std *)
   module LTLf = Ltlf.F (L)
-  module LRty = Rty_tree.SyntaxF (LTLf) (L)
+
+  (* module SRT = Srt.F (L) *)
+  module LEff = Efflang.F (L)
+  module LRty = Rty_tree.SyntaxF (LTLf) (LEff) (L)
   module SRL = LTLf.SRL
-  include Rty_tree.SyntaxF (SRL) (L)
+
+  (* include SRT *)
+  module Eff = Efflang.F (L)
+  module Rty = Rty_tree.SyntaxF (SRL) (Eff) (L)
+  include Eff
+  include Rty
   include SRL
 
   let rec apply_pred_rty pred rty =
@@ -25,6 +32,7 @@ module F (L : Lit.T) = struct
     let open LRty in
     match hty with
     | Rty rty -> Rty (apply_pred_rty pred rty)
+    | Monad _ -> hty
     | Htriple { pre; resrty; post } ->
         Htriple
           {
@@ -37,6 +45,8 @@ module F (L : Lit.T) = struct
 
   let rec to_hty = function
     | LRty.Rty rty -> Rty (to_rty rty)
+    | LRty.Monad { ret; eff } ->
+        Monad { ret = { rx = ret.rx; rty = to_rty ret.rty }; eff }
     | LRty.Htriple { pre; resrty; post } ->
         Htriple
           {
@@ -56,6 +66,37 @@ module F (L : Lit.T) = struct
     | LRty.ArrRty { arr; rethty } ->
         ArrRty { arr = to_arr arr; rethty = to_hty rethty }
 
+  (* normalize name *)
+
+  let rec normalize_name_rty tau1 =
+    match tau1 with
+    | BaseRty { cty } -> BaseRty { cty = Cty.normalize_name cty }
+    | ArrRty { arr; rethty } ->
+        ArrRty
+          { arr = normalize_name_arr arr; rethty = normalize_name_hty rethty }
+
+  and normalize_name_arr = function
+    | NormalArr { rx; rty } -> NormalArr { rx; rty = normalize_name_rty rty }
+    | GhostArr Nt.{ x; ty } -> GhostArr Nt.{ x; ty }
+    | ArrArr rty -> ArrArr (normalize_name_rty rty)
+
+  and normalize_name_hty tau =
+    match tau with
+    | Rty rty -> Rty (normalize_name_rty rty)
+    | Monad { ret; eff } ->
+        Monad { ret = { ret with rty = normalize_name_rty ret.rty }; eff }
+    | Htriple { pre; resrty; post } ->
+        Htriple { pre; resrty = normalize_name_rty resrty; post }
+    | Inter (hty1, hty2) ->
+        let hty1 = normalize_name_hty hty1 in
+        let hty2 = normalize_name_hty hty2 in
+        Inter (hty1, hty2)
+
+  and normalize_name_trans = function
+    | PreAndPost (pre, post) ->
+        PreAndPost (normalize_name_srl pre, normalize_name_srl post)
+    | PreToPost srt -> PreToPost (normalize_name_srt srt)
+
   let eq_arr_kind k1 k2 =
     match (k1, k2) with
     | NormalArr _, NormalArr _ -> true
@@ -68,6 +109,10 @@ module F (L : Lit.T) = struct
 
   let hty_force_rty = function
     | Rty rty -> rty
+    | _ -> _failatwith __FILE__ __LINE__ "die"
+
+  let hty_force_tmonad = function
+    | TMonad tmonad -> tmonad
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
   let rty_force_cty = function
@@ -107,6 +152,13 @@ module F (L : Lit.T) = struct
 
   and subst_hty (y, z) = function
     | Rty rty -> Rty (subst_rty (y, z) rty)
+    | TMonad { ret; trans } ->
+        TMonad
+          {
+            ret = { ret with rty = subst_rty (y, z) ret.rty };
+            trans =
+              (if String.equal y ret.rx then trans else subst_trans (y, z) trans);
+          }
     | Htriple { pre; resrty; post } ->
         Htriple
           {
@@ -115,6 +167,10 @@ module F (L : Lit.T) = struct
             post = SRL.subst (y, z) post;
           }
     | Inter (hty1, hty2) -> Inter (subst_hty (y, z) hty1, subst_hty (y, z) hty2)
+
+  and subst_trans ((y, z) as yz) = function
+    | PreAndPost (pre, post) -> PreAndPost (subst_srl yz pre, subst_srl yz post)
+    | PreToPost sft -> PreToPost (subst_srt yz sft)
 
   let subst_rty_id (y, z) rty =
     let z = AVar z in
@@ -144,8 +200,16 @@ module F (L : Lit.T) = struct
     | GhostArr _ -> []
     | ArrArr rty -> fv_rty rty
 
+  and fv_trans = function
+    | PreAndPost (pre, post) -> fv_srl pre @ fv_srl post
+    | PreToPost srt -> fv_srt srt
+
   and fv_hty = function
     | Rty rty -> fv_rty rty
+    | TMonad { ret; trans } ->
+        fv_rty ret.rty
+        @ List.filter (not << String.equal ret.rx)
+        @@ fv_trans trans
     | Htriple { pre; resrty; post } ->
         let pre_fv = SRL.fv pre in
         let resrty_fv = fv_rty resrty in
@@ -190,30 +254,6 @@ module F (L : Lit.T) = struct
   (*   | _ -> _failatwith file line "die" *)
 
   (* TODO: gather lits/rtys *)
-
-  (* normalize name *)
-
-  let rec normalize_name_rty tau1 =
-    match tau1 with
-    | BaseRty { cty } -> BaseRty { cty = Cty.normalize_name cty }
-    | ArrRty { arr; rethty } ->
-        ArrRty
-          { arr = normalize_name_arr arr; rethty = normalize_name_hty rethty }
-
-  and normalize_name_arr = function
-    | NormalArr { rx; rty } -> NormalArr { rx; rty = normalize_name_rty rty }
-    | GhostArr Nt.{ x; ty } -> GhostArr Nt.{ x; ty }
-    | ArrArr rty -> ArrArr (normalize_name_rty rty)
-
-  and normalize_name_hty tau =
-    match tau with
-    | Rty rty -> Rty (normalize_name_rty rty)
-    | Htriple { pre; resrty; post } ->
-        Htriple { pre; resrty = normalize_name_rty resrty; post }
-    | Inter (hty1, hty2) ->
-        let hty1 = normalize_name_hty hty1 in
-        let hty2 = normalize_name_hty hty2 in
-        Inter (hty1, hty2)
 
   (* unify name *)
 
@@ -342,9 +382,9 @@ module F (L : Lit.T) = struct
   let hty_to_triples hty =
     let rec aux hty =
       match hty with
-      | Rty _ -> []
       | Htriple { pre; resrty; post } -> [ (pre, resrty, post) ]
       | Inter (h1, h2) -> aux h1 @ aux h2
+      | _ -> []
     in
     aux hty
 

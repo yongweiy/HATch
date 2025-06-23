@@ -12,7 +12,7 @@
             subtyping
             typecheck
             srlexec
-            automata
+            inferincor
  )
  (modules
    caux

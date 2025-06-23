@@ -194,20 +194,20 @@ let literal_union_events { events; op_pred } evs =
 let entails_sevent { events; op_pred } = function
   | GuardEvent phi' -> (
       let entails_ev { op; vs; v; phi } =
-        Smtquery.check_bool @@ smart_implies phi phi'
+        Smt.check_bool @@ smart_implies phi phi'
       in
       match op_pred with
-      | Blacklist (phi, _) when Smtquery.check_bool @@ smart_implies phi phi' ->
+      | Blacklist (phi, _) when Smt.check_bool @@ smart_implies phi phi' ->
           List.for_all entails_ev events
       | Blacklist _ -> false
       | Whitelist [] -> List.for_all entails_ev events
-      | Whitelist _ -> Smtquery.check_bool phi')
+      | Whitelist _ -> Smt.check_bool phi')
   | EffEvent ev' -> (
       match (events, op_pred) with
       | [ ev ], Whitelist [] when String.equal ev.op ev'.op ->
-          Smtquery.check_bool @@ smart_implies ev.phi ev'.phi
+          Smt.check_bool @@ smart_implies ev.phi ev'.phi
       | [], Whitelist [ op ] when String.equal op ev'.op ->
-          Smtquery.check_bool ev'.phi
+          Smt.check_bool ev'.phi
       | _ -> false)
 
 let is_bot_ev ~rctx ~substs ({ op; vs; v; phi } : eff_event) =
@@ -220,7 +220,7 @@ let is_bot_ev ~rctx ~substs ({ op; vs; v; phi } : eff_event) =
 let is_bot ~rctx ~substs { events; op_pred } =
   match op_pred with
   | Whitelist [] -> List.for_all (is_bot_ev ~rctx ~substs) events
-  | Blacklist (phi, _) when Smtquery.check_bool @@ mk_not phi ->
+  | Blacklist (phi, _) when Smt.check_bool @@ mk_not phi ->
       List.for_all (is_bot_ev ~rctx ~substs) events
   | _ -> false
 
@@ -230,7 +230,7 @@ let notbot_opt ?(rctx = []) ~substs ({ events; op_pred } as l) =
   let events = List.filter (not << is_bot_ev ~rctx ~substs) events in
   match op_pred with
   | Whitelist [] when List.is_empty events -> None
-  | Blacklist (phi, _) when Smtquery.check_bool @@ mk_not phi ->
+  | Blacklist (phi, _) when Smt.check_bool @@ mk_not phi ->
       if List.is_empty events then None
       else Some { events; op_pred = Whitelist [] }
   | _ -> Some { l with events }

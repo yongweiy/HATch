@@ -15,6 +15,9 @@ module T = struct
     | Complement of reg
   [@@deriving sexp]
 
+  let mk_not = function Complement r -> r | r -> Complement r
+  let mk_and r1 r2 = Intersect [ r1; r2 ]
+                                                   
   open Sugar
   open Zzdatatype.Datatype
 

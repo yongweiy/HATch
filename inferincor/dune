@@ -1,0 +1,11 @@
+(library
+ (name inferincor)
+ (wrapped true)
+ (libraries language core env normalization subtyping)
+ (modules
+   aux
+   srt
+   typing
+   weaken
+   inferincor
+ ))

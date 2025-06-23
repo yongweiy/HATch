@@ -16,7 +16,7 @@ let check_srl ~tTrans (srl1, srl2) =
     Pp.printf "@{<bold>Symbolic Automton 2:@} %s\n" (NRegex.reg_to_string srl2)
   in
   let tInclusion, (sizeRawA, res) =
-    Sugar.clock (fun () -> Smtquery.check_inclusion_counterexample (srl1, srl2))
+    Sugar.clock (fun () -> Smt.check_inclusion_counterexample (srl1, srl2))
   in
   let res =
     match res with
@@ -140,7 +140,7 @@ and sub_srl_bool_aux rctx (srl1, srl2) =
     Sugar.clock (fun () -> Desymbolic.do_desymbolic checker (srl1, srl2))
   in
   let tTrans = tTrans /. float_of_int (List.length res) in
-  let res = List.for_all (check_srl ~tTrans ) res in
+  let res = List.for_all (check_srl ~tTrans) res in
   res
 
 let sub_srl_under_constr_aux ~constr (srl1, srl2) =
@@ -150,7 +150,7 @@ let sub_srl_under_constr_aux ~constr (srl1, srl2) =
       (RTypectx.layout_prop constr)
   in
   let checker ?(vs = []) prop =
-    Smtquery.check_sat_bool @@ smart_and [constr; prop]
+    Smt.check_sat_bool @@ smart_and [ constr; prop ]
   in
   let tTrans, res =
     Sugar.clock (fun () -> Desymbolic.do_desymbolic checker (srl1, srl2))
