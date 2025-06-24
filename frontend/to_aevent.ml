@@ -3,7 +3,7 @@ open Parsetree
 open Zzdatatype.Datatype
 module Type = Normalty.Frontend
 module Nt = Normalty.Ntyped
-open Syntax.RtyRaw.SRT
+open Syntax.RtyRaw.SFT
 open Sugar
 open Aux
 

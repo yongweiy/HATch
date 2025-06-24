@@ -27,10 +27,12 @@ struct
 
   and hty =
     | Rty of rty
-    | Monad of { ret : string rtyped; eff : Eff.eff }
+    | Monad of monad
     | Htriple of htriple
     | Inter of hty * hty
   [@@deriving sexp]
+
+  and monad = { ret : string rtyped; eff : Eff.eff }
 
   and htriple = { pre : A.sfa; resrty : rty; post : A.sfa } [@@deriving sexp]
   and 'a rtyped = { rx : 'a; rty : rty } [@@deriving sexp]

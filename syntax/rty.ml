@@ -84,18 +84,17 @@ module F (L : Lit.T) = struct
     match tau with
     | Rty rty -> Rty (normalize_name_rty rty)
     | Monad { ret; eff } ->
-        Monad { ret = { ret with rty = normalize_name_rty ret.rty }; eff }
+        Monad
+          {
+            ret = { ret with rty = normalize_name_rty ret.rty };
+            eff = normalize_name_eff eff;
+          }
     | Htriple { pre; resrty; post } ->
         Htriple { pre; resrty = normalize_name_rty resrty; post }
     | Inter (hty1, hty2) ->
         let hty1 = normalize_name_hty hty1 in
         let hty2 = normalize_name_hty hty2 in
         Inter (hty1, hty2)
-
-  and normalize_name_trans = function
-    | PreAndPost (pre, post) ->
-        PreAndPost (normalize_name_srl pre, normalize_name_srl post)
-    | PreToPost srt -> PreToPost (normalize_name_srt srt)
 
   let eq_arr_kind k1 k2 =
     match (k1, k2) with
@@ -112,7 +111,7 @@ module F (L : Lit.T) = struct
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
   let hty_force_tmonad = function
-    | TMonad tmonad -> tmonad
+    | Monad m -> m
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
   let rty_force_cty = function
@@ -152,12 +151,12 @@ module F (L : Lit.T) = struct
 
   and subst_hty (y, z) = function
     | Rty rty -> Rty (subst_rty (y, z) rty)
-    | TMonad { ret; trans } ->
-        TMonad
+    | Monad { ret; eff } ->
+        Monad
           {
             ret = { ret with rty = subst_rty (y, z) ret.rty };
-            trans =
-              (if String.equal y ret.rx then trans else subst_trans (y, z) trans);
+            eff =
+              (if String.equal y ret.rx then eff else subst_eff (y, z) eff);
           }
     | Htriple { pre; resrty; post } ->
         Htriple
@@ -167,10 +166,6 @@ module F (L : Lit.T) = struct
             post = SRL.subst (y, z) post;
           }
     | Inter (hty1, hty2) -> Inter (subst_hty (y, z) hty1, subst_hty (y, z) hty2)
-
-  and subst_trans ((y, z) as yz) = function
-    | PreAndPost (pre, post) -> PreAndPost (subst_srl yz pre, subst_srl yz post)
-    | PreToPost sft -> PreToPost (subst_srt yz sft)
 
   let subst_rty_id (y, z) rty =
     let z = AVar z in
@@ -200,16 +195,12 @@ module F (L : Lit.T) = struct
     | GhostArr _ -> []
     | ArrArr rty -> fv_rty rty
 
-  and fv_trans = function
-    | PreAndPost (pre, post) -> fv_srl pre @ fv_srl post
-    | PreToPost srt -> fv_srt srt
-
   and fv_hty = function
     | Rty rty -> fv_rty rty
-    | TMonad { ret; trans } ->
+    | Monad { ret; eff } ->
         fv_rty ret.rty
         @ List.filter (not << String.equal ret.rx)
-        @@ fv_trans trans
+        @@ fv_eff eff
     | Htriple { pre; resrty; post } ->
         let pre_fv = SRL.fv pre in
         let resrty_fv = fv_rty resrty in
