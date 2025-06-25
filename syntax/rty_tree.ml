@@ -3,18 +3,38 @@ module SyntaxF
     (A : sig
       type sfa [@@deriving sexp]
     end)
-    (Eff : sig
-      type eff [@@deriving sexp]
+    (T : sig
+      type pred [@@deriving sexp]
+      type ev [@@deriving sexp]
+      type sft [@@deriving sexp]
     end)
-    (* (T : sig *)
-    (* type srl [@@deriving sexp] *)
-    (* type srt [@@deriving sexp] *)
-    (* end) *)
     (L : Lit.T) =
 struct
   open Sexplib.Std
   module Cty = Cty.F (L)
   include Cty
+
+  module Trans = struct
+    type t =
+      | Explicit of T.sft
+      | Admit of A.sfa
+      | Append of T.ev
+      | Reject of T.pred
+    [@@deriving sexp]
+  end
+
+  module Eff = struct
+    type atom = Call of T.ev | Trans of Trans.t [@@deriving sexp]
+
+    type t =
+      | Atom of atom
+      | Reach of t
+      | Bind of string ctyped * t
+      | Guard of prop
+      | Seq of t * t
+      | Choice of t * t
+    [@@deriving sexp]
+  end
 
   type rty = BaseRty of { cty : cty } | ArrRty of { arr : arr; rethty : hty }
   [@@deriving sexp]
@@ -32,8 +52,7 @@ struct
     | Inter of hty * hty
   [@@deriving sexp]
 
-  and monad = { ret : string rtyped; eff : Eff.eff }
-
+  and monad = { ret : string rtyped; eff : Eff.t }
   and htriple = { pre : A.sfa; resrty : rty; post : A.sfa } [@@deriving sexp]
   and 'a rtyped = { rx : 'a; rty : rty } [@@deriving sexp]
 

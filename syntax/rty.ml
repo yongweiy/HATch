@@ -1,38 +1,32 @@
 module F (L : Lit.T) = struct
+  open Sugar
   module LTLf = Ltlf.F (L)
-
-  (* module SRT = Srt.F (L) *)
-  module LEff = Efflang.F (L)
-  module LRty = Rty_tree.SyntaxF (LTLf) (LEff) (L)
   module SRL = LTLf.SRL
-
-  (* include SRT *)
-  module Eff = Efflang.F (L)
-  module Rty = Rty_tree.SyntaxF (SRL) (Eff) (L)
-  include Eff
+  module Sft = Sft.F (L)
+  module LRty = Rty_tree.SyntaxF (LTLf) (Sft) (L)
+  module Rty = Rty_tree.SyntaxF (SRL) (Sft) (L)
   include Rty
   include SRL
 
-  let rec apply_pred_rty pred rty =
-    let open LRty in
-    match rty with
-    | BaseRty _ -> rty
+  let rec apply_pred_rty pred : LRty.rty -> LRty.rty = function
+    | BaseRty _ as rty -> rty
     | ArrRty { arr; rethty } ->
         ArrRty
           { arr = apply_pred_arr pred arr; rethty = apply_pred_hty pred rethty }
 
-  and apply_pred_arr pred arr =
-    let open LRty in
-    match arr with
+  and apply_pred_arr pred : LRty.arr -> LRty.arr = function
     | NormalArr { rx; rty } -> NormalArr { rx; rty = apply_pred_rty pred rty }
-    | GhostArr _ -> arr
+    | GhostArr _ as arr -> arr
     | ArrArr rty -> ArrArr (apply_pred_rty pred rty)
 
-  and apply_pred_hty pred hty =
-    let open LRty in
-    match hty with
+  and apply_pred_hty pred : LRty.hty -> LRty.hty = function
     | Rty rty -> Rty (apply_pred_rty pred rty)
-    | Monad _ -> hty
+    | Monad { ret; eff } ->
+        Monad
+          {
+            ret = { ret with rty = apply_pred_rty pred ret.rty };
+            eff = apply_pred_eff pred eff;
+          }
     | Htriple { pre; resrty; post } ->
         Htriple
           {
@@ -43,10 +37,27 @@ module F (L : Lit.T) = struct
     | Inter (hty1, hty2) ->
         Inter (apply_pred_hty pred hty1, apply_pred_hty pred hty2)
 
+  and apply_pred_trans pred : LRty.Trans.t -> LRty.Trans.t = function
+    | Explicit sft -> Explicit sft
+    | Admit sfa -> Admit (LTLf.apply_pred pred sfa)
+    | Append ev -> Append ev
+    | Reject sev -> Reject sev
+
+  and apply_pred_eff pred : LRty.Eff.t -> LRty.Eff.t = function
+    | Atom (Call _ as call) -> Atom call
+    | Atom (Trans trans) -> Atom (Trans (apply_pred_trans pred trans))
+    | Reach eff -> Reach (apply_pred_eff pred eff)
+    | Bind (ctyped, eff) -> Bind (ctyped, apply_pred_eff pred eff)
+    | Guard p -> Guard p
+    | Seq (eff1, eff2) ->
+        Seq (apply_pred_eff pred eff1, apply_pred_eff pred eff2)
+    | Choice (eff1, eff2) ->
+        Choice (apply_pred_eff pred eff1, apply_pred_eff pred eff2)
+
   let rec to_hty = function
     | LRty.Rty rty -> Rty (to_rty rty)
     | LRty.Monad { ret; eff } ->
-        Monad { ret = { rx = ret.rx; rty = to_rty ret.rty }; eff }
+        Monad { ret = { rx = ret.rx; rty = to_rty ret.rty }; eff = to_eff eff }
     | LRty.Htriple { pre; resrty; post } ->
         Htriple
           {
@@ -55,6 +66,21 @@ module F (L : Lit.T) = struct
             post = LTLf.to_srl post;
           }
     | LRty.Inter (hty1, hty2) -> Inter (to_hty hty1, to_hty hty2)
+
+  and to_trans : LRty.Trans.t -> Rty.Trans.t = function
+    | Explicit sft -> Explicit sft
+    | Admit sfa -> Admit (LTLf.to_srl sfa)
+    | Append ev -> Append ev
+    | Reject sev -> Reject sev
+
+  and to_eff : LRty.Eff.t -> Rty.Eff.t = function
+    | Atom (Call ev) -> Atom (Call ev)
+    | Atom (Trans trans) -> Atom (Trans (to_trans trans))
+    | Reach eff -> Reach (to_eff eff)
+    | Bind (ctyped, eff) -> Bind (ctyped, to_eff eff)
+    | Guard p -> Guard p
+    | Seq (eff1, eff2) -> Seq (to_eff eff1, to_eff eff2)
+    | Choice (eff1, eff2) -> Choice (to_eff eff1, to_eff eff2)
 
   and to_arr = function
     | LRty.NormalArr { rx; rty } -> NormalArr { rx; rty = to_rty rty }
@@ -68,20 +94,67 @@ module F (L : Lit.T) = struct
 
   (* normalize name *)
 
-  let rec normalize_name_rty tau1 =
-    match tau1 with
+  let rec normalize_name_eff : Eff.t -> Eff.t = function
+    | Bind ({ cx; cty }, eff) ->
+        Bind ({ cx; cty = Cty.normalize_name cty }, normalize_name_eff eff)
+    | Reach eff -> Reach (normalize_name_eff eff)
+    | Seq (eff1, eff2) -> Seq (normalize_name_eff eff1, normalize_name_eff eff2)
+    | Choice (eff1, eff2) ->
+        Choice (normalize_name_eff eff1, normalize_name_eff eff2)
+    | eff -> eff
+
+  let subst_trans yz : Trans.t -> Trans.t = function
+    | Explicit sft -> Explicit (Sft.subst yz sft)
+    | Admit sfa -> Admit (SRL.subst yz sfa)
+    | Append ev -> Append (Sft.subst_ev yz ev)
+    | Reject sev -> Reject (Sft.subst_pred yz sev)
+
+  let subst_eff_atom yz : Eff.atom -> Eff.atom = function
+    | Call { op; args; ret } ->
+        let aux = subst_lit yz in
+        Call { op; args = List.map (( #-> ) aux) args; ret = aux #-> ret }
+    | Trans sft -> Trans (subst_trans yz sft)
+
+  let rec subst_eff yz : Eff.t -> Eff.t = function
+    | Atom eff_atom -> Atom (subst_eff_atom yz eff_atom)
+    | Reach eff -> Reach (subst_eff yz eff)
+    | Bind ({ cx; cty }, eff) ->
+        Bind ({ cx; cty = Cty.subst yz cty }, subst_eff yz eff)
+    | Guard p -> Guard (subst_prop yz p)
+    | Seq (eff1, eff2) -> Seq (subst_eff yz eff1, subst_eff yz eff2)
+    | Choice (eff1, eff2) -> Choice (subst_eff yz eff1, subst_eff yz eff2)
+
+  let fv_trans : Trans.t -> string list = function
+    | Explicit sft -> Sft.fv sft
+    | Admit sfa -> SRL.fv sfa
+    | Append ev -> Sft.fv_ev ev
+    | Reject sev -> Sft.fv_pred sev
+
+  let fv_eff_atom : Eff.atom -> string list = function
+    | Call { args; ret; _ } -> List.concat_map fv_typed_lit (ret :: args)
+    | Trans sft -> fv_trans sft
+
+  let rec fv_eff : Eff.t -> string list = function
+    | Atom eff_atom -> fv_eff_atom eff_atom
+    | Reach eff -> fv_eff eff
+    | Bind ({ cx; cty }, eff) ->
+        Cty.fv cty @ List.filter (not << String.equal cx) @@ fv_eff eff
+    | Guard p -> fv_prop p
+    | Seq (eff1, eff2) -> fv_eff eff1 @ fv_eff eff2
+    | Choice (eff1, eff2) -> fv_eff eff1 @ fv_eff eff2
+
+  let rec normalize_name_rty : rty -> rty = function
     | BaseRty { cty } -> BaseRty { cty = Cty.normalize_name cty }
     | ArrRty { arr; rethty } ->
         ArrRty
           { arr = normalize_name_arr arr; rethty = normalize_name_hty rethty }
 
-  and normalize_name_arr = function
+  and normalize_name_arr : arr -> arr = function
     | NormalArr { rx; rty } -> NormalArr { rx; rty = normalize_name_rty rty }
     | GhostArr Nt.{ x; ty } -> GhostArr Nt.{ x; ty }
     | ArrArr rty -> ArrArr (normalize_name_rty rty)
 
-  and normalize_name_hty tau =
-    match tau with
+  and normalize_name_hty : hty -> hty = function
     | Rty rty -> Rty (normalize_name_rty rty)
     | Monad { ret; eff } ->
         Monad
@@ -106,15 +179,15 @@ module F (L : Lit.T) = struct
   open Sugar
   (* open Common *)
 
-  let hty_force_rty = function
+  let hty_force_rty : hty -> rty = function
     | Rty rty -> rty
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
-  let hty_force_tmonad = function
+  let hty_force_tmonad : hty -> _ = function
     | Monad m -> m
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
-  let rty_force_cty = function
+  let rty_force_cty : rty -> _ = function
     | BaseRty { cty } -> cty
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
@@ -127,7 +200,7 @@ module F (L : Lit.T) = struct
 
   (* subst *)
 
-  let arr_get_name_opt = function
+  let arr_get_name_opt : arr -> string option = function
     | NormalArr { rx; _ } -> Some rx
     | GhostArr Nt.{ x; _ } -> Some x
     | ArrArr _ -> None
@@ -144,19 +217,18 @@ module F (L : Lit.T) = struct
     in
     aux rty
 
-  and subst_arr (y, z) = function
+  and subst_arr (y, z) : arr -> arr = function
     | NormalArr { rx; rty } -> NormalArr { rx; rty = subst_rty (y, z) rty }
     | GhostArr garg -> GhostArr garg
     | ArrArr rty -> ArrArr (subst_rty (y, z) rty)
 
-  and subst_hty (y, z) = function
+  and subst_hty (y, z) : hty -> hty = function
     | Rty rty -> Rty (subst_rty (y, z) rty)
     | Monad { ret; eff } ->
         Monad
           {
             ret = { ret with rty = subst_rty (y, z) ret.rty };
-            eff =
-              (if String.equal y ret.rx then eff else subst_eff (y, z) eff);
+            eff = (if String.equal y ret.rx then eff else subst_eff (y, z) eff);
           }
     | Htriple { pre; resrty; post } ->
         Htriple
@@ -190,17 +262,15 @@ module F (L : Lit.T) = struct
         in
         argfv @ retfv
 
-  and fv_arr = function
+  and fv_arr : arr -> string list = function
     | NormalArr { rty; _ } -> fv_rty rty
     | GhostArr _ -> []
     | ArrArr rty -> fv_rty rty
 
-  and fv_hty = function
+  and fv_hty : hty -> string list = function
     | Rty rty -> fv_rty rty
     | Monad { ret; eff } ->
-        fv_rty ret.rty
-        @ List.filter (not << String.equal ret.rx)
-        @@ fv_eff eff
+        fv_rty ret.rty @ List.filter (not << String.equal ret.rx) @@ fv_eff eff
     | Htriple { pre; resrty; post } ->
         let pre_fv = SRL.fv pre in
         let resrty_fv = fv_rty resrty in

@@ -308,15 +308,16 @@ module F (L : Lit.T) = struct
 
   let mk_ident = IdentityF
 
+  let subst_ev yz { op; args; ret } =
+    let aux = subst_lit yz in
+    { op; args = List.map (( #-> ) aux) args; ret = aux #-> ret }
+
   let subst_func yz = function
     | IdentityF -> IdentityF
-    | EventF { op; args; ret } ->
-        let aux = subst_lit yz in
-        EventF { op; args = List.map (( #-> ) aux) args; ret = aux #-> ret }
+    | EventF ev -> EventF (subst_ev yz ev)
 
-  let fv_func = function
-    | IdentityF -> []
-    | EventF { op; args; ret } -> List.concat_map fv_typed_lit (ret :: args)
+  let fv_ev { op; args; ret } = List.concat_map fv_typed_lit (ret :: args)
+  let fv_func = function IdentityF -> [] | EventF ev -> fv_ev ev
 
   let ev_to_sev { op; args; ret } =
     let tys = List.map (fun { ty; _ } -> ty) args in
