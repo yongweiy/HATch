@@ -8,7 +8,6 @@
    secheck
    srlcheck
    aeventcheck
-   srtcheck
    ctycheck
    rtycheck
    qualifiercheck

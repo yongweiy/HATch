@@ -1,8 +1,8 @@
 open Language
 open Sugar
 open Qualifiercheck
-open RtyRaw.SE
-open RtyRaw.SRT.LAlg
+open RtyRaw
+open RtyRaw.Sft.LAlg
 
 let check_pred opctx ctx { events; op_pred } =
   {
@@ -14,15 +14,17 @@ let check_pred opctx ctx { events; op_pred } =
           Blacklist (type_check_qualifier opctx ctx phi, ops));
   }
 
+let check_ev opctx ctx { op; args; ret } =
+  let orty = Aux.infer_op opctx (Op.EffOp op) in
+  let argsty, retnty = Nt.destruct_arr_tp orty in
+  let args =
+    List.map
+      (fun (arg, ty) -> type_check_lit opctx ctx (arg.x, ty))
+      (_safe_combine __FILE__ __LINE__ args argsty)
+  in
+  let ret = type_check_lit opctx ctx (ret.x, retnty) in
+  { op; args; ret }
+
 let check_func opctx ctx = function
   | IdentityF -> IdentityF
-  | EventF { op; args; ret } ->
-      let orty = Aux.infer_op opctx (Op.EffOp op) in
-      let argsty, retnty = Nt.destruct_arr_tp orty in
-      let args =
-        List.map
-          (fun (arg, ty) -> type_check_lit opctx ctx (arg.x, ty))
-          (_safe_combine __FILE__ __LINE__ args argsty)
-      in
-      let ret = type_check_lit opctx ctx (ret.x, retnty) in
-      EventF { op; args; ret }
+  | EventF ev -> EventF (check_ev opctx ctx ev)

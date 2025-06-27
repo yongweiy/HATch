@@ -15,13 +15,13 @@ let rec hty_check opctx ctx (hty : hty) : hty =
   in
   match hty with
   | Rty rty -> Rty (rty_check opctx ctx rty)
-  | TMonad { ret; trans } ->
+  | Monad { ret; eff } ->
       let ret = { ret with rty = rty_check opctx ctx ret.rty } in
       let ctx' =
         Typectx.new_to_right ctx Nt.{ x = ret.rx; ty = erase_rty ret.rty }
       in
-      let trans = trans_check opctx ctx' trans in
-      TMonad { ret; trans }
+      let eff = eff_check opctx ctx' eff in
+      Monad { ret; eff }
   | Htriple { pre; resrty; post } ->
       let pre = Srlcheck.check opctx ctx pre in
       let post = Srlcheck.check opctx ctx post in
@@ -36,14 +36,28 @@ let rec hty_check opctx ctx (hty : hty) : hty =
       in
       Inter (h1, h2)
 
-and trans_check opctx ctx = function
-  | PreAndPost (pre, post) ->
-      let pre = Srtcheck.check_srl opctx ctx pre in
-      let post = Srtcheck.check_srl opctx ctx post in
-      PreAndPost (pre, post)
-  | PreToPost fwd ->
-      let fwd = Srtcheck.check opctx ctx fwd in
-      PreToPost fwd
+and trans_check opctx ctx : RtyRaw.Trans.t -> Trans.t = function
+  | Explicit sft -> _failatwith __FILE__ __LINE__ "UNIMP"
+  | Admit sfa -> Admit (Srlcheck.check opctx ctx sfa)
+  | Append ev -> Append (Aeventcheck.check_ev opctx ctx ev)
+  | Reject pred -> Reject (Aeventcheck.check_pred opctx ctx pred)
+
+and eff_check opctx ctx = function
+  | Atom atom -> Atom (eff_atom_check opctx ctx atom)
+  | Reach eff -> Reach (eff_check opctx ctx eff)
+  | Bind (ctyped, eff) ->
+      let ctyped = { ctyped with cty = Ctycheck.check opctx ctx ctyped.cty } in
+      let ctx' =
+        Typectx.new_to_right ctx Nt.{ x = ctyped.cx; ty = Cty.erase ctyped.cty }
+      in
+      Bind (ctyped, eff_check opctx ctx' eff)
+  | Guard prop -> Guard (Qualifiercheck.type_check_qualifier opctx ctx prop)
+  | Seq (eff1, eff2) -> Seq (eff_check opctx ctx eff1, eff_check opctx ctx eff2)
+  | Choice (eff1, eff2) -> Choice (eff_check opctx ctx eff1, eff_check opctx ctx eff2)
+
+and eff_atom_check opctx ctx = function
+  | Call ev -> Call (Aeventcheck.check_ev opctx ctx ev)
+  | Trans trans -> Trans (trans_check opctx ctx trans)
 
 and arr_check opctx ctx (arr : arr) : arr * string Nt.typed option =
   match arr with

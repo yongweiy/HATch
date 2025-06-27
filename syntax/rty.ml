@@ -4,8 +4,7 @@ module F (L : Lit.T) = struct
   module SRL = LTLf.SRL
   module Sft = Sft.F (L)
   module LRty = Rty_tree.SyntaxF (LTLf) (Sft) (L)
-  module Rty = Rty_tree.SyntaxF (SRL) (Sft) (L)
-  include Rty
+  include Rty_tree.SyntaxF (SRL) (Sft) (L)
   include SRL
 
   let rec apply_pred_rty pred : LRty.rty -> LRty.rty = function
@@ -67,13 +66,13 @@ module F (L : Lit.T) = struct
           }
     | LRty.Inter (hty1, hty2) -> Inter (to_hty hty1, to_hty hty2)
 
-  and to_trans : LRty.Trans.t -> Rty.Trans.t = function
+  and to_trans : LRty.Trans.t -> Trans.t = function
     | Explicit sft -> Explicit sft
     | Admit sfa -> Admit (LTLf.to_srl sfa)
     | Append ev -> Append ev
     | Reject sev -> Reject sev
 
-  and to_eff : LRty.Eff.t -> Rty.Eff.t = function
+  and to_eff : LRty.Eff.t -> Eff.t = function
     | Atom (Call ev) -> Atom (Call ev)
     | Atom (Trans trans) -> Atom (Trans (to_trans trans))
     | Reach eff -> Reach (to_eff eff)

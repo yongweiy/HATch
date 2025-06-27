@@ -5,7 +5,7 @@ open Sugar
 open Rty
 
 let model_verify_bool sub_rty_bool (vs, prop) =
-  let bindings =
+  let bindings =Rty
     let vs = List.map (fun { x; ty } -> { rx = x; rty = Rty.mk_top ty }) vs in
     let rty = Rty.mk_unit_rty_from_prop prop in
     let binding = { rx = Rename.unique "a"; rty } in

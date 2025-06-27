@@ -3,7 +3,7 @@ module Raw = RtyRaw
 open Rty
 module Q = Coersion_qualifier
 
-let force_pred Raw.({ events; op_pred }) =
+let force_pred ({ events; op_pred } : Raw.Sft.pred) : Sft.pred =
   {
     events =
       List.map
@@ -17,11 +17,11 @@ let force_pred Raw.({ events; op_pred }) =
         events;
     op_pred =
       (match op_pred with
-      | Raw.Blacklist (phi, ops) -> Blacklist (Q.force phi, ops)
-      | Raw.Whitelist ops -> Whitelist ops);
+      | Blacklist (phi, ops) -> Blacklist (Q.force phi, ops)
+      | Whitelist ops -> Whitelist ops);
   }
 
-let besome_pred { events; op_pred } =
+let besome_pred ({ events; op_pred } : Sft.pred) : Raw.Sft.pred =
   let events =
     List.map
       (fun { op; vs; v; phi } ->
@@ -34,29 +34,33 @@ let besome_pred { events; op_pred } =
           })
       events
   in
-  let op_pred =
+  let op_pred : Raw.Sft.op_pred =
     match op_pred with
-    | Blacklist (phi, ops) -> Raw.Blacklist (Q.besome phi, ops)
-    | Whitelist ops -> Raw.Whitelist ops
+    | Blacklist (phi, ops) -> Blacklist (Q.besome phi, ops)
+    | Whitelist ops -> Whitelist ops
   in
-  Raw.{ events; op_pred }
+  { events; op_pred }
 
-let force_func = function
-  | Raw.IdentityF -> IdentityF
-  | Raw.EventF { op; args; ret } ->
-      EventF
-        {
-          op;
-          args = List.map Coersion_lit.force_typed args;
-          ret = Coersion_lit.force_typed ret;
-        }
+let force_ev Raw.Sft.{ op; args; ret } =
+  Sft.
+    {
+      op;
+      args = List.map Coersion_lit.force_typed args;
+      ret = Coersion_lit.force_typed ret;
+    }
 
-let besome_func = function
-  | IdentityF -> Raw.IdentityF
-  | EventF { op; args; ret } ->
-      Raw.EventF
-        {
-          op;
-          args = List.map Coersion_lit.besome_typed args;
-          ret = Coersion_lit.besome_typed ret;
-        }
+let force_func : Raw.Sft.func -> Sft.func = function
+  | IdentityF -> IdentityF
+  | EventF ev -> EventF (force_ev ev)
+
+let besome_ev Sft.{ op; args; ret } =
+  Raw.Sft.
+    {
+      op;
+      args = List.map Coersion_lit.besome_typed args;
+      ret = Coersion_lit.besome_typed ret;
+    }
+
+let besome_func : Sft.func -> Raw.Sft.func = function
+  | IdentityF -> IdentityF
+  | EventF ev -> EventF (besome_ev ev)
