@@ -14,5 +14,5 @@ module F (L : Lit.T) = struct
     T.fold ~f_pred:(List.append << fv_pred) ~f_func:(List.append << fv_func)
       ~f_prop:(List.append << fv_prop) ~f_ev:(List.append << fv_ev) sft []
 
-  let normalize_name = T.map normalize_name_pred Fun.id Fun.id
+  let normalize_name = T.map ~f_pred:normalize_name_pred ~f_func:Fun.id ~f_prop:Fun.id ~f_ev:Fun.id
 end
