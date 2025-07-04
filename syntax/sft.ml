@@ -6,10 +6,13 @@ module F (L : Lit.T) = struct
   include LAlg
   include T
 
-  let subst yz = T.map (subst_pred yz) (subst_func yz)
+  let subst yz =
+    T.map ~f_pred:(subst_pred yz) ~f_func:(subst_func yz)
+      ~f_prop:(subst_prop yz) ~f_ev:(subst_ev yz)
 
   let fv sft =
-    T.fold (List.append << fv_pred) (List.append << fv_func) sft []
+    T.fold ~f_pred:(List.append << fv_pred) ~f_func:(List.append << fv_func)
+      ~f_prop:(List.append << fv_prop) ~f_ev:(List.append << fv_ev) sft []
 
-  let normalize_name = T.map normalize_name_pred Fun.id
+  let normalize_name = T.map normalize_name_pred Fun.id Fun.id
 end
