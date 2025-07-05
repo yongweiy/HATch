@@ -7,6 +7,56 @@ open Syntax.LRtyRaw
 open Sugar
 open Aux
 
+let pprint_eff_atom (e : Eff.atom) =
+  match e with
+  | Call { op; args; ret } ->
+      spf "%s ← %s(%s)" (To_lit.layout_typed_lit ret) op
+      @@ String.concat ", " (List.map To_lit.layout_typed_lit args)
+  | Trans sft -> To_sft.pprint sft
+
+let rec pprint_eff (e : Eff.t) =
+  match e with
+  | Atom atom -> pprint_eff_atom atom
+  | Reach e -> spf "Reach(%s)" @@ pprint_eff e
+  | Bind (cx, e) ->
+      spf "%s ← %s; %s" cx.cx
+        (pprint_parn @@ To_cty.pprint cx.cty)
+        (pprint_eff e)
+  | Guard phi -> To_qualifier.layout phi
+  | Seq (e1, e2) -> spf "%s; %s" (pprint_eff e1) (pprint_eff e2)
+  | Choice (e1, e2) -> spf "(%s) | (%s)" (pprint_eff e1) (pprint_eff e2)
+
+let rec eff_of_ocamlexpr expr : Eff.t =
+  match expr.pexp_desc with
+  | Pexp_construct (op, Some e) -> (
+      let op = String.uncapitalize_ascii @@ To_id.longid_to_id op in
+      match op with
+      | "reach" -> Reach (eff_of_ocamlexpr e)
+      | "admit" -> Atom (Trans (Admit (To_ltlf.of_ocamlexpr e)))
+      | "reject" -> Atom (Trans (Reject (To_aevent.pred_of_ocamlexpr e)))
+      | "append" -> Atom (Trans (Append (To_aevent.ev_of_ocamlexpr e)))
+      | _ ->
+          let args, ret =
+            match e.pexp_desc with
+            | Pexp_tuple es ->
+                Aux.force_last @@ List.map To_lit.typed_lit_of_ocamlexpr es
+            | _ -> _failatwith __FILE__ __LINE__ "die"
+          in
+          Atom (Call { op; args; ret }))
+  | Pexp_sequence (e1, e2) -> Seq (eff_of_ocamlexpr e1, eff_of_ocamlexpr e2)
+  | Pexp_assert e -> Guard (To_qualifier.qualifier_of_ocamlexpr e)
+  | Pexp_let (Asttypes.Nonrecursive, vbs, expr) ->
+      let process_vb { pvb_pat; pvb_expr; _ } body : Eff.t =
+        let[@warning "-8"] [ { x; ty } ] = To_pat.patten_to_typed_ids pvb_pat in
+        let cty = To_cty.of_ocamlexpr pvb_expr in
+        Bind ({ cx = x; cty }, body)
+      in
+      List.fold_right process_vb vbs @@ eff_of_ocamlexpr expr
+  | _ ->
+      _failatwith __FILE__ __LINE__
+      @@ spf "of_ocamlexpr: unsupported expression %s"
+      @@ Pprintast.string_of_expression expr
+
 let rec pprint_rty rty =
   match rty with
   | BaseRty { cty } -> pprint_parn (To_cty.pprint cty)
@@ -19,7 +69,8 @@ and pprint_arr = function
 
 and pprint_hty = function
   | Rty rty -> pprint_rty rty
-  | Monad {ret; eff} -> _failatwith __FILE__ __LINE__ "unimp"
+  | Monad { ret; eff } ->
+      spf "(%s:%s)!%s" ret.rx (pprint_rty ret.rty) (pprint_eff eff)
   | Htriple { pre; resrty; post } ->
       spf "[%s]%s[%s]" (To_ltlf.pprint pre) (pprint_rty resrty)
         (To_ltlf.pprint post)
@@ -92,6 +143,13 @@ and rty_of_ocamlexpr_aux expr =
 
 and hty_of_ocamlexpr_aux expr =
   match expr.pexp_desc with
+  | Pexp_record ([ (id1, e1); (id2, e2) ], None) -> (
+      let id1, id2 = map2 To_id.longid_to_id (id1, id2) in
+      let ret = { rx = id1; rty = rty_of_ocamlexpr_aux e1 } in
+      let eff = eff_of_ocamlexpr e2 in
+      match id2 with
+      | "eff" -> Monad { ret; eff }
+      | _ -> failwith "syntax error")
   | Pexp_record ([ (id1, e1); (id2, e2); (id3, e3) ], None) -> (
       let id1, id2, id3 = map3 To_id.longid_to_id (id1, id2, id3) in
       let pre, post = map2 To_ltlf.of_ocamlexpr (e1, e3) in
