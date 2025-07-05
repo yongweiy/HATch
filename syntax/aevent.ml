@@ -7,7 +7,7 @@ module F (L : Lit.T) = struct
   open Common
 
   (* open Srl.F (L) *)
-  open Sevent.F (L)
+  include Sevent.F (L)
   (* module Q = Qualifier.F (L) *)
 
   type phi = P.prop [@@deriving sexp, compare, equal, hash]
@@ -53,10 +53,12 @@ module F (L : Lit.T) = struct
   let normalize_name_pred { events; op_pred } =
     { events = List.map normalize_name_eff_event events; op_pred }
 
+  let from_prop phi = { events = []; op_pred = Blacklist (phi, []) }
+
   let to_prop { events; op_pred } =
     match op_pred with
     | Whitelist [] ->
-        mk_or
+        mk_or_multi
         @@ List.map
              (fun { op; vs; v; phi } -> smart_multi_exists (v :: vs) phi)
              events
@@ -72,7 +74,7 @@ module F (L : Lit.T) = struct
       (fun ev1 ev2 ->
         if String.equal ev1.op ev2.op then
           let ev = if List.is_empty ev1.vs then ev2 else ev1 in
-          Some { ev with phi = mk_and [ ev2.phi; ev1.phi ] }
+          Some { ev with phi = mk_and ev2.phi ev1.phi }
         else None)
       evs1 evs2
 
@@ -81,7 +83,7 @@ module F (L : Lit.T) = struct
       (fun ev1 ev2 ->
         if String.equal ev1.op ev2.op then
           let ev = if List.is_empty ev1.vs then ev2 else ev1 in
-          Some { ev with phi = mk_or [ ev2.phi; ev1.phi ] }
+          Some { ev with phi = mk_or ev2.phi ev1.phi }
         else None)
       evs1 evs2
 
@@ -98,8 +100,7 @@ module F (L : Lit.T) = struct
         {
           events = [];
           op_pred =
-            Blacklist
-              (mk_and [ phi2; phi1 ], StrList.union ops_exclude1 ops_exclude2);
+            Blacklist (mk_and phi2 phi1, StrList.union ops_exclude1 ops_exclude2);
         }
 
   let union_op_pred pred1 pred2 =
@@ -132,8 +133,7 @@ module F (L : Lit.T) = struct
             @ List.map (mk_event_from_op ~phi:phi2)
             @@ StrList.subtract ops_exclude1 ops_exclude2;
           op_pred =
-            Blacklist
-              (mk_or [ phi1; phi2 ], StrList.union ops_exclude1 ops_exclude2);
+            Blacklist (mk_or phi1 phi2, StrList.union ops_exclude1 ops_exclude2);
         }
 
   let filter_events = function
@@ -141,7 +141,7 @@ module F (L : Lit.T) = struct
     | Blacklist (phi, ops) ->
         List.filter_map @@ fun ev ->
         if List.mem ev.op ops then None
-        else Some { ev with phi = mk_and [ phi; ev.phi ] }
+        else Some { ev with phi = mk_and phi ev.phi }
 
   let events_union_op_pred evs op_pred =
     match op_pred with
@@ -158,7 +158,7 @@ module F (L : Lit.T) = struct
             List.map
               (fun ev ->
                 if List.mem ev.op ops then ev
-                else { ev with phi = mk_or [ ev.phi; phi ] })
+                else { ev with phi = mk_or ev.phi phi })
               evs;
           op_pred =
             Blacklist (phi, StrList.union ops @@ List.map (fun ev -> ev.op) evs);
@@ -171,39 +171,24 @@ module F (L : Lit.T) = struct
   (** It is sound to only consider either `guard` or `events`
     because of the way literals are emitted from the SFA.
    TODO: how much faster using syntactic approach instead of calling solver *)
-  let entails_sevent ~is_sat { events; op_pred } = function
+  let entails_sevent ~check { events; op_pred } = function
     | GuardEvent phi' -> (
-        let entails_ev { op; vs; v; phi } = is_sat @@ smart_implies phi phi' in
+        let entails_ev { op; vs; v; phi } = check @@ smart_implies phi phi' in
         match op_pred with
-        | Blacklist (phi, _) when is_sat @@ smart_implies phi phi' ->
+        | Blacklist (phi, _) when check @@ smart_implies phi phi' ->
             List.for_all entails_ev events
         | Blacklist _ -> false
         | Whitelist [] -> List.for_all entails_ev events
-        | Whitelist _ -> is_sat phi')
+        | Whitelist _ -> check phi')
     | EffEvent ev' -> (
         match (events, op_pred) with
         | [ ev ], Whitelist [] when String.equal ev.op ev'.op ->
-            is_sat @@ smart_implies ev.phi ev'.phi
-        | [], Whitelist [ op ] when String.equal op ev'.op -> is_sat ev'.phi
+            check @@ smart_implies ev.phi ev'.phi
+        | [], Whitelist [ op ] when String.equal op ev'.op -> check ev'.phi
         | _ -> false)
 
   let entails ~is_sat ev1 ev2 =
     _failatwith __FILE__ __LINE__ "TODO: AEvent.entails unimplemented"
-
-  (* let quotient l r = *)
-  (*   let rec aux = function *)
-  (*     | EmptyA | EpsilonA -> EmptyA *)
-  (*     | AnyA -> EpsilonA *)
-  (*     | EventA sev -> if entails_sevent l sev then EpsilonA else EmptyA *)
-  (*     | LorA (r, s) -> mk_orA (aux r, aux s) *)
-  (*     | LandA (r, s) -> mk_andA (aux r, aux s) *)
-  (*     | SeqA (r, s) when is_nullable r -> mk_orA (mk_seqA (aux r, s), aux s) *)
-  (*     | SeqA (r, s) -> mk_seqA (aux r, s) *)
-  (*     | StarA r -> mk_seqA (aux r, mk_starA r) *)
-  (*     | ComplementA r -> mk_complementA (aux r) *)
-  (*     | SetMinusA (r, s) -> aux @@ mk_andA (r, mk_complementA s) *)
-  (*   in *)
-  (*   aux r *)
 
   (* let check_prop ~rctx phi = *)
   (*   (\* print_query ~rctx ~gvars phi; *\) *)
@@ -307,6 +292,11 @@ module F (L : Lit.T) = struct
   type func = IdentityF | EventF of ev [@@deriving sexp, compare, equal, hash]
 
   let mk_ident = IdentityF
+  let mk_const ev = EventF ev
+
+  let force_const = function
+    | IdentityF -> _failatwith __FILE__ __LINE__ "die"
+    | EventF ev -> ev
 
   let subst_ev yz { op; args; ret } =
     let aux = subst_lit yz in
@@ -319,7 +309,7 @@ module F (L : Lit.T) = struct
   let fv_ev { op; args; ret } = List.concat_map fv_typed_lit (ret :: args)
   let fv_func = function IdentityF -> [] | EventF ev -> fv_ev ev
 
-  let ev_to_sev { op; args; ret } =
+  let ev_to_pred { op; args; ret } =
     let tys = List.map (fun { ty; _ } -> ty) args in
     let vs = vs_names_from_types tys in
     let v = v_ret_name #: ret.ty in
@@ -336,10 +326,10 @@ module F (L : Lit.T) = struct
     match (f, g) with
     | IdentityF, IdentityF -> mk_bot
     | IdentityF, EventF ev | EventF ev, IdentityF ->
-        mk_and sev @@ mk_not @@ ev_to_sev ev
+        mk_and sev @@ mk_not @@ ev_to_pred ev
     | EventF ev1, EventF ev2 ->
-        let sev1 = ev_to_sev ev1 in
-        let sev2 = ev_to_sev ev2 in
+        let sev1 = ev_to_pred ev1 in
+        let sev2 = ev_to_pred ev2 in
         mk_and sev
         @@ mk_or (mk_and sev1 @@ mk_not sev2) (mk_and sev2 @@ mk_not sev1)
 
@@ -350,8 +340,8 @@ module F (L : Lit.T) = struct
 
   let mk_preimage sev = function
     | IdentityF -> sev
-    | EventF ev -> mk_and sev @@ ev_to_sev ev
+    | EventF ev -> mk_and sev @@ ev_to_pred ev
 
   (** Miss global constraint in theory but should be safe in practice *)
-  let mk_image sev = function IdentityF -> sev | EventF ev -> ev_to_sev ev
+  let mk_image sev = function IdentityF -> sev | EventF ev -> ev_to_pred ev
 end
