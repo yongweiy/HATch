@@ -222,7 +222,7 @@ module F (L : Lit.T) = struct
     let events = List.filter (not << is_bot_ev ~is_bot) events in
     match op_pred with
     | Whitelist [] when List.is_empty events -> None
-    | Blacklist (phi, _) when is_bot @@ mk_not phi ->
+    | Blacklist (phi, _) when is_bot phi ->
         if List.is_empty events then None
         else Some { events; op_pred = Whitelist [] }
     | _ -> Some { l with events }
