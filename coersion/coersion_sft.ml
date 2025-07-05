@@ -1,8 +1,10 @@
 open Syntax
 open Sugar
-module Raw = RtyRaw
-open Rty
-open Coersion_aevent
+module Raw = RtyRaw.Sft
+open Rty.Sft
+module A = Coersion_aevent
 
-let force _ = _failatwith __FILE__ __LINE__ "unimp"
-let besome _ = _failatwith __FILE__ __LINE__ "unimp"
+let force Raw.{ init; g } = _
+
+
+let besome {init; g} = _
