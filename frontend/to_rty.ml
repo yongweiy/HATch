@@ -18,7 +18,7 @@ let pprint_eff_atom (e : Eff.atom) =
   | Trans (Admit srl) -> spf "admit(%s)" (To_srl.pprint srl)
   | Trans (Reject pred) -> spf "reject(%s)" (To_aevent.pprint_pred pred)
   | Trans (Append ev) -> spf "append(%s)" (To_aevent.pprint_ev ev)
-  | Trans (Explicit sft) -> spf "explicit(%s)" (To_sft.layout sft)
+  | Trans (Explicit sft) -> spf "explicit(%s)" (To_sft.pprint sft)
 
 let rec pprint_eff (e : Eff.t) =
   match e with

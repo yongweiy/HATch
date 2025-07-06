@@ -66,9 +66,7 @@ module Rty = struct
       
   let layout_pred p = To_aevent.pprint_pred @@ Coersion.Aevent.besome_pred p
   let layout_func f = To_aevent.pprint_func @@ Coersion.Aevent.besome_func f
-  let layout_label (p, fns) =
-    Printf.sprintf "%s/[%s]" (layout_pred p)
-      (String.concat ";" (List.map layout_func fns))
+  let layout_sft sft = To_sft.pprint @@ Coersion.SFT.besome sft
 
   let layout_lit lit = To_lit.layout (Coersion.Lit.besome lit)
   let layout_prop prop = To_qualifier.layout (Coersion.Qualifier.besome prop)

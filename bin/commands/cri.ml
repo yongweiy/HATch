@@ -150,6 +150,9 @@ let init_setting
   let nctx = List.map ~f:(fun (x, rty) -> (x, Rty.erase_rty rty)) rctx in
   let axs = load_axioms_from_file setting.opnctx @@ MetaConfig.get_axioms () in
   let () = Rty.Ax.init_builtin_axs axs in
+  let oprctx =
+    List.map ~f:(fun (x, rty) -> (x, Automatize.do_rty rctx rty)) oprctx
+  in
   { setting with oprctx; nctx; rctx }
 
 let print_source_code_ inputs_setting source_files =
@@ -173,6 +176,15 @@ let ntyped_ (setting, code) =
   let () =
     MetaConfig.show_debug_preprocess @@ fun _ ->
     Printf.printf "\nBasic Typed:\n";
+    Printf.printf "%s\n" @@ Structure.layout_structure code
+  in
+  (setting, code)
+
+let automatize_ (setting, code) =
+  let code = Automatize.do_ setting.rctx code in
+  let () =
+    MetaConfig.show_debug_preprocess @@ fun _ ->
+    Printf.printf "\nAutomatized :\n";
     Printf.printf "%s\n" @@ Structure.layout_structure code
   in
   (setting, code)
@@ -281,9 +293,10 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
 
 let type_infer_under_ setting source_files =
   let setting, code, normalized, interfaceStaic =
-    normalized_ @@ ntyped_ @@ print_source_code_ setting source_files
+    normalized_ @@ automatize_ @@ ntyped_
+    @@ print_source_code_ setting source_files
   in
-  let _ = Inferincor.infer (setting.oprctx, setting.rctx) code normalized in
+  (* let _ = Inferincor.infer (setting.oprctx, setting.rctx) code normalized in *)
   ()
 
 (* Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ]; *)

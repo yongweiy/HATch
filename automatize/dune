@@ -1,0 +1,7 @@
+(library
+ (name automatize)
+ (wrapped true)
+ (inline_tests)
+ (preprocess (pps ppx_jane ppx_let ppx_inline_test))
+ (libraries language core subtyping)
+ (modules automatize derivative transducize))

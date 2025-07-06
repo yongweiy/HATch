@@ -12,7 +12,8 @@
             subtyping
             typecheck
             srlexec
-            inferincor
+            automatize
+            ; inferincor
  )
  (modules
    caux

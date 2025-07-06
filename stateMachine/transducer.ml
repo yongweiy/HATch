@@ -233,9 +233,7 @@ module F (A : ELA) = struct
     let g = G.add_vertex G.empty init in
     let rec dfs ~m ~g v1 v2 v =
       match v1 with
-      | `Go v1 when M.mem (v1, v2) m -> 
-          (* Already processed this vertex pair, return current graph *)
-          g
+      | `Go v1 when M.mem (v1, v2) m -> g
       | `Go v1 ->
           let m = M.add (v1, v2) v m in
           G.fold_succ_e
@@ -247,12 +245,26 @@ module F (A : ELA) = struct
               | Epsilon (phi1, evs1) ->
                   let v1' = G.E.dst e1 in
                   dfs ~m ~g (`WaitEpsilon (evs1, v1', A.P.mk_true, [])) v2 v)
-            g1 v1 g
+            g1 v1
+          @@ G.fold_succ_e
+               (fun e2 g ->
+                 match G.E.label e2 with
+                 | Pred _ -> g
+                 | Epsilon _ as l ->
+                     let v2' = G.E.dst e2 in
+                     let v' =
+                       match M.find_opt (v1, v2') m with
+                       | Some existing_v -> existing_v
+                       | None -> G.comb v1 v2'
+                     in
+                     let g = G.add_edge_e g @@ G.E.create v l v' in
+                     dfs ~m ~g (`Go v1) v2' v')
+               g2 v2 g
       | `Wait (p1, [], v1, pred, fns) -> (
           let pred = A.mk_and pred p1 in
           match A.simp_opt ~is_bot pred with
           | Some pred ->
-              let v' = 
+              let v' =
                 match M.find_opt (v1, v2) m with
                 | Some existing_v -> existing_v
                 | None -> G.comb v1 v2
@@ -278,7 +290,7 @@ module F (A : ELA) = struct
                   dfs ~m ~g (`Wait (p1, fn1 :: fns1, v1, pred, fns)) v2' v)
             g2 v2 g
       | `WaitEpsilon ([], v1, phi, evs) ->
-          let v' = 
+          let v' =
             match M.find_opt (v1, v2) m with
             | Some existing_v -> existing_v
             | None -> G.comb v1 v2

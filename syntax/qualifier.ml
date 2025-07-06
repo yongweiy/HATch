@@ -83,12 +83,14 @@ module F (L : Lit.T) = struct
     (* Printf.printf !"after\n%{sexp: prop}\n" prop'; *)
     if equal_prop prop prop' then prop else reduce_until prop'
 
-  let mk_and =
+  let mk_and_multi =
     List.map to_conjuncts
     >> List.fold_left (List.sorted_merge_uniq ~cmp:compare_prop) []
     >> of_conjuncts >> reduce_until
 
-  let mk_or =
+  let mk_and a b = mk_and_multi [ a; b ]
+
+  let mk_or_multi =
     let eliminate_contradicting_lits lits =
       let contradicts =
         List.concat_map (function [@warning "-8"] [ p1; p2 ] ->
@@ -103,17 +105,19 @@ module F (L : Lit.T) = struct
       >> eliminate_contradicting_lits >> of_disjuncts
     in
     (* (A ∧ B) ∨ (C ∧ D) = (A ∨ C) ∧ (A ∨ D) ∧ (B ∨ C) ∧ (B ∨ D) *)
-    List.map_product_l to_conjuncts >> List.map build_conjunct >> mk_and
+    List.map_product_l to_conjuncts >> List.map build_conjunct >> mk_and_multi
+
+  let mk_or a b = mk_or_multi [ a; b ]
 
   let rec mk_not = function
     | Not p -> p
     | p when is_true p -> mk_false
     | p when is_false p -> mk_true
-    | And ps -> mk_or (List.map mk_not ps)
+    | And ps -> mk_or_multi (List.map mk_not ps)
     | Or ps -> And (List.map mk_not ps)
     | p -> Not p
 
-  let mk_implies p1 p2 = mk_or [ mk_not p1; p2 ]
+  let mk_implies p1 p2 = mk_or (mk_not p1) p2
 
   let smart_and l =
     if List.exists is_false l then mk_false

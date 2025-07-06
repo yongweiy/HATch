@@ -35,6 +35,9 @@ let rec eff_of_ocamlexpr expr : Eff.t =
       let op = String.uncapitalize_ascii @@ To_id.longid_to_id op in
       match op with
       | "reach" -> Reach (eff_of_ocamlexpr e)
+      | "admit" -> Atom (Trans (Admit (To_srl.of_ocamlexpr e)))
+      | "reject" -> Atom (Trans (Reject (To_aevent.pred_of_ocamlexpr e)))
+      | "append" -> Atom (Trans (Append (To_aevent.ev_of_ocamlexpr e)))
       | _ -> let args, ret =
                match e.pexp_desc with
                | Pexp_tuple es ->

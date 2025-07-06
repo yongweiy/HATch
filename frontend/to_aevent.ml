@@ -23,12 +23,12 @@ let pprint_pred { events; op_pred } =
           To_qualifier.layout phi ^ "¬(" ^ String.concat " | " ops_exclude ^ ")";
         ]
 
-let pprint_func = function
-  | IdentityF -> "id"
-  | EventF { op; args; ret } ->
-      spf "⟨%s %s = %s⟩" op
-        (String.concat " " @@ List.map To_lit.layout_typed_lit args)
-        (To_lit.layout_typed_lit ret)
+let pprint_ev { op; args; ret } =
+  spf "⟨%s %s = %s⟩" op
+    (String.concat " " @@ List.map To_lit.layout_typed_lit args)
+    (To_lit.layout_typed_lit ret)
+
+let pprint_func = function IdentityF -> "id" | EventF ev -> pprint_ev ev
 
 let rec pred_of_ocamlexpr expr =
   match expr.pexp_desc with
@@ -49,10 +49,8 @@ let rec pred_of_ocamlexpr expr =
       @@ spf "of_ocamlexpr: %s"
       @@ Pprintast.string_of_expression expr
 
-let func_of_ocamlexpr expr =
+let ev_of_ocamlexpr expr =
   match expr.pexp_desc with
-  | Pexp_construct (op, None) when String.equal "Id" @@ To_id.longid_to_id op ->
-      IdentityF
   | Pexp_construct (op, Some e) ->
       let op = String.uncapitalize_ascii @@ To_id.longid_to_id op in
       let args, ret =
@@ -62,7 +60,17 @@ let func_of_ocamlexpr expr =
             @@ List.map To_lit.typed_lit_of_ocamlexpr es
         | _ -> _failatwith __FILE__ __LINE__ "die"
       in
-      EventF { op; args; ret }
+      { op; args; ret }
+  | _ ->
+      _failatwith __FILE__ __LINE__
+      @@ spf "ev_of_ocamlexpr: %s"
+      @@ Pprintast.string_of_expression expr
+
+let func_of_ocamlexpr expr =
+  match expr.pexp_desc with
+  | Pexp_construct (op, None) when String.equal "Id" @@ To_id.longid_to_id op ->
+      IdentityF
+  | Pexp_construct (op, Some _) -> EventF (ev_of_ocamlexpr expr)
   | _ ->
       _failatwith __FILE__ __LINE__
       @@ spf "of_ocamlexpr: %s"
