@@ -234,8 +234,7 @@ module F (A : ELA) = struct
     let rec dfs ~m ~g v1 v2 v =
       match v1 with
       | `Go v1 when M.mem (v1, v2) m -> 
-          (* Return existing combined vertex instead of just the graph *)
-          let existing_v = M.find (v1, v2) m in
+          (* Already processed this vertex pair, return current graph *)
           g
       | `Go v1 ->
           let m = M.add (v1, v2) v m in
