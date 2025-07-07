@@ -59,6 +59,18 @@ module F (A : ELA) = struct
   include State
   module PathCheck = Graph.Path.Check (G)
 
+  module Dijkstra =
+    Graph.Path.Dijkstra
+      (G)
+      (struct
+        type edge = G.E.t
+        type t = int [@@deriving compare]
+
+        let weight = G.E.label >> function Epsilon _ -> 0 | Pred _ -> 1
+        let zero = 0
+        let add = ( + )
+      end)
+
   type sft = { init : G.V.t; g : G.t }
 
   let sexp_of_sft _ = _failatwith __FILE__ __LINE__ "sexp_of_sft"
