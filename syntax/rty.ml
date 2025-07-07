@@ -43,6 +43,7 @@ module F (L : Lit.T) = struct
     | Reject sev -> Reject sev
 
   and apply_pred_eff pred : LRty.Eff.t -> LRty.Eff.t = function
+    | Atom Id -> Atom Id
     | Atom (Call _ as call) -> Atom call
     | Atom (Trans trans) -> Atom (Trans (apply_pred_trans pred trans))
     | Reach eff -> Reach (apply_pred_eff pred eff)
