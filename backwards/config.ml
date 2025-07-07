@@ -1,8 +1,7 @@
 open Language
-open TypedCoreEff
 open Rty
 
-type t = {
+type config = {
   rctx : RTypectx.ctx;
   eff : Eff.t;
   sfa : Sft.sft;
@@ -16,7 +15,7 @@ type t = {
 (** configurations with "narrower" [sfa] and less [steps] should be
     prioritized; in particular, when more [steps] have been taken, a
     "narrower" [sfa] is preferred. *)
-let worklist = Pairing_heap.create ~min_size:20 ~cmp:(fun c1 c2 ->
+let create_worklist init_width = Pairing_heap.create ~min_size:20 ~cmp:(fun c1 c2 ->
   (* Dynamic weighing: exploration weight decreases as steps increase *)
   let exploration_weight = max 0.1 (1.0 /. (1.0 +. float_of_int (max c1.steps c2.steps))) in
   let exploitation_weight = 1.0 -. exploration_weight in
