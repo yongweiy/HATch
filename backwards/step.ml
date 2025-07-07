@@ -26,16 +26,16 @@ let rec step (rctx, eff, sfa) =
       let eff_subst = subst_eff (cx, AVar x') eff' in
       [(rctx', eff_subst, sfa)]
   
+  (* SBIdent: Identity elimination *)
+  | Seq (eff', Atom Id) ->
+      [(rctx, eff', sfa)]
+  
   (* SBSeq: Sequential composition *)
   | Seq (eff1, eff2) ->
       (* First step eff2, then prepend eff1 to results *)
       let successors = step (rctx, eff2, sfa) in
       List.map (fun (rctx', eff2', sfa') -> 
         (rctx', Seq (eff1, eff2'), sfa')) successors
-  
-  (* SBIdent: Identity elimination *)
-  | Seq (eff', Atom Id) ->
-      [(rctx, eff', sfa)]
   
   (* SBGuard: Assumption/Guard *)
   | Guard phi ->
