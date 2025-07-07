@@ -74,6 +74,7 @@ module F (L : Lit.T) = struct
     | Reject sev -> Reject sev
 
   and to_eff : LRty.Eff.t -> Eff.t = function
+    | Atom Id -> Atom Id
     | Atom (Call ev) -> Atom (Call ev)
     | Atom (Trans trans) -> Atom (Trans (to_trans trans))
     | Reach eff -> Reach (to_eff eff)
@@ -110,6 +111,7 @@ module F (L : Lit.T) = struct
     | Reject sev -> Reject (Sft.subst_pred yz sev)
 
   let subst_eff_atom yz : Eff.atom -> Eff.atom = function
+    | Id -> Id
     | Call { op; args; ret } ->
         let aux = subst_lit yz in
         Call { op; args = List.map (( #-> ) aux) args; ret = aux #-> ret }
@@ -131,6 +133,7 @@ module F (L : Lit.T) = struct
     | Reject sev -> Sft.fv_pred sev
 
   let fv_eff_atom : Eff.atom -> string list = function
+    | Id -> []
     | Call { args; ret; _ } -> List.concat_map fv_typed_lit (ret :: args)
     | Trans sft -> fv_trans sft
 
