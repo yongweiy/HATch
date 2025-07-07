@@ -2,6 +2,9 @@ open Sugar
 open Language
 open Rty
 open Eff
+open Choice
+
+let ( let* ) = bind
 
 (** stepping between triples using Choice monad *)
 let rec step (rctx, eff, sfa) =
@@ -11,12 +14,12 @@ let rec step (rctx, eff, sfa) =
   | Atom (Trans (Explicit sft)) ->
       (* Compose Γ, SFT, SFA_post to get SFA_pre *)
       let sfa_pre = Sft.mk_compose ~is_bot sft sfa in
-      Choice.return (rctx, Atom Id, sfa_pre)
+      return (rctx, Atom Id, sfa_pre)
   (* SBChoice: Non-deterministic choice *)
   | Choice (eff1, eff2) ->
-      Choice.mplus
-        (Choice.return (rctx, eff1, sfa))
-        (Choice.return (rctx, eff2, sfa))
+      mplus
+        (return (rctx, eff1, sfa))
+        (return (rctx, eff2, sfa))
   (* SBExist: Existential quantification *)
   | Bind ({ cx; cty }, eff') ->
       (* Generate fresh variable name *)
@@ -27,14 +30,14 @@ let rec step (rctx, eff, sfa) =
       in
       (* Substitute x with x' in eff' *)
       let eff_subst = subst_eff (cx, AVar x') eff' in
-      Choice.return (rctx', eff_subst, sfa)
+      return (rctx', eff_subst, sfa)
   (* SBIdent: Identity elimination *)
-  | Seq (eff', Atom Id) -> Choice.return (rctx, eff', sfa)
+  | Seq (eff', Atom Id) -> return (rctx, eff', sfa)
   (* SBSeq: Sequential composition *)
   | Seq (eff1, eff2) ->
       (* First step eff2, then prepend eff1 to results *)
       let* rctx', eff2', sfa' = step (rctx, eff2, sfa) in
-      Choice.return (rctx', Seq (eff1, eff2'), sfa')
+      return (rctx', Seq (eff1, eff2'), sfa')
   (* SBGuard: Assumption/Guard *)
   | Guard phi ->
       (* Generate fresh variable for unit type with constraint φ *)
@@ -43,20 +46,20 @@ let rec step (rctx, eff, sfa) =
       let rctx' =
         RTypectx.new_to_right rctx { rx = u; rty = BaseRty { cty = unit_cty } }
       in
-      Choice.return (rctx', Atom Id, sfa)
+      return (rctx', Atom Id, sfa)
   (* SBUntilZero and SBUntilStep would require Until construct *)
   (* These seem to be missing from the current Eff.t definition *)
 
   (* Base cases *)
   | Atom Id ->
       (* Identity - no further steps *)
-      Choice.fail
+      fail
   | Atom (Call _) ->
       (* Function calls - would need more context about how to handle *)
-      Choice.fail
+      fail
   | Atom (Trans _) ->
       (* Other transitions - would need specific handling *)
-      Choice.fail
+      fail
   | Reach eff' ->
       (* Reachability - step the inner effect *)
       step (rctx, eff', sfa)
