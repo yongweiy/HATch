@@ -3,5 +3,5 @@ open Language
 open Rty
 
 (** stepping between triples *)
-let step (rctx : RTypectx.ctx, eff: Eff.t, sfa: Sft.sft) = 
+let step (rctx, eff, sfa) = 
   failwith "TODO: implement step function"
