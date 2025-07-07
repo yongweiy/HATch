@@ -36,7 +36,7 @@ let rec step (rctx, eff, sfa) =
   (* SBSeq: Sequential composition *)
   | Seq (eff1, eff2) ->
       (* First step eff2, then prepend eff1 to results *)
-      let* rctx', eff2', sfa' = step (rctx, eff2, sfa) in
+      let* (rctx', eff2', sfa') = step (rctx, eff2, sfa) in
       return (rctx', Seq (eff1, eff2'), sfa')
   (* SBGuard: Assumption/Guard *)
   | Guard phi ->
