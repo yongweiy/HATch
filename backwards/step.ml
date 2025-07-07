@@ -4,12 +4,13 @@ open Rty
 open Eff
 
 (** stepping between triples *)
-let rec step (rctx, eff, sfa) = 
+let rec step (rctx, eff, sfa) =
+  let is_bot = Subtyping.is_bot_cty rctx << Cty.mk_unit_from_prop in
   match eff with
   (* SBAtom: Call operation *)
   | Atom (Trans (Explicit sft)) ->
       (* Compose Γ, SFT, SFA_post to get SFA_pre *)
-      let sfa_pre = (* TODO: implement Compose function *) sfa in
+      let sfa_pre = Sft.mk_compose ~is_bot sft sfa in
       [(rctx, Atom Id, sfa_pre)]
   
   (* SBChoice: Non-deterministic choice *)
