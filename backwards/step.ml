@@ -4,7 +4,7 @@ open Rty
 open Eff
 open Choice
 
-let ( let* ) = bind
+let ( let* ) m f = Choice.bind m f
 
 (** stepping between triples using Choice monad *)
 let rec step (rctx, eff, sfa) =
