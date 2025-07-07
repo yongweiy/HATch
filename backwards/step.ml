@@ -1,9 +1,10 @@
 open Sugar
 open Language
 open Rty
+open Eff
 
 (** stepping between triples *)
-let step (rctx, eff, sfa) = 
+let rec step (rctx, eff, sfa) = 
   match eff with
   (* SBAtom: Call operation *)
   | Atom (Trans (Explicit sft)) ->
