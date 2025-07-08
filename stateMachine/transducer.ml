@@ -77,7 +77,20 @@ module F (A : ELA) = struct
   let sft_of_sexp _ = _failatwith __FILE__ __LINE__ "sft_of_sexp"
 
   (** TODO: compute the width of the graph -- the shortest distance from [init] state to any final state *)
-  let width_of { init; g } : int = _
+  let width_of { init; g } : int =
+    let finals = G.get_finals g in
+    if List.is_empty finals then
+      (* No final states - return a large value to indicate unreachable *)
+      Int.max_int
+    else
+      try
+        let distances = List.map (fun final -> 
+          let (_, dist) = Dijkstra.shortest_path g init final in
+          dist
+        ) finals in
+        List.fold_left min Int.max_int distances
+      with
+      | Not_found -> Int.max_int (* No path exists to any final state *)
 
   let display layout_l { init; g } =
     let module Dot = Graph.Graphviz.Dot (struct
