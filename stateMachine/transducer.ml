@@ -76,6 +76,9 @@ module F (A : ELA) = struct
   let sexp_of_sft _ = _failatwith __FILE__ __LINE__ "sexp_of_sft"
   let sft_of_sexp _ = _failatwith __FILE__ __LINE__ "sft_of_sexp"
 
+  (** TODO: compute the width of the graph -- the shortest distance from [init] state to any final state *)
+  let width_of { init; g } : int = _
+
   let display layout_l { init; g } =
     let module Dot = Graph.Graphviz.Dot (struct
       include G
