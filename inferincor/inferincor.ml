@@ -57,7 +57,11 @@ let infer (opctx', rctx') structure normalized =
             let _ = Rty.Ax.get_related_assumption [] in
 
           let typecheck_time, res =
-            Sugar.clock (fun () -> Weaken.weaken_pure opctx rctx rty comp)
+            Sugar.clock (fun () -> 
+              (* Phase 1: Infer program behavior exhaustively *)
+              let inferred_rty = Infer.infer_pure opctx rctx comp in
+              (* Phase 2: Weaken with query type *)
+              Typing.weaken_with_query rctx inferred_rty rty)
           in
           (* let stat = *)
           (*   Stat.update_dynamic_stat stat typecheck_time *)
