@@ -9,9 +9,9 @@ let refine_to_ceil : Nt.t -> rty = function
 let under_to_over : rty -> rty = Fun.id
 
 let of_ty_pre ty pre =
-  { ret = "ret" #:: (refine_to_ceil ty); trans = PreAndPost (pre, mk_any) }
+  { ret = "ret" #:: (refine_to_ceil ty); eff = Eff.Guard pre }
 
-let of_rty rty = { ret = "ret" #:: rty; trans = PreToPost mk_ident }
+let of_rty rty = { ret = "ret" #:: rty; eff = Eff.Atom Eff.Id }
 let under_to_over_rtyped { rx; rty } = { rx; rty = under_to_over rty }
 
 let existential { rx = cx; rty } =
@@ -19,9 +19,9 @@ let existential { rx = cx; rty } =
   | ArrRty _ -> Fun.id
   | BaseRty { cty } -> (
       function[@warning "-8"]
-      | { ret; trans = PreToPost (SftT (cxs, sft)) } ->
+      | { ret; eff } ->
           assert (not @@ List.exists (String.equal cx) @@ fv_rty ret.rty);
-          { ret; trans = PreToPost (SftT ((cx #::: cty) :: cxs, sft)) })
+          { ret; eff = Eff.Bind ((cx #::: cty), eff) })
 
 let multi_existential rxs = List.fold_right existential rxs
 
@@ -30,11 +30,11 @@ let multi_existential rxs = List.fold_right existential rxs
 (* InterOver and UnionOver rules for base types *)
 let inter_cty { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
   assert (v1 = v2);
-  { v = v1; phi = mk_and [ phi1; phi2 ] }
+  { v = v1; phi = mk_and phi1 phi2 }
 
 let union_cty { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
   assert (v1 = v2);
-  { v = v1; phi = mk_or [ phi1; phi2 ] }
+  { v = v1; phi = mk_or phi1 phi2 }
 
 (* InterUnder and UnionUnder rules *)
 let inter_rty = function
@@ -47,37 +47,18 @@ let union_rty = function
       BaseRty { cty = inter_cty cty1 cty2 }  (* UnionUnder: phi1 ∧ phi2 *)
   | _ -> _failatwith __FILE__ __LINE__ "union_rty"
 
-let[@warning "-8"] union_effty rctx
-    {
-      ret = { rx; rty = BaseRty { cty = { v = v1; phi = phi1 } } };
-      trans = PreAndPost (pre, post);
-    }
-    {
-      ret = { rx = rx'; rty = BaseRty { cty = { v = v2; phi = phi2 } } };
-      trans = PreToPost trans;
-    } =
-  assert (rx = rx');
-  assert (v1 = v2);
-  assert (post = mk_any);
-  let rty = BaseRty { cty = { v = v1; phi = mk_and [ phi1; phi2 ] } } in
-  let ret = { rx; rty } in
-  let rctx = RTypectx.new_to_right rctx ret in
-  let trans' = restrict_domain ~rctx trans pre in
-  assert (is_reachable trans');
-  (* no need to restrict by range because in practice post is .* *)
-  { ret; trans = PreToPost trans' }
+let union_effty rctx monad1 monad2 =
+  let ret_rty = union_rty (monad1.ret.rty, monad2.ret.rty) in
+  let ret = { rx = monad1.ret.rx; rty = ret_rty } in
+  let eff = Eff.Choice (monad1.eff, monad2.eff) in
+  { ret; eff }
 
 (* InterEff rule *)
 let inter_effty rctx tau1 tau2 =
   let t = union_rty (tau1.ret.rty, tau2.ret.rty) in
   let ret = { rx = tau1.ret.rx; rty = t } in
-  (* mplus (bind t1 ID FT1) (bind t2 ID FT2) *)
-  let ft = PreToPost (Srt.mk_union ~rctx (
-    match tau1.trans with PreToPost srt1 -> srt1 | _ -> _failatwith __FILE__ __LINE__ "inter_effty"
-  ) (
-    match tau2.trans with PreToPost srt2 -> srt2 | _ -> _failatwith __FILE__ __LINE__ "inter_effty"
-  )) in
-  { ret; trans = ft }
+  let eff = Eff.Choice (tau1.eff, tau2.eff) in
+  { ret; eff }
 
 (** WK* rules implementation - Top-level type weakening *)
 
@@ -100,7 +81,7 @@ let weaken_with_query rctx (inferred_type : rty) (query_type : rty) : rty option
   with
   | _ -> None
 
-let weaken_eff_with_query rctx (inferred_eff : tmonad) (query_eff : tmonad) : tmonad option =
+let weaken_eff_with_query rctx (inferred_eff : monad) (query_eff : monad) : monad option =
   try
     let result = weaken_eff_type rctx query_eff inferred_eff in
     if Subtyping.is_bot_rty rctx result.ret.rty then None
