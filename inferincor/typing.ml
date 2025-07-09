@@ -1,7 +1,6 @@
 open Sugar
 open Language
 open Rty
-open Srt
 
 let refine_to_ceil : Nt.t -> rty = function
   | Ty_arrow _ -> _failatwith __FILE__ __LINE__ "TODO: refine_to_ceil"
