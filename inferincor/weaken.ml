@@ -65,12 +65,30 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
 
 (** Type weakening for values following WK* rules *)
 and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
-  (* WKPure rule: Γ ⊢ v ↑ t, Γ ⊢ t₁ ∨ t = t₂ ⟹ Γ ⊢ t₁ ↓ v ↑ t₂ *)
-  let inferred_rty = infer_pure opctx rctx value in
-  let result_rty = union_rty (rty_in, inferred_rty) in
-  if Subtyping.is_bot_rty rctx result_rty then
-    _failatwith __FILE__ __LINE__ "Weakening Failure"
-  else result_rty
+  match value.x with
+  | VLam { lamarg; lambody } -> (
+      (* Handle lambda weakening with input type (updated SynFun rule) *)
+      let arr, rethty = rty_destruct_arr __FILE__ __LINE__ rty_in in
+      match arr with
+      | ArrArr _ -> _failatwith __FILE__ __LINE__ "Higher order function"
+      | GhostArr _ -> _failatwith __FILE__ __LINE__ "die"
+      | NormalArr rx ->
+          (* SynFun rule: Γ,x:t_x ⊢ τ₁ ↓ e ↑ τ₂ ⟹ Γ ⊢ x:t_x→τ₁ ↓ λx.e ↑ x:t_x→τ₂ *)
+          assert (rx.rx = lamarg.x);
+          let rctx' = RTypectx.new_to_right rctx rx in
+          let effty_in = hty_force_monad rethty in
+          let effty_out = weaken_eff opctx rctx' effty_in lambody in
+          let result_rty = ArrRty { arr = NormalArr rx; rethty = Monad effty_out } in
+          if Subtyping.is_bot_rty rctx result_rty then
+            _failatwith __FILE__ __LINE__ "Weakening Failure"
+          else result_rty)
+  | _ ->
+      (* WKPure rule: Γ ⊢ v ↑ t, Γ ⊢ t₁ ∨ t = t₂ ⟹ Γ ⊢ t₁ ↓ v ↑ t₂ *)
+      let inferred_rty = infer_pure opctx rctx value in
+      let result_rty = union_rty (rty_in, inferred_rty) in
+      if Subtyping.is_bot_rty rctx result_rty then
+        _failatwith __FILE__ __LINE__ "Weakening Failure"
+      else result_rty
 
 (** Type weakening for computations following WK* rules *)
 and weaken_eff opctx rctx (eff_ty_in : monad) (expr : comp typed) : monad =
