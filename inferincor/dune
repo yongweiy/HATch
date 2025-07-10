@@ -5,6 +5,6 @@
  (modules
    aux
    typing
-   infer
+   weaken
    inferincor
  ))
