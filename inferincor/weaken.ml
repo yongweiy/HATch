@@ -81,25 +81,6 @@ and weaken_eff opctx rctx (eff_ty_in : monad) (expr : comp typed) : monad =
     _failatwith __FILE__ __LINE__ "Weakening Failure"
   else result_eff
 
-(** Lambda weakening with input type (updated SynFun rule) *)
-and weaken_lambda opctx rctx (arr_rty_in : rty) (lambda : value typed) : rty =
-  match lambda.x with
-  | VLam { lamarg; lambody } -> (
-      let arr, rethty = rty_destruct_arr __FILE__ __LINE__ arr_rty_in in
-      match arr with
-      | ArrArr _ -> _failatwith __FILE__ __LINE__ "Higher order function"
-      | GhostArr _ -> _failatwith __FILE__ __LINE__ "die"
-      | NormalArr rx ->
-          (* SynFun rule: Γ,x:t_x ⊢ τ₁ ↓ e ↑ τ₂ ⟹ Γ ⊢ x:t_x→τ₁ ↓ λx.e ↑ x:t_x→τ₂ *)
-          assert (rx.rx = lamarg.x);
-          let rctx' = RTypectx.new_to_right rctx rx in
-          let effty_in = hty_force_monad rethty in
-          let effty_out = weaken_eff opctx rctx' effty_in lambody in
-          let result_rty = ArrRty { arr = NormalArr rx; rethty = Monad effty_out } in
-          if Subtyping.is_bot_rty rctx result_rty then
-            _failatwith __FILE__ __LINE__ "Weakening Failure"
-          else result_rty)
-  | _ -> _failatwith __FILE__ __LINE__ "Expected lambda"
 
 (** Operator inference *)
 and infer_op opctx rctx (arg_rtys, ret_eff_ty) (op : Op.t typed) :
