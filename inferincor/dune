@@ -4,9 +4,7 @@
  (libraries language core env normalization subtyping)
  (modules
    aux
-   srt
    typing
    infer
-   weaken
    inferincor
  ))
