@@ -1,4 +1,5 @@
 open Sugar
+open Core.Option.Let_syntax
 open Language
 open TypedCoreEff
 open Rty
