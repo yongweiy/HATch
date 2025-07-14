@@ -77,7 +77,7 @@ and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
           (* SynFun rule: Γ,x:t_x ⊢ τ₁ ↓ e ↑ τ₂ ⟹ Γ ⊢ x:t_x→τ₁ ↓ λx.e ↑ x:t_x→τ₂ *)
           assert (rx.rx = lamarg.x);
           let rctx' = RTypectx.new_to_right rctx rx in
-          let effty_in = hty_force_monad rethty in
+          let effty_in = hty_to_monad __FILE__ __LINE__ rethty in
           let effty_out = weaken_eff opctx rctx' effty_in lambody in
           let result_rty = ArrRty { arr = NormalArr rx; rethty = Monad effty_out } in
           if Subtyping.is_bot_rty rctx result_rty then
@@ -126,21 +126,10 @@ and infer_op opctx rctx (arg_rtys, ret_eff_ty) (op : Op.t typed) :
   in
   let rxs, hty = multi_app [] arg_rtys (Rty (ROpTypectx.get_ty opctx op.x)) in
   let result_monad = match op.x with
-    | Op.BuiltinOp _ -> of_rty @@ hty_force_rty hty
-    | Op.EffOp _ -> hty_force_monad hty
+    | Op.BuiltinOp _ -> of_rty @@ hty_to_rty __FILE__ __LINE__ hty
+    | Op.EffOp _ -> hty_to_monad __FILE__ __LINE__ hty
     | Op.DtOp _ -> _failatwith __FILE__ __LINE__ "die"
   in
   match union_effty (RTypectx.new_to_rights rctx rxs) ret_eff_ty result_monad with
   | Some monad -> (rxs, monad)
   | None -> _failatwith __FILE__ __LINE__ "union_effty failed in infer_op"
-
-(** Helper functions *)
-and hty_force_rty = function
-  | Rty rty -> rty
-  | _ -> _failatwith __FILE__ __LINE__ "hty_force_rty"
-
-and hty_force_monad = function
-  | Monad monad -> monad
-  | _ -> _failatwith __FILE__ __LINE__ "hty_force_monad"
-
-and multi_existential rxs = List.fold_right existential rxs
