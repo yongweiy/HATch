@@ -2,6 +2,15 @@ open Sugar
 open Language
 open Rty
 
+(* Helper functions mirroring those in weaken.ml *)
+let hty_force_rty = function
+  | Rty rty -> rty
+  | _ -> _failatwith __FILE__ __LINE__ "hty_force_rty in rty_processor"
+
+let hty_force_monad = function
+  | Monad monad -> monad
+  | _ -> _failatwith __FILE__ __LINE__ "hty_force_monad in rty_processor"
+
 (** Process refinement types to replace Call effects with actual operator effects *)
 
 let rec process_eff opctx = function
@@ -9,12 +18,33 @@ let rec process_eff opctx = function
       (* Look up the operator in opctx and get its effect *)
       (match ROpTypectx.get_ty_opt opctx (EffOp op) with
        | Some op_rty ->
-           (* Extract effect from operator type - similar to infer_op logic *)
-           let op_hty = Rty op_rty in
-           (match op_hty with
-            | Monad { eff; _ } -> eff
-            | Rty _ -> Eff.Atom Eff.Id  (* Pure operator *)
-            | _ -> Eff.Atom (Call { op; args; ret }))  (* Fallback *)
+           (* Extract parameters and effect from operator type - mirroring infer_op logic *)
+           let rec extract_params_and_effect acc_rxs hty remaining_args =
+             match remaining_args with
+             | [] -> 
+                 (* No more arguments, extract the final effect *)
+                 (match hty with
+                  | Monad { ret = final_ret; eff } -> 
+                      (* Perform substitutions: substitute args/ret for rxs/final_ret in eff *)
+                      let substitutions = 
+                        (final_ret.rx, ret) :: 
+                        List.map2 (fun rx arg -> (rx.rx, arg)) (List.rev acc_rxs) args
+                      in
+                      List.fold_left (fun eff_acc (var, lit_val) -> 
+                        subst_eff (var, lit_val) eff_acc
+                      ) eff substitutions
+                  | Rty _ -> Eff.Atom Eff.Id  (* Pure operator *)
+                  | _ -> Eff.Atom (Call { op; args; ret }))  (* Fallback *)
+             | arg :: remaining_args ->
+                 (* More arguments to process, destructure the function type *)
+                 let rty = hty_force_rty hty in
+                 let arr, rethty = rty_destruct_arr __FILE__ __LINE__ rty in
+                 (match arr with
+                  | NormalArr rx -> 
+                      extract_params_and_effect (rx :: acc_rxs) rethty remaining_args
+                  | _ -> Eff.Atom (Call { op; args; ret }))  (* Fallback for unsupported arr types *)
+           in
+           extract_params_and_effect [] (Rty op_rty) args
        | None -> Eff.Atom (Call { op; args; ret }))  (* Operator not found, keep as is *)
   | Eff.Atom atom -> Eff.Atom atom
   | Eff.Reach eff -> Eff.Reach (process_eff opctx eff)
