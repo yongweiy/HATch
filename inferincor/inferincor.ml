@@ -56,15 +56,13 @@ let infer (opctx', rctx') structure normalized =
           (* let () = Desymbolic.stat_init () in *)
           (* let _ = Rty.Ax.get_related_assumption [] in *)
 
-          (* TODO: within input type [rty], we need to replace [Atom
-             (Call ev)] with the effect of [ev.op] according to its
-             typing in [opctx], use [infer_op] as a reference for
-             extracting effect from an effectful operator *)
+          (* Process input rty to replace Call effects with actual operator effects *)
+          let processed_rty = Rty_processor.process_input_rty opctx rty in
           let typecheck_time, res =
             Sugar.clock (fun () ->
                 (* Interleaved weakening and inference *)
                 (* try *)
-                let result_rty = Weaken.weaken_pure opctx rctx rty comp in
+                let result_rty = Weaken.weaken_pure opctx rctx processed_rty comp in
                 Printf.printf "inferred:\n%s" @@ Rty.layout_rty result_rty;
                 Some result_rty
                 (* with *)
