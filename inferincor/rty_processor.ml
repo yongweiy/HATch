@@ -7,7 +7,7 @@ open Rty
 let rec process_eff opctx = function
   | Eff.Atom (Call { op; args; ret }) ->
       (* Look up the operator in opctx and get its effect *)
-      (match ROpTypectx.get_ty_opt opctx op with
+      (match ROpTypectx.get_ty_opt opctx (EffOp op) with
        | Some op_rty ->
            (* Extract effect from operator type - similar to infer_op logic *)
            let op_hty = Rty op_rty in
