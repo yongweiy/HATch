@@ -33,7 +33,7 @@ let infer (opctx', rctx') structure normalized =
       with
       | None -> failwith "cannot find the implemetation of the given assertion"
       | Some (_, comp) ->
-        let comp = TypedCoreEff.to_v comp in
+          let comp = TypedCoreEff.to_v comp in
           let () =
             if not (Nt.eq comp.ty (R.erase_rty rty)) then
               let () =
@@ -54,16 +54,23 @@ let infer (opctx', rctx') structure normalized =
           (* let () = Smt.stat_init () in *)
           (* let () = Baux.stat_init () in *)
           (* let () = Desymbolic.stat_init () in *)
-            let _ = Rty.Ax.get_related_assumption [] in
+          (* let _ = Rty.Ax.get_related_assumption [] in *)
 
+          (* TODO: within input type [rty], we need to replace [Atom
+             (Call ev)] with the effect of [ev.op] according to its
+             typing in [opctx], use [infer_op] as a reference for
+             extracting effect from an effectful operator *)
           let typecheck_time, res =
-            Sugar.clock (fun () -> 
-              (* Interleaved weakening and inference *)
-              try
+            Sugar.clock (fun () ->
+                (* Interleaved weakening and inference *)
+                (* try *)
                 let result_rty = Weaken.weaken_pure opctx rctx rty comp in
+                Printf.printf "inferred:\n%s" @@ Rty.layout_rty result_rty;
                 Some result_rty
-              with
-              | _ -> None)
+                (* with *)
+                (* | _ -> *)
+                (* print_endline "failed"; *)
+                (* None *))
           in
           (* let stat = *)
           (*   Stat.update_dynamic_stat stat typecheck_time *)

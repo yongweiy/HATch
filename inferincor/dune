@@ -1,10 +1,12 @@
 (library
  (name inferincor)
  (wrapped true)
- (libraries language core env normalization subtyping)
+ (libraries language core env normalization subtyping backwards)
  (modules
    aux
    typing
    weaken
    inferincor
- ))
+ )
+ (preprocess
+  (pps ppx_let)))
