@@ -86,19 +86,23 @@ and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
   | _ ->
       (* WKPure rule: Γ ⊢ v ↑ t, Γ ⊢ t₁ ∨ t = t₂ ⟹ Γ ⊢ t₁ ↓ v ↑ t₂ *)
       let inferred_rty = infer_pure opctx rctx value in
-      let result_rty = union_rty (rty_in, inferred_rty) in
-      if Subtyping.is_bot_rty rctx result_rty then
-        _failatwith __FILE__ __LINE__ "Weakening Failure"
-      else result_rty
+      match union_rty (rty_in, inferred_rty) with
+      | Some result_rty ->
+          if Subtyping.is_bot_rty rctx result_rty then
+            _failatwith __FILE__ __LINE__ "Weakening Failure"
+          else result_rty
+      | None -> _failatwith __FILE__ __LINE__ "Weakening Failure"
 
 (** Type weakening for computations following WK* rules *)
 and weaken_eff opctx rctx (eff_ty_in : monad) (expr : comp typed) : monad =
   (* WKEff rule: Γ ⊢ e ↑ τ, Γ ⊢ τ₁ ∨ τ = τ₂ ⟹ Γ ⊢ τ₁ ↓ e ↑ τ₂ *)
   let inferred_eff = infer_eff opctx rctx expr in
-  let result_eff = union_effty rctx eff_ty_in inferred_eff in
-  if Subtyping.is_bot_rty rctx result_eff.ret.rty then
-    _failatwith __FILE__ __LINE__ "Weakening Failure"
-  else result_eff
+  match union_effty rctx eff_ty_in inferred_eff with
+  | Some result_eff ->
+      if Subtyping.is_bot_rty rctx result_eff.ret.rty then
+        _failatwith __FILE__ __LINE__ "Weakening Failure"
+      else result_eff
+  | None -> _failatwith __FILE__ __LINE__ "Weakening Failure"
 
 
 (** Operator inference *)
@@ -114,17 +118,21 @@ and infer_op opctx rctx (arg_rtys, ret_eff_ty) (op : Op.t typed) :
         | ArrArr _ -> _failatwith __FILE__ __LINE__ "Higher order operator"
         | GhostArr _ -> _failatwith __FILE__ __LINE__ "die"
         | NormalArr rx ->
-            let rx = { rx with rty = union_rty (rx.rty, arg_rty) } in
+            let rx = match union_rty (rx.rty, arg_rty) with
+              | Some rty -> { rx with rty }
+              | None -> _failatwith __FILE__ __LINE__ "union_rty failed in infer_op"
+            in
             multi_app (rx :: rxs) arg_rtys rethty)
   in
   let rxs, hty = multi_app [] arg_rtys (Rty (ROpTypectx.get_ty opctx op.x)) in
-  ( rxs,
-    union_effty (RTypectx.new_to_rights rctx rxs) ret_eff_ty
-    @@
-    match op.x with
+  let result_monad = match op.x with
     | Op.BuiltinOp _ -> of_rty @@ hty_force_rty hty
     | Op.EffOp _ -> hty_force_monad hty
-    | Op.DtOp _ -> _failatwith __FILE__ __LINE__ "die" )
+    | Op.DtOp _ -> _failatwith __FILE__ __LINE__ "die"
+  in
+  match union_effty (RTypectx.new_to_rights rctx rxs) ret_eff_ty result_monad with
+  | Some monad -> (rxs, monad)
+  | None -> _failatwith __FILE__ __LINE__ "union_effty failed in infer_op"
 
 (** Helper functions *)
 and hty_force_rty = function
