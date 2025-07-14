@@ -34,21 +34,22 @@ let multi_existential_eff rxs = List.fold_right existential_eff rxs
 (* InterOver and UnionOver rules for base types *)
 let inter_cty { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
   assert (v1 = v2);
-  { v = v1; phi = mk_and phi1 phi2 }
+  return { v = v1; phi = mk_and phi1 phi2 }
 
 let union_cty { v = v1; phi = phi1 } { v = v2; phi = phi2 } =
   assert (v1 = v2);
-  { v = v1; phi = mk_or phi1 phi2 }
+  return { v = v1; phi = mk_or phi1 phi2 }
 
 (* InterUnder and UnionUnder rules *)
 let rec inter_rty = function
   | BaseRty { cty = cty1 }, BaseRty { cty = cty2 } ->
-      BaseRty { cty = union_cty cty1 cty2 } (* InterUnder: phi1 ∨ phi2 *)
+      let%map cty = union_cty cty1 cty2 in
+      BaseRty { cty } (* InterUnder: phi1 ∨ phi2 *)
   | ( ArrRty { arr = arr1; rethty = rethty1 },
       ArrRty { arr = arr2; rethty = rethty2 } ) ->
       (* InterArr rule: contravariant in argument, covariant in return *)
-      let arr = inter_arr arr1 arr2 in
-      let rethty = inter_hty rethty1 rethty2 in
+      let%bind arr = inter_arr arr1 arr2 in
+      let%map rethty = inter_hty rethty1 rethty2 in
       ArrRty { arr; rethty }
   | _ -> _failatwith __FILE__ __LINE__ "inter_rty"
 
@@ -56,23 +57,29 @@ and inter_arr arr1 arr2 =
   match (arr1, arr2) with
   | NormalArr rx1, NormalArr rx2 ->
       assert (rx1.rx = rx2.rx);
-      NormalArr { rx = rx1.rx; rty = union_rty (rx1.rty, rx2.rty) }
+      let%map rty = union_rty (rx1.rty, rx2.rty) in
+      NormalArr { rx = rx1.rx; rty }
   | _ -> _failatwith __FILE__ __LINE__ "inter_arr"
 
 and inter_hty hty1 hty2 =
   match (hty1, hty2) with
-  | Monad m1, Monad m2 -> Monad (inter_effty [] m1 m2)
-  | Rty r1, Rty r2 -> Rty (inter_rty (r1, r2))
+  | Monad m1, Monad m2 -> 
+      let%map m = inter_effty [] m1 m2 in
+      Monad m
+  | Rty r1, Rty r2 -> 
+      let%map r = inter_rty (r1, r2) in
+      Rty r
   | _ -> _failatwith __FILE__ __LINE__ "inter_hty"
 
 and union_rty = function
   | BaseRty { cty = cty1 }, BaseRty { cty = cty2 } ->
-      BaseRty { cty = inter_cty cty1 cty2 } (* UnionUnder: phi1 ∧ phi2 *)
+      let%map cty = inter_cty cty1 cty2 in
+      BaseRty { cty } (* UnionUnder: phi1 ∧ phi2 *)
   | ( ArrRty { arr = arr1; rethty = rethty1 },
       ArrRty { arr = arr2; rethty = rethty2 } ) ->
       (* UnionArr rule: contravariant in argument, covariant in return *)
-      let arr = union_arr arr1 arr2 in
-      let rethty = union_hty rethty1 rethty2 in
+      let%bind arr = union_arr arr1 arr2 in
+      let%map rethty = union_hty rethty1 rethty2 in
       ArrRty { arr; rethty }
   | _ -> _failatwith __FILE__ __LINE__ "union_rty"
 
@@ -80,13 +87,18 @@ and union_arr arr1 arr2 =
   match (arr1, arr2) with
   | NormalArr rx1, NormalArr rx2 ->
       assert (rx1.rx = rx2.rx);
-      NormalArr { rx = rx1.rx; rty = inter_rty (rx1.rty, rx2.rty) }
+      let%map rty = inter_rty (rx1.rty, rx2.rty) in
+      NormalArr { rx = rx1.rx; rty }
   | _ -> _failatwith __FILE__ __LINE__ "union_arr"
 
 and union_hty hty1 hty2 =
   match (hty1, hty2) with
-  | Monad m1, Monad m2 -> Monad (union_effty [] m1 m2)
-  | Rty r1, Rty r2 -> Rty (union_rty (r1, r2))
+  | Monad m1, Monad m2 -> 
+      let%map m = union_effty [] m1 m2 in
+      Monad m
+  | Rty r1, Rty r2 -> 
+      let%map r = union_rty (r1, r2) in
+      Rty r
   | _ -> _failatwith __FILE__ __LINE__ "union_hty"
 
 (* UnionEff and InterEff rules *)
@@ -112,7 +124,7 @@ and union_effty rctx monad1 monad2 =
       { ret; eff = Eff.Seq (admit_pre, monad2.eff) }
 
 and inter_effty rctx tau1 tau2 =
-  let t = union_rty (tau1.ret.rty, tau2.ret.rty) in
+  let%map t = union_rty (tau1.ret.rty, tau2.ret.rty) in
   let ret = { rx = tau1.ret.rx; rty = t } in
   let eff = Eff.Choice (tau1.eff, tau2.eff) in
   { ret; eff }
