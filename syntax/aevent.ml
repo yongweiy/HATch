@@ -206,7 +206,7 @@ module F (L : Lit.T) = struct
   (*   Subtyping.sub_rty_bool rctx (lhs_rty, rhs_rty) *)
 
   let is_bot_ev ~is_bot ({ op; vs; v; phi } : eff_event) =
-    is_bot @@ smart_multi_forall (v :: vs) phi
+    is_bot @@ smart_multi_exists (v :: vs) phi
 
   (** determine if a literal is bottom, i.e., no satisfying events *)
   let is_bot ~is_bot { events; op_pred } =
