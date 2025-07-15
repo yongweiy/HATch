@@ -313,11 +313,16 @@ module F (L : Lit.T) = struct
     let tys = List.map (fun { ty; _ } -> ty) args in
     let vs = vs_names_from_types tys in
     let v = v_ret_name #: ret.ty in
-    let phi =
-      And
-        (List.map2
-           (fun y z -> Lit (mk_lit_eq_lit y.ty (AVar y.x) z.x))
-           (v :: vs) (ret :: args))
+    let all_vars_lits = List.combine (v :: vs) (ret :: args) in
+    let non_unit_constraints = 
+      List.filter_map (fun (y, z) ->
+        if Nt.eq y.ty Nt.unit_ty then None
+        else Some (Lit (mk_lit_eq_lit y.ty (AVar y.x) z.x))
+      ) all_vars_lits
+    in
+    let phi = match non_unit_constraints with
+      | [] -> mk_true
+      | constraints -> And constraints
     in
     { op_pred = Whitelist []; events = [ { op; vs; v; phi } ] }
 
