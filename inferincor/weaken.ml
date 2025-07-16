@@ -59,7 +59,25 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
         monad with
         eff = multi_existential_eff locals @@ eff_bind monadx (rx.rx, monad.eff);
       }
-  | _ -> _failatwith __FILE__ __LINE__ "die"
+  | CMatch { matched; match_cases } ->
+    (* TODO: infer type for each case and join them together
+  \Infer{SynMatch}{%
+    \forall\idx.( \\
+    \textsf{Ty}(\d^\idx)=
+    \overline{x{:}\t[x]}\arr\tUnder{\b\mid\phi} \\
+    \Theta=\overline{x{:}\t[x]},y{:}\tOver{\b\mid\phi\land\nu=v} \\
+    \Gamma,\Theta\entails \e^\idx\uparrow\tau \\
+    \proc{Abduce}(\Gamma,\Theta,\tau)=\tau^\idx \\
+    ) \\
+    \Gamma\entails\bigwedge\overline{\tau^\idx}=\tau[r] \\
+  }{%
+    \Gamma\entails \matchwith{\v}
+    \overline{\rulebind{\d^\idx~\overline{x}}\e^\idx}
+    \uparrow\tau[r]%
+  }
+    *)
+    _
+ | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type weakening for values following WK* rules *)
 and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
