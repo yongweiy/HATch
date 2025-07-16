@@ -42,32 +42,23 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
       let t = infer_pure opctx rctx v #: expr.ty in
       let ret = { rx = "ret"; rty = t } in
       { ret; eff = Eff.Atom Eff.Id }
-  | CLetE { lhs; rhs; letbody } -> (
-      match rhs.x with
-      | CAppOp { op; appopargs } ->
-          let arg_rtys =
-            List.map (fun arg -> infer_pure opctx rctx arg) appopargs
-          in
-          let locals, monadx = infer_op opctx rctx lhs op arg_rtys in
-          let rx = { rx = lhs.x; rty = monadx.ret.rty } in
-          let rctx' =
-            RTypectx.new_to_right (RTypectx.new_to_rights rctx locals) rx
-          in
-          let monad =
-            multi_externalize locals @@ externalize rx
-            @@ infer_eff opctx rctx' letbody
-          in
-          {
-            monad with
-            eff =
-              multi_existential_eff locals @@ eff_bind monadx (rx.rx, monad.eff);
-          }
-      | _ ->
-          let monadx = infer_eff opctx rctx rhs in
-          let rx = { rx = lhs.x; rty = monadx.ret.rty } in
-          let rctx' = RTypectx.new_to_right rctx rx in
-          let monad = externalize rx @@ infer_eff opctx rctx' letbody in
-          { ret = monad.ret; eff = eff_bind monadx (rx.rx, monad.eff) })
+  | CLetE { lhs; rhs; letbody } ->
+      let locals, monadx = match rhs.x with
+        | CAppOp { op; appopargs } ->
+            let arg_rtys =
+              List.map (fun arg -> infer_pure opctx rctx arg) appopargs
+            in
+            infer_op opctx rctx lhs op arg_rtys
+        | _ -> 
+            ([], infer_eff opctx rctx rhs)
+      in
+      let rx = { rx = lhs.x; rty = monadx.ret.rty } in
+      let rctx' = RTypectx.new_to_right (RTypectx.new_to_rights rctx locals) rx in
+      let monad = multi_externalize locals @@ externalize rx @@ infer_eff opctx rctx' letbody in
+      {
+        monad with
+        eff = multi_existential_eff locals @@ eff_bind monadx (rx.rx, monad.eff);
+      }
   | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type weakening for values following WK* rules *)
