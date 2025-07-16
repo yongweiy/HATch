@@ -43,25 +43,31 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
       let ret = { rx = "ret"; rty = t } in
       { ret; eff = Eff.Atom Eff.Id }
   | CLetE { lhs; rhs; letbody } -> (
-      (* SynLet rule with Abduce replaced by existential quantification *)
       match rhs.x with
       | CAppOp { op; appopargs } ->
-          let arg_rtys = List.map (fun arg -> infer_pure opctx rctx arg) appopargs in
-          let locals, x_eff_ty = infer_op opctx rctx (arg_rtys, mk_ceil_eff rhs.ty) op in
-          let xret = { rx = lhs.x; rty = x_eff_ty.ret.rty } in
-          let rctx' = RTypectx.new_to_right rctx xret in
-          let tau = infer_eff opctx rctx' letbody in
-          let tau_result = existential xret tau in
-          let eff_bound = Eff.Seq (x_eff_ty.eff, tau_result.eff) in
-          multi_existential locals { ret = tau_result.ret; eff = eff_bound }
+          let arg_rtys =
+            List.map (fun arg -> infer_pure opctx rctx arg) appopargs
+          in
+          let locals, monadx = infer_op opctx rctx lhs op arg_rtys in
+          let rx = { rx = lhs.x; rty = monadx.ret.rty } in
+          let rctx' =
+            RTypectx.new_to_right (RTypectx.new_to_rights rctx locals) rx
+          in
+          let monad =
+            multi_externalize locals @@ externalize rx
+            @@ infer_eff opctx rctx' letbody
+          in
+          {
+            monad with
+            eff =
+              multi_existential_eff locals @@ eff_bind monadx (rx.rx, monad.eff);
+          }
       | _ ->
-          let tau_x = infer_eff opctx rctx rhs in
-          let xret = { rx = lhs.x; rty = tau_x.ret.rty } in
-          let rctx' = RTypectx.new_to_right rctx xret in
-          let tau = infer_eff opctx rctx' letbody in
-          let tau_result = existential xret tau in
-          let eff_bound = Eff.Seq (tau_x.eff, tau_result.eff) in
-          { ret = tau_result.ret; eff = eff_bound })
+          let monadx = infer_eff opctx rctx rhs in
+          let rx = { rx = lhs.x; rty = monadx.ret.rty } in
+          let rctx' = RTypectx.new_to_right rctx rx in
+          let monad = externalize rx @@ infer_eff opctx rctx' letbody in
+          { ret = monad.ret; eff = eff_bind monadx (rx.rx, monad.eff) })
   | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type weakening for values following WK* rules *)
@@ -79,11 +85,13 @@ and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
           let rctx' = RTypectx.new_to_right rctx rx in
           let effty_in = hty_to_monad __FILE__ __LINE__ rethty in
           let effty_out = weaken_eff opctx rctx' effty_in lambody in
-          let result_rty = ArrRty { arr = NormalArr rx; rethty = Monad effty_out } in
+          let result_rty =
+            ArrRty { arr = NormalArr rx; rethty = Monad effty_out }
+          in
           if Subtyping.is_bot_rty rctx result_rty then
             _failatwith __FILE__ __LINE__ "Weakening Failure"
           else result_rty)
-  | _ ->
+  | _ -> (
       (* WKPure rule: Γ ⊢ v ↑ t, Γ ⊢ t₁ ∨ t = t₂ ⟹ Γ ⊢ t₁ ↓ v ↑ t₂ *)
       let inferred_rty = infer_pure opctx rctx value in
       match union_rty (rty_in, inferred_rty) with
@@ -91,7 +99,7 @@ and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
           if Subtyping.is_bot_rty rctx result_rty then
             _failatwith __FILE__ __LINE__ "Weakening Failure"
           else result_rty
-      | None -> _failatwith __FILE__ __LINE__ "Weakening Failure"
+      | None -> _failatwith __FILE__ __LINE__ "Weakening Failure")
 
 (** Type weakening for computations following WK* rules *)
 and weaken_eff opctx rctx (eff_ty_in : monad) (expr : comp typed) : monad =
@@ -104,9 +112,8 @@ and weaken_eff opctx rctx (eff_ty_in : monad) (expr : comp typed) : monad =
       else result_eff
   | None -> _failatwith __FILE__ __LINE__ "Weakening Failure"
 
-
 (** Operator inference *)
-and infer_op opctx rctx (arg_rtys, ret_eff_ty) (op : Op.t typed) :
+and infer_op opctx rctx lhs (op : Op.t typed) arg_rtys :
     string rtyped list * monad =
   let rec multi_app rxs arg_rtys hty =
     match arg_rtys with
@@ -118,18 +125,19 @@ and infer_op opctx rctx (arg_rtys, ret_eff_ty) (op : Op.t typed) :
         | ArrArr _ -> _failatwith __FILE__ __LINE__ "Higher order operator"
         | GhostArr _ -> _failatwith __FILE__ __LINE__ "die"
         | NormalArr rx ->
-            let rx = match union_rty (rx.rty, arg_rty) with
-              | Some rty -> { rx with rty }
-              | None -> _failatwith __FILE__ __LINE__ "union_rty failed in infer_op"
+            let rx =
+              match union_rty (rx.rty, arg_rty) with
+              | Some rty -> { rx = rx.rx ^ "_" ^ lhs.x; rty }
+              | None ->
+                  _failatwith __FILE__ __LINE__ "union_rty failed in infer_op"
             in
             multi_app (rx :: rxs) arg_rtys rethty)
   in
   let rxs, hty = multi_app [] arg_rtys (Rty (ROpTypectx.get_ty opctx op.x)) in
-  let result_monad = match op.x with
+  let monad =
+    match op.x with
     | Op.BuiltinOp _ -> of_rty @@ hty_to_rty __FILE__ __LINE__ hty
     | Op.EffOp _ -> hty_to_monad __FILE__ __LINE__ hty
     | Op.DtOp _ -> _failatwith __FILE__ __LINE__ "die"
   in
-  match union_effty (RTypectx.new_to_rights rctx rxs) ret_eff_ty result_monad with
-  | Some monad -> (rxs, monad)
-  | None -> _failatwith __FILE__ __LINE__ "union_effty failed in infer_op"
+  (rxs, monad)
