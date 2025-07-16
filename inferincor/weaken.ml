@@ -60,23 +60,21 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
         eff = multi_existential_eff locals @@ eff_bind monadx (rx.rx, monad.eff);
       }
   | CMatch { matched; match_cases } ->
-    (* TODO: infer type for each case and join them together
-  \Infer{SynMatch}{%
-    \forall\idx.( \\
-    \textsf{Ty}(\d^\idx)=
-    \overline{x{:}\t[x]}\arr\tUnder{\b\mid\phi} \\
-    \Theta=\overline{x{:}\t[x]},y{:}\tOver{\b\mid\phi\land\nu=v} \\
-    \Gamma,\Theta\entails \e^\idx\uparrow\tau \\
-    \proc{Abduce}(\Gamma,\Theta,\tau)=\tau^\idx \\
-    ) \\
-    \Gamma\entails\bigwedge\overline{\tau^\idx}=\tau[r] \\
-  }{%
-    \Gamma\entails \matchwith{\v}
-    \overline{\rulebind{\d^\idx~\overline{x}}\e^\idx}
-    \uparrow\tau[r]%
-  }
-    *)
-    _
+    (* SynMatch rule: infer type for each case and join them together *)
+    let _matched_rty = infer_pure opctx rctx matched in
+    let case_monads = List.map (fun (_pattern, case_expr) ->
+      (* TODO: properly handle pattern bindings in context *)
+      infer_eff opctx rctx case_expr
+    ) match_cases in
+    (* Join all case types together *)
+    match case_monads with
+    | [] -> _failatwith __FILE__ __LINE__ "Empty match cases"
+    | first :: rest ->
+        List.fold_left (fun acc_monad case_monad ->
+          match union_effty rctx acc_monad case_monad with
+          | Some unified -> unified
+          | None -> _failatwith __FILE__ __LINE__ "Cannot unify match case types"
+        ) first rest
  | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type weakening for values following WK* rules *)
