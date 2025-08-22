@@ -36,13 +36,14 @@ and force_trans : Raw.Trans.t -> Trans.t = function
 
 and force_eff : Raw.Eff.t -> Eff.t = function
   | Atom atom -> Atom (force_eff_atom atom)
-  | Reach eff -> Reach (force_eff eff)
+  | Constrain (eff1, eff2) -> Constrain (force_eff eff1, force_eff eff2)
   | Bind ({ cx; cty }, eff) -> Bind ({ cx; cty = Cty.force cty }, force_eff eff)
   | Guard prop -> Guard (Coersion_qualifier.force prop)
   | Seq (eff1, eff2) -> Seq (force_eff eff1, force_eff eff2)
   | Choice (eff1, eff2) -> Choice (force_eff eff1, force_eff eff2)
 
 and force_eff_atom : Raw.Eff.atom -> Eff.atom = function
+  | Id -> Id
   | Call ev -> Call (Aevent.force_ev ev)
   | Trans trans -> Trans (force_trans trans)
 
@@ -82,7 +83,7 @@ and besome_trans : Trans.t -> Raw.Trans.t = function
 
 and besome_eff : Eff.t -> Raw.Eff.t = function
   | Atom atom -> Atom (besome_eff_atom atom)
-  | Reach eff -> Reach (besome_eff eff)
+  | Constrain (eff1, eff2) -> Constrain (besome_eff eff1, besome_eff eff2)
   | Bind ({ cx; cty }, eff) ->
       Bind ({ cx; cty = Cty.besome cty }, besome_eff eff)
   | Guard prop -> Guard (Coersion_qualifier.besome prop)
@@ -90,5 +91,6 @@ and besome_eff : Eff.t -> Raw.Eff.t = function
   | Choice (eff1, eff2) -> Choice (besome_eff eff1, besome_eff eff2)
 
 and besome_eff_atom : Eff.atom -> Raw.Eff.atom = function
+  | Id -> Id
   | Call ev -> Call (Aevent.besome_ev ev)
   | Trans trans -> Trans (besome_trans trans)

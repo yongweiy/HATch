@@ -8,7 +8,7 @@ let force regex =
     match regex with
     | Raw.EmptyA -> EmptyA
     | Raw.AnyA -> AnyA
-    | Raw.EpsilonA -> EpsilonA
+    | Raw.EpsilonA prop -> EpsilonA (Coersion_qualifier.force prop)
     | Raw.EventA se -> EventA (SE.force se)
     | Raw.LorA (t1, t2) -> LorA (aux t1, aux t2)
     | Raw.SetMinusA (t1, t2) -> SetMinusA (aux t1, aux t2)
@@ -24,7 +24,7 @@ let besome regex =
     match regex with
     | EmptyA -> Raw.EmptyA
     | AnyA -> Raw.AnyA
-    | EpsilonA -> Raw.EpsilonA
+    | EpsilonA prop -> Raw.EpsilonA (Coersion_qualifier.besome prop)
     | EventA se -> Raw.EventA (SE.besome se)
     | LorA (t1, t2) -> Raw.LorA (aux t1, aux t2)
     | SetMinusA (t1, t2) -> Raw.SetMinusA (aux t1, aux t2)

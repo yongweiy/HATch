@@ -63,11 +63,10 @@ module RawRty = StructureRaw.R
 
 module Rty = struct
   include Rty
-      
+
   let layout_pred p = To_aevent.pprint_pred @@ Coersion.Aevent.besome_pred p
   let layout_func f = To_aevent.pprint_func @@ Coersion.Aevent.besome_func f
   let layout_sft sft = To_sft.pprint @@ Coersion.SFT.besome sft
-
   let layout_lit lit = To_lit.layout (Coersion.Lit.besome lit)
   let layout_prop prop = To_qualifier.layout (Coersion.Qualifier.besome prop)
   let layout_sevent se = To_se.layout (Coersion.Se.besome se)
@@ -76,6 +75,7 @@ module Rty = struct
   let layout_cty se = To_cty.layout (Coersion.Cty.besome se)
   let layout_rty se = To_rty.layout_rty (Coersion.Rty.besome_rty se)
   let layout_hty se = To_rty.layout_hty (Coersion.Rty.besome_hty se)
+  let layout_eff eff = To_rty.layout_eff (Coersion.Rty.besome_eff eff)
   (* let layout_hty = To_ltlf_hty.layout_hty *)
   (* let layout_rty = To_ltlf_hty.layout_rty *)
   (* let layout_entry = To_structure.layout_entry *)
@@ -197,6 +197,7 @@ module RTypectx = struct
   type ctx = rty poly_ctx
 
   let of_rxs rxs = List.map (fun { rx; rty } -> (rx, rty)) rxs
+  let to_rxs rxs = List.map (fun (rx, rty) -> { rx; rty }) rxs
   let new_to_right ctx { rx; rty } = new_to_right ctx (rx, rty)
 
   let new_to_rights ctx l =

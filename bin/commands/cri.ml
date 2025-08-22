@@ -292,11 +292,12 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
     @@ DerivEngine.main (setting.oprctx, setting.rctx) code normalized
 
 let type_infer_under_ setting source_files =
+  (* here automatize only applies on library specification *)
   let setting, code, normalized, interfaceStaic =
     normalized_ @@ automatize_ @@ ntyped_
     @@ print_source_code_ setting source_files
   in
-  (* let _ = Inferincor.infer (setting.oprctx, setting.rctx) code normalized in *)
+  let _ = Inferincor.infer (setting.oprctx, setting.rctx) code normalized in
   ()
 
 (* Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ]; *)

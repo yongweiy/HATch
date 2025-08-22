@@ -46,7 +46,7 @@ module F (L : Lit.T) = struct
     | Atom Id -> Atom Id
     | Atom (Call _ as call) -> Atom call
     | Atom (Trans trans) -> Atom (Trans (apply_pred_trans pred trans))
-    | Reach eff -> Reach (apply_pred_eff pred eff)
+    | Constrain (eff1, eff2) -> Constrain (apply_pred_eff pred eff1, apply_pred_eff pred eff2)
     | Bind (ctyped, eff) -> Bind (ctyped, apply_pred_eff pred eff)
     | Guard p -> Guard p
     | Seq (eff1, eff2) ->
@@ -77,7 +77,7 @@ module F (L : Lit.T) = struct
     | Atom Id -> Atom Id
     | Atom (Call ev) -> Atom (Call ev)
     | Atom (Trans trans) -> Atom (Trans (to_trans trans))
-    | Reach eff -> Reach (to_eff eff)
+    | Constrain (eff1, eff2) -> Constrain (to_eff eff1, to_eff eff2)
     | Bind (ctyped, eff) -> Bind (ctyped, to_eff eff)
     | Guard p -> Guard p
     | Seq (eff1, eff2) -> Seq (to_eff eff1, to_eff eff2)
@@ -98,7 +98,7 @@ module F (L : Lit.T) = struct
   let rec normalize_name_eff : Eff.t -> Eff.t = function
     | Bind ({ cx; cty }, eff) ->
         Bind ({ cx; cty = Cty.normalize_name cty }, normalize_name_eff eff)
-    | Reach eff -> Reach (normalize_name_eff eff)
+    | Constrain (eff1, eff2) -> Constrain (normalize_name_eff eff1, normalize_name_eff eff2)
     | Seq (eff1, eff2) -> Seq (normalize_name_eff eff1, normalize_name_eff eff2)
     | Choice (eff1, eff2) ->
         Choice (normalize_name_eff eff1, normalize_name_eff eff2)
@@ -119,7 +119,7 @@ module F (L : Lit.T) = struct
 
   let rec subst_eff yz : Eff.t -> Eff.t = function
     | Atom eff_atom -> Atom (subst_eff_atom yz eff_atom)
-    | Reach eff -> Reach (subst_eff yz eff)
+    | Constrain (eff1, eff2) -> Constrain (subst_eff yz eff1, subst_eff yz eff2)
     | Bind ({ cx; cty }, eff) ->
         Bind ({ cx; cty = Cty.subst yz cty }, subst_eff yz eff)
     | Guard p -> Guard (subst_prop yz p)
@@ -139,13 +139,22 @@ module F (L : Lit.T) = struct
 
   let rec fv_eff : Eff.t -> string list = function
     | Atom eff_atom -> fv_eff_atom eff_atom
-    | Reach eff -> fv_eff eff
+    | Constrain (eff1, eff2) -> fv_eff eff1 @ fv_eff eff2
     | Bind ({ cx; cty }, eff) ->
         Cty.fv cty @ List.filter (not << String.equal cx) @@ fv_eff eff
     | Guard p -> fv_prop p
     | Seq (eff1, eff2) -> fv_eff eff1 @ fv_eff eff2
     | Choice (eff1, eff2) -> fv_eff eff1 @ fv_eff eff2
 
+  let mk_bind cx eff =
+    if (not @@ List.mem cx.cx @@ fv_eff eff) && (is_true @@ cx.cty.phi) then eff
+    else Eff.Bind (cx, eff)
+
+  let mk_seq : Eff.t * Eff.t -> Eff.t = function
+    | Atom (Id), eff -> eff
+    | eff, Atom Id -> eff
+    | eff1, eff2 -> Seq (eff1, eff2)
+    
   let rec normalize_name_rty : rty -> rty = function
     | BaseRty { cty } -> BaseRty { cty = Cty.normalize_name cty }
     | ArrRty { arr; rethty } ->
@@ -186,7 +195,7 @@ module F (L : Lit.T) = struct
     | Rty rty -> rty
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
-  let hty_force_tmonad : hty -> _ = function
+  let hty_force_monad : hty -> _ = function
     | Monad m -> m
     | _ -> _failatwith __FILE__ __LINE__ "die"
 
@@ -227,12 +236,7 @@ module F (L : Lit.T) = struct
 
   and subst_hty (y, z) : hty -> hty = function
     | Rty rty -> Rty (subst_rty (y, z) rty)
-    | Monad { ret; eff } ->
-        Monad
-          {
-            ret = { ret with rty = subst_rty (y, z) ret.rty };
-            eff = (if String.equal y ret.rx then eff else subst_eff (y, z) eff);
-          }
+    | Monad monad -> Monad (subst_monad (y, z) monad)
     | Htriple { pre; resrty; post } ->
         Htriple
           {
@@ -242,6 +246,13 @@ module F (L : Lit.T) = struct
           }
     | Inter (hty1, hty2) -> Inter (subst_hty (y, z) hty1, subst_hty (y, z) hty2)
 
+  and subst_monad (y, z) : monad -> monad = function
+    | { ret; eff } ->
+        {
+          ret = { ret with rty = subst_rty (y, z) ret.rty };
+          eff = (if String.equal y ret.rx then eff else subst_eff (y, z) eff);
+        }
+
   let subst_rty_id (y, z) rty =
     let z = AVar z in
     subst_rty (y, z) rty
@@ -249,6 +260,10 @@ module F (L : Lit.T) = struct
   let subst_hty_id (y, z) rty =
     let z = AVar z in
     subst_hty (y, z) rty
+
+  let subst_eff_id (y, z) eff =
+    let z = AVar z in
+    subst_eff (y, z) eff
 
   (* fv *)
 

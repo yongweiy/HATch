@@ -54,6 +54,10 @@ module F (A : ELA) = struct
       fold_vertex
         (fun v -> match V.label v with Final -> List.cons v | _ -> Fun.id)
         g []
+
+    let merge g1 g2 =
+      let g1, g2 = if nb_edges g1 < nb_edges g2 then (g1, g2) else (g2, g1) in
+      fold_edges_e (Fun.flip add_edge_e) g1 g2
   end
 
   include State
@@ -76,50 +80,78 @@ module F (A : ELA) = struct
   let sexp_of_sft _ = _failatwith __FILE__ __LINE__ "sexp_of_sft"
   let sft_of_sexp _ = _failatwith __FILE__ __LINE__ "sft_of_sexp"
 
-  (** TODO: compute the width of the graph -- the shortest distance from [init] state to any final state *)
   let width_of { init; g } : int =
-    let finals = G.get_finals g in
-    if List.is_empty finals then
-      (* No final states - return a large value to indicate unreachable *)
-      Int.max_int
+    List.fold_left min Int.max_int
+    @@ List.map (fun final ->
+           try snd @@ Dijkstra.shortest_path g init final
+           with Not_found -> Int.max_int)
+    @@ G.get_finals g
+
+  (** Check if automaton is a single linear path *)
+  let is_single_path { init; g } =
+    let rec check_path vertex visited =
+      if List.exists (G.V.equal vertex) visited then false (* Cycle detected *)
+      else
+        let successors = G.succ g vertex in
+        match successors with
+        | [] -> G.V.label vertex = Final (* Must end at final state *)
+        | [ next ] -> check_path next (vertex :: visited) (* Single successor *)
+        | _ -> false (* Multiple successors *)
+    in
+    check_path init []
+
+  (** Extract path labels from single-path automaton *)
+  let extract_path_labels layout_l { init; g } =
+    let rec collect_labels vertex acc =
+      let successors = G.succ_e g vertex in
+      match successors with
+      | [] -> List.rev acc (* End of path *)
+      | [ edge ] ->
+          let label_str = layout_l (G.E.label edge) in
+          let next_vertex = G.E.dst edge in
+          collect_labels next_vertex (label_str :: acc)
+      | _ -> _failatwith __FILE__ __LINE__ "die"
+    in
+    collect_labels init []
+
+  let display layout_l sft =
+    (* Check if this is a single-path automaton *)
+    if is_single_path sft then
+      (* Return readable path representation *)
+      let path_labels = extract_path_labels layout_l sft in
+      String.concat " → " path_labels
     else
-      try
-        let distances = List.map (fun final -> 
-          let (_, dist) = Dijkstra.shortest_path g init final in
-          dist
-        ) finals in
-        List.fold_left min Int.max_int distances
-      with
-      | Not_found -> Int.max_int (* No path exists to any final state *)
+      (* Use original PDF generation for complex automata *)
+      let { init; g } = sft in
+      let module Dot = Graph.Graphviz.Dot (struct
+        include G
 
-  let display layout_l { init; g } =
-    let module Dot = Graph.Graphviz.Dot (struct
-      include G
+        let graph_attributes _ = []
+        let default_vertex_attributes _ = []
+        let default_edge_attributes _ = []
+        let vertex_name v = "S_" ^ string_of_int @@ V.hash v
 
-      let graph_attributes _ = []
-      let default_vertex_attributes _ = []
-      let default_edge_attributes _ = []
-      let vertex_name v = "S_" ^ string_of_int @@ V.hash v
+        let vertex_attributes v =
+          [
+            `Label (vertex_name v);
+            `Shape
+              (match V.label v with Final -> `Doublecircle | _ -> `Circle);
+            `Color (if V.equal init v then 0x00eeff else 0x000000);
+          ]
 
-      let vertex_attributes v =
-        [
-          `Label (vertex_name v);
-          `Shape (match V.label v with Final -> `Doublecircle | _ -> `Circle);
-          `Color (if V.equal init v then 0x00eeff else 0x000000);
-        ]
-
-      let edge_attributes e = [ `Label (layout_l @@ E.label e) ]
-      let get_subgraph _ = None
-    end) in
-    let tmp_dot = Filename.temp_file "graph" ".dot" in
-    let tmp_pdf = Filename.temp_file "graph" ".pdf" in
-    let oc = open_out tmp_dot in
-    Dot.output_graph oc g;
-    close_out oc;
-    ignore (Sys.command ("dot -Tpdf " ^ tmp_dot ^ " -o " ^ tmp_pdf));
-    ignore (Sys.command ("evince " ^ tmp_pdf));
-    Sys.remove tmp_dot;
-    Sys.remove tmp_pdf
+        let edge_attributes e = [ `Label (layout_l @@ E.label e) ]
+        let get_subgraph _ = None
+      end) in
+      let tmp_dot = Filename.temp_file "graph" ".dot" in
+      let tmp_pdf = Filename.temp_file "graph" ".pdf" in
+      let oc = open_out tmp_dot in
+      Dot.output_graph oc g;
+      close_out oc;
+      ignore (Sys.command ("dot -Tpdf " ^ tmp_dot ^ " -o " ^ tmp_pdf));
+      ignore (Sys.command ("evince " ^ tmp_pdf));
+      Sys.remove tmp_dot;
+      Sys.remove tmp_pdf;
+      "SFT"
 
   let map ~f_pred ~f_func ~f_prop ~f_ev { init; g } =
     {
@@ -155,9 +187,12 @@ module F (A : ELA) = struct
 
   let clean_states { init; g } =
     assert (G.mem_vertex g init);
+    let finals = G.get_finals g in
     let checker = PathCheck.create g in
-    let is_reachable = PathCheck.check_path checker init in
-    { init; g = G.filter_vertices is_reachable g }
+    let is_live v =
+      G.V.equal v init || List.exists (PathCheck.check_path checker v) finals
+    in
+    { init; g = G.filter_vertices is_live g }
   (* |> (tap @@ display (Sexplib.Std.string_of_sexp << Label.sexp_of_t)) *)
 
   let is_reachable { init; g } =
@@ -178,7 +213,48 @@ module F (A : ELA) = struct
   (** how to check graph equality *)
   let mk_ident = mk_star_atom A.mk_top [ A.mk_ident ]
 
+  let mk_disjunct (phi1, { init = init1; g = g1 })
+      (phi2, { init = init2; g = g2 }) =
+    let init = G.V.create Normal in
+    assert (
+      not
+      @@ G.fold_vertex (fun v overlap -> overlap || G.mem_vertex g2 v) g1 false);
+    let g = G.merge g1 g2 in
+    let g = G.add_edge_e g (G.E.create init (Label.Epsilon (phi1, [])) init1) in
+    let g = G.add_edge_e g (G.E.create init (Label.Epsilon (phi2, [])) init2) in
+    assert (G.mem_vertex g init);
+    { init; g }
+
   let mk_any = mk_star_atom A.mk_top []
+
+  (** Create a single-path automaton from a witness path *)
+  let mk_single_path witness_path =
+    match witness_path with
+    | [] ->
+        (* Empty path - just initial state marked as final *)
+        let init = G.V.create Final in
+        clean_states { init; g = G.add_vertex G.empty init }
+    | _ ->
+        let rec build_path labels curr_vertex g =
+          match labels with
+          | [] ->
+              (* End of path - mark current vertex as final *)
+              let final_vertex = G.V.create Final in
+              let g = G.add_vertex g final_vertex in
+              (g, final_vertex)
+          | label :: rest_labels ->
+              (* Create next vertex and edge *)
+              let next_vertex =
+                if rest_labels = [] then G.V.create Final else G.V.create Normal
+              in
+              let edge = G.E.create curr_vertex label next_vertex in
+              let g' = G.add_edge_e g edge in
+              if rest_labels = [] then (g', next_vertex)
+              else build_path rest_labels next_vertex g'
+        in
+        let init = G.V.create Normal in
+        let g, _ = build_path (List.rev witness_path) init G.empty in
+        clean_states { init; g }
 
   let mk_dom { init; g } =
     let g =
@@ -192,28 +268,36 @@ module F (A : ELA) = struct
   (** assume the image of functions labeled on a transition to be
       independent *)
   let mk_ran { init; g } =
+    assert (G.mem_vertex g init);
     let g =
       G.fold_edges_e
         (fun e g ->
           let u, v = (G.E.src e, G.E.dst e) in
-          let with_inputs ps =
+          let with_inputs ls =
             snd
             @@ List.fold_lefti
-                 (fun (u, g) i p ->
+                 (fun (u, g) i label ->
                    let v =
-                     if i + 1 = List.length ps then v else G.V.create Normal
+                     if i + 1 = List.length ls then v else G.V.create Normal
                    in
-                   (v, G.add_edge_e g @@ G.E.create u (Pred (p, [])) v))
-                 (u, g) ps
+                   (v, G.add_edge_e g @@ G.E.create u label v))
+                 (u, g) ls
           in
           match G.E.label e with
-          | Pred (p, fns) -> with_inputs @@ List.map (A.mk_image p) fns
+          | Pred (p, fns) ->
+              with_inputs
+              @@ List.map
+                   (fun fn -> Label.Pred (A.mk_image p fn, [ A.mk_ident ]))
+                   fns
           | Epsilon (phi, evs) ->
               with_inputs
-              @@ List.map (A.mk_and (A.from_prop phi) << A.ev_to_pred) evs)
+              @@ Label.Epsilon (phi, [])
+                 :: List.map
+                      (fun ev -> Label.Pred (A.ev_to_pred ev, [ A.mk_ident ]))
+                      evs)
         g G.empty
     in
-    clean_states { init; g }
+    { init; g }
 
   let mk_concat { init = init1; g = g1 } { init = init2; g = g2 } =
     assert (not @@ G.mem_edge g2 init2 init2);
@@ -249,7 +333,12 @@ module F (A : ELA) = struct
     clean_states
       { init = init1; g = G.fold_edges_e (Fun.flip G.add_edge_e) g2 g1 }
 
-  module M = Map.Make (Graph.Util.CMPProduct (G.V) (G.V))
+  module M = Hashtbl.Make (Graph.Util.CMPProduct (G.V) (G.V))
+
+  let comb_if_not_yet m (v1, v2) =
+    match M.find_opt m (v1, v2) with
+    | Some existing_v -> existing_v
+    | None -> G.comb v1 v2
 
   (** a DFS procedure that, by assuming decidability of the label
       theory, eliminates incrementally all composed rules that have
@@ -257,22 +346,22 @@ module F (A : ELA) = struct
       (deadlock states: states from which no final state is
       reachable) *)
   let mk_compose ~is_bot { init = init1; g = g1 } { init = init2; g = g2 } =
-    let init = G.comb init1 init2 in
-    let g = G.add_vertex G.empty init in
-    let rec dfs ~m ~g v1 v2 v =
+    let m = M.create 10 in
+    let init = comb_if_not_yet m (init1, init2) in
+    let rec dfs ~g v1 v2 v =
       match v1 with
-      | `Go v1 when M.mem (v1, v2) m -> g
+      | `Go v1 when M.mem m (v1, v2) -> g
       | `Go v1 ->
-          let m = M.add (v1, v2) v m in
+          M.add m (v1, v2) v;
           G.fold_succ_e
             (fun e1 g ->
               match G.E.label e1 with
               | Pred (p1, fns1) ->
                   let v1' = G.E.dst e1 in
-                  dfs ~m ~g (`Wait (p1, fns1, v1', A.mk_top, [])) v2 v
+                  dfs ~g (`Wait (p1, fns1, v1', A.mk_top, [])) v2 v
               | Epsilon (phi1, evs1) ->
                   let v1' = G.E.dst e1 in
-                  dfs ~m ~g (`WaitEpsilon (evs1, v1', A.P.mk_true, [])) v2 v)
+                  dfs ~g (`WaitEpsilon (evs1, v1', phi1, [])) v2 v)
             g1 v1
           @@ G.fold_succ_e
                (fun e2 g ->
@@ -280,25 +369,17 @@ module F (A : ELA) = struct
                  | Pred _ -> g
                  | Epsilon _ as l ->
                      let v2' = G.E.dst e2 in
-                     let v' =
-                       match M.find_opt (v1, v2') m with
-                       | Some existing_v -> existing_v
-                       | None -> G.comb v1 v2'
-                     in
+                     let v' = comb_if_not_yet m (v1, v2') in
                      let g = G.add_edge_e g @@ G.E.create v l v' in
-                     dfs ~m ~g (`Go v1) v2' v')
+                     dfs ~g (`Go v1) v2' v')
                g2 v2 g
       | `Wait (p1, [], v1, pred, fns) -> (
           let pred = A.mk_and pred p1 in
           match A.simp_opt ~is_bot pred with
           | Some pred ->
-              let v' =
-                match M.find_opt (v1, v2) m with
-                | Some existing_v -> existing_v
-                | None -> G.comb v1 v2
-              in
+              let v' = comb_if_not_yet m (v1, v2) in
               let g = G.add_edge_e g @@ G.E.create v (Pred (pred, fns)) v' in
-              dfs ~m ~g (`Go v1) v2 v'
+              dfs ~g (`Go v1) v2 v'
           | None -> g)
       | `Wait (p1, fn1 :: fns1, v1, pred, fns) ->
           G.fold_succ_e
@@ -310,21 +391,19 @@ module F (A : ELA) = struct
                   let fns =
                     fns @ List.map (fun fn2 -> A.compose fn2 fn1) fns2
                   in
-                  dfs ~m ~g (`Wait (p1, fns1, v1, pred, fns)) v2' v
+                  dfs ~g (`Wait (p1, fns1, v1, pred, fns)) v2' v
               | Epsilon (phi2, evs2) ->
                   let v2' = G.E.dst e2 in
                   let pred = A.(mk_and pred @@ from_prop phi2) in
                   let fns = fns @ List.map A.mk_const evs2 in
-                  dfs ~m ~g (`Wait (p1, fn1 :: fns1, v1, pred, fns)) v2' v)
+                  dfs ~g (`Wait (p1, fn1 :: fns1, v1, pred, fns)) v2' v)
             g2 v2 g
+      | `WaitEpsilon ([], v1, phi, evs) when is_bot phi -> g
       | `WaitEpsilon ([], v1, phi, evs) ->
-          let v' =
-            match M.find_opt (v1, v2) m with
-            | Some existing_v -> existing_v
-            | None -> G.comb v1 v2
-          in
+          let v' = comb_if_not_yet m (v1, v2) in
+          let phi = if is_bot (A.P.mk_not phi) then A.P.mk_true else phi in
           let g = G.add_edge_e g @@ G.E.create v (Epsilon (phi, evs)) v' in
-          dfs ~m ~g (`Go v1) v2 v'
+          dfs ~g (`Go v1) v2 v'
       | `WaitEpsilon (ev1 :: evs1, v1, phi, evs) ->
           G.fold_succ_e
             (fun e2 g ->
@@ -339,28 +418,28 @@ module F (A : ELA) = struct
                     A.(force_const @@ compose fn2 @@ mk_const ev1)
                   in
                   let evs = evs @ List.map compose_with_ev1 fns2 in
-                  dfs ~m ~g (`WaitEpsilon (evs1, v1, phi, evs)) v2' v
+                  dfs ~g (`WaitEpsilon (evs1, v1, phi, evs)) v2' v
               | Epsilon (phi2, evs2) ->
                   let v2' = G.E.dst e2 in
                   let phi = A.P.mk_and phi phi2 in
                   let evs = evs @ evs2 in
-                  dfs ~m ~g (`WaitEpsilon (ev1 :: evs1, v1, phi, evs)) v2' v)
+                  dfs ~g (`WaitEpsilon (ev1 :: evs1, v1, phi, evs)) v2' v)
             g2 v2 g
     in
-    let g = dfs ~m:M.empty ~g (`Go init1) init2 init in
+    let g = dfs ~g:(G.add_vertex G.empty init) (`Go init1) init2 init in
     clean_states { init; g }
 
   (** like interseciton of two SFAs *)
-  let restrict_domain ~simp_pred { init = init1; g = sft }
+  let restrict_domain ~is_bot { init = init1; g = sft }
       { init = init2; g = sfa } =
     assert (G.mem_vertex sft init1);
     assert (G.mem_vertex sfa init2);
-    let init = G.comb init1 init2 in
-    let g = G.add_vertex G.empty init in
-    let rec dfs ~m ~g v1 v2 v =
-      if M.mem (v1, v2) m then g
-      else
-        let m = M.add (v1, v2) v m in
+    let m = M.create 10 in
+    let init = comb_if_not_yet m (init1, init2) in
+    let rec dfs ~g v1 v2 v =
+      if M.mem m (v1, v2) then g
+      else (
+        M.add m (v1, v2) v;
         G.fold_succ_e
           (fun e1 g ->
             let v1' = G.E.dst e1 in
@@ -371,31 +450,87 @@ module F (A : ELA) = struct
                     let v2' = G.E.dst e2 in
                     match[@warning "-8"] G.E.label e2 with
                     | Epsilon (phi, evs) ->
-                        let v' = G.comb v1 v2' in
+                        let v' = comb_if_not_yet m (v1, v2') in
                         let g =
                           G.add_edge_e g @@ G.E.create v (Epsilon (phi, evs)) v'
                         in
-                        dfs ~m ~g v1 v2' v'
-                    | Pred (p2, []) -> (
-                        let v' = G.comb v1' v2' in
+                        dfs ~g v1 v2' v'
+                    | Pred (p2, [ fun_id ]) when fun_id = A.mk_ident -> (
+                        let v' = comb_if_not_yet m (v1', v2') in
                         let p = A.mk_and p1 p2 in
-                        match simp_pred p with
+                        match A.simp_opt ~is_bot p with
                         | None -> g
                         | Some p ->
-                            dfs ~m
+                            dfs
                               ~g:
                                 (G.add_edge_e g
                                 @@ G.E.create v (Pred (p, fns1)) v')
                               v1' v2' v'))
                   sfa v2 g
             | Epsilon (phi, evs) ->
-                let v' = G.comb v1' v2 in
+                let v' = comb_if_not_yet m (v1', v2) in
                 let g =
                   G.add_edge_e g @@ G.E.create v (Epsilon (phi, evs)) v'
                 in
-                dfs ~m ~g v1' v2 v')
-          sft v1 g
+                dfs ~g v1' v2 v')
+          sft v1 g)
     in
-    let g = dfs ~m:M.empty ~g init1 init2 init in
+    let g = dfs ~g:(G.add_vertex G.empty init) init1 init2 init in
     clean_states { init; g }
+
+  (** Find a witness path from initial to final state with satisfiable predicates *)
+  let find_witness ~is_bot { init; g } =
+    let finals = G.get_finals g in
+    if List.is_empty finals then None
+    else
+      (* BFS to find shortest path, tracking path and accumulated constraint separately *)
+      let rec bfs queue visited =
+        match queue with
+        | [] -> None (* No satisfiable path found *)
+        | (curr_vertex, path, accumulated_constraint, path_length) :: rest ->
+            if List.exists (G.V.equal curr_vertex) finals then
+              (* Found a final state - check if accumulated constraint is satisfiable *)
+              if is_bot accumulated_constraint then
+                bfs rest visited (* Path unsatisfiable, continue search *)
+              else Some (path, path_length) (* Found satisfiable witness *)
+            else if List.exists (G.V.equal curr_vertex) visited then
+              bfs rest visited (* Already visited, skip *)
+            else
+              (* Explore successors *)
+              let new_visited = curr_vertex :: visited in
+              let successors =
+                G.fold_succ_e
+                  (fun edge acc ->
+                    let next_vertex = G.E.dst edge in
+                    let label = G.E.label edge in
+                    match label with
+                    | Pred (pred, _) ->
+                        let new_constraint =
+                          A.P.mk_and accumulated_constraint (A.to_prop pred)
+                        in
+                        (* Only add to queue if constraint remains satisfiable *)
+                        if not (is_bot new_constraint) then
+                          ( next_vertex,
+                            label :: path,
+                            new_constraint,
+                            path_length + 1 )
+                          :: acc
+                        else acc
+                    | Epsilon (phi, evs) ->
+                        let new_constraint =
+                          A.P.mk_and accumulated_constraint phi
+                        in
+                        (* Only add to queue if constraint remains satisfiable *)
+                        if not (is_bot new_constraint) then
+                          ( next_vertex,
+                            label :: path,
+                            new_constraint,
+                            path_length + 1 )
+                          :: acc
+                        else acc)
+                  g curr_vertex []
+              in
+              bfs (rest @ successors) new_visited
+      in
+      bfs [ (init, [], A.P.mk_true, 0) ] []
 end

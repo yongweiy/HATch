@@ -44,7 +44,7 @@ and trans_check opctx ctx : RtyRaw.Trans.t -> Trans.t = function
 
 and eff_check opctx ctx = function
   | Atom atom -> Atom (eff_atom_check opctx ctx atom)
-  | Reach eff -> Reach (eff_check opctx ctx eff)
+  | Constrain (eff1, eff2) -> Constrain (eff_check opctx ctx eff1, eff_check opctx ctx eff2)
   | Bind (ctyped, eff) ->
       let ctyped = { ctyped with cty = Ctycheck.check opctx ctx ctyped.cty } in
       let ctx' =
@@ -56,6 +56,7 @@ and eff_check opctx ctx = function
   | Choice (eff1, eff2) -> Choice (eff_check opctx ctx eff1, eff_check opctx ctx eff2)
 
 and eff_atom_check opctx ctx = function
+  | Id -> Id
   | Call ev -> Call (Aeventcheck.check_ev opctx ctx ev)
   | Trans trans -> Trans (trans_check opctx ctx trans)
 

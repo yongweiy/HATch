@@ -1,7 +1,7 @@
 (library
  (name inferincor)
  (wrapped true)
- (libraries language core env normalization subtyping backwards)
+ (libraries language core env normalization subtyping backwards automatize)
  (modules
    aux
    typing

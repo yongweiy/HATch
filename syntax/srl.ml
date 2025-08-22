@@ -5,7 +5,7 @@ module F (L : Lit.T) = struct
 
   type regex =
     | EmptyA
-    | EpsilonA
+    | EpsilonA of P.prop
     | AnyA
     | EventA of sevent
     | LorA of regex * regex
@@ -25,6 +25,7 @@ module F (L : Lit.T) = struct
 
   let mk_regex_any = AnyA
   let mk_regex_all = StarA AnyA
+  let mk_epsilon_true = EpsilonA (P.mk_true)
 
   let mk_complementA = function
     | EmptyA -> StarA AnyA
@@ -73,12 +74,14 @@ module F (L : Lit.T) = struct
 
   let rec mk_seqA = function
     | EmptyA, _ | _, EmptyA -> EmptyA
-    | EpsilonA, r | r, EpsilonA -> r
+    | EpsilonA prop, r when P.is_true prop -> r
+    | r, EpsilonA prop when P.is_true prop -> r
     | SeqA (r1, r2), r3 -> SeqA (r1, mk_seqA (r2, r3))
     | r, s -> SeqA (r, s)
 
   let mk_starA = function
-    | EmptyA | EpsilonA -> EpsilonA
+    | EmptyA -> mk_epsilon_true
+    | EpsilonA phi -> EpsilonA phi
     | StarA r -> StarA r
     | r -> StarA r
 
@@ -96,7 +99,7 @@ module F (L : Lit.T) = struct
 
   let rec is_nullable = function
     | EmptyA -> false
-    | EpsilonA -> true
+    | EpsilonA _ -> true
     | AnyA -> false
     | EventA (GuardEvent _) -> false
     | EventA (EffEvent _) -> false
@@ -110,7 +113,7 @@ module F (L : Lit.T) = struct
   let rec is_empty a =
     match a with
     | EmptyA -> true
-    | EpsilonA | AnyA | EventA _ -> false
+    | EpsilonA _ | AnyA | EventA _ -> false
     | LorA (a1, a2) -> is_empty a1 && is_empty a2
     | LandA (a1, a2) -> is_empty a1 || is_empty a2
     | SeqA (a1, a2) -> is_empty a1 || is_empty a2
@@ -131,7 +134,7 @@ module F (L : Lit.T) = struct
   let rec has_len_aux a =
     match a with
     | EmptyA -> EmptySet
-    | EpsilonA -> HasUniqLen 0
+    | EpsilonA _ -> HasUniqLen 0
     | AnyA | EventA _ -> HasUniqLen 1
     | LorA (a1, a2) -> (
         match (has_len_aux a1, has_len_aux a2) with
@@ -173,7 +176,7 @@ module F (L : Lit.T) = struct
   let rec be_singleton a =
     match a with
     | EmptyA -> EmptyA
-    | EpsilonA -> EmptyA
+    | EpsilonA _ -> EmptyA
     | AnyA -> AnyA
     | EventA _ -> a
     | LorA (a1, a2) -> LorA (be_singleton a1, be_singleton a2)
@@ -229,7 +232,7 @@ module F (L : Lit.T) = struct
 
   let rec raw_pprint_aux = function
     | EmptyA -> ("∅", true)
-    | EpsilonA -> ("ϵ", true)
+    | EpsilonA _ -> ("ϵ", true)
     | EventA _ -> ("se", true)
     | LorA (a1, a2) ->
         (spf "%s%s%s" (raw_p_pprint a1) psetting.sym_or (raw_p_pprint a2), false)
@@ -270,7 +273,7 @@ module F (L : Lit.T) = struct
       match r with
       | EventA (GuardEvent phi) when is_true phi -> AnyA
       | EventA (GuardEvent phi) when is_false phi -> EmptyA
-      | EmptyA | EpsilonA | AnyA | EventA _ -> r
+      | EmptyA | EpsilonA _ | AnyA | EventA _ -> r
       | LorA (r1, r2) -> (
           let r1, r2 = map2 simpl (r1, r2) in
           match (r1, r2) with
@@ -308,7 +311,7 @@ module F (L : Lit.T) = struct
           let r = simpl r in
           match has_len_aux r with
           | EmptySet -> EmptyA
-          | HasUniqLen 0 -> EpsilonA
+          | HasUniqLen 0 -> mk_epsilon_true
           | _ -> StarA r)
       | ComplementA (ComplementA a) -> simpl a
       | ComplementA a -> (
@@ -336,7 +339,7 @@ module F (L : Lit.T) = struct
       match regex with
       | EmptyA -> EmptyA
       | AnyA -> AnyA
-      | EpsilonA -> EpsilonA
+      | EpsilonA prop -> EpsilonA (subst_prop (y, z) prop)
       | EventA se -> EventA (SE.subst (y, z) se)
       | LorA (t1, t2) -> LorA (aux t1, aux t2)
       | LandA (t1, t2) -> LandA (aux t1, aux t2)
@@ -358,7 +361,7 @@ module F (L : Lit.T) = struct
       match regex with
       | EmptyA -> []
       | AnyA -> []
-      | EpsilonA -> []
+      | EpsilonA prop -> fv_prop prop
       | EventA se -> SE.fv se
       | LorA (t1, t2) -> aux t1 @ aux t2
       | SetMinusA (t1, t2) -> aux t1 @ aux t2
@@ -376,7 +379,7 @@ module F (L : Lit.T) = struct
       match regex with
       | EmptyA -> m
       | AnyA -> m
-      | EpsilonA -> m
+      | EpsilonA _ -> m
       | EventA se -> SE.gather m se
       | LorA (t1, t2) -> aux t1 @@ aux t2 m
       | SetMinusA (t1, t2) -> aux t1 @@ aux t2 m
@@ -392,7 +395,7 @@ module F (L : Lit.T) = struct
   let normalize_name regex =
     let rec aux regex =
       match regex with
-      | AnyA | EmptyA | EpsilonA -> regex
+      | AnyA | EmptyA | EpsilonA _ -> regex
       | EventA se -> EventA (SE.normalize_name se)
       | LorA (t1, t2) -> LorA (aux t1, aux t2)
       | SetMinusA (t1, t2) -> SetMinusA (aux t1, aux t2)
@@ -406,7 +409,7 @@ module F (L : Lit.T) = struct
   let close_fv x regex =
     let rec aux regex =
       match regex with
-      | AnyA | EmptyA | EpsilonA -> regex
+      | AnyA | EmptyA | EpsilonA _ -> regex
       | EventA se -> EventA (SE.close_fv x se)
       | LorA (t1, t2) -> LorA (aux t1, aux t2)
       | SetMinusA (t1, t2) -> SetMinusA (aux t1, aux t2)
@@ -421,7 +424,7 @@ module F (L : Lit.T) = struct
   let stat_size regex =
     let rec aux regex =
       match regex with
-      | EmptyA | EpsilonA -> 0
+      | EmptyA | EpsilonA _ -> 0
       | AnyA | EventA _ -> 1
       | LorA (t1, t2) -> aux t1 + aux t2
       | SetMinusA (t1, t2) -> 1 + aux t1 + aux t2

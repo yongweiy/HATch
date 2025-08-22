@@ -24,16 +24,18 @@ struct
   end
 
   module Eff = struct
-    type atom = Call of T.ev | Trans of Trans.t [@@deriving sexp]
+    type atom = Id | Call of T.ev | Trans of Trans.t [@@deriving sexp]
 
     type t =
       | Atom of atom
-      | Reach of t
+      | Constrain of t * t
       | Bind of string ctyped * t
       | Guard of prop
       | Seq of t * t
       | Choice of t * t
     [@@deriving sexp]
+
+    let is_identity = function Atom Id -> true | _ -> false
   end
 
   type rty = BaseRty of { cty : cty } | ArrRty of { arr : arr; rethty : hty }
@@ -119,6 +121,15 @@ struct
     match hty with
     | Htriple htriple -> htriple
     | _ -> _failatwith __FILE__ __LINE__ "die"
+
+  let hty_to_monad file line = function
+    | Monad monad -> monad
+    | Rty rty -> { ret = { rx = "ret"; rty }; eff = Eff.Atom Eff.Id }
+    | _ -> _failatwith file line "die"
+
+  let hty_to_rty file line = function
+    | Rty rty -> rty
+    | _ -> _failatwith file line "die"
 
   let htyped_force_to_rtyped file line { hx; hty } =
     match hty with

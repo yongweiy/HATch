@@ -13,7 +13,8 @@ let rec check opctx ctx (srl : regex) : regex =
     Printf.printf ">>>>>>>>>SRL Check %s\n" (To_srl.layout srl)
   in
   match srl with
-  | EpsilonA | AnyA | EmptyA -> srl
+  | AnyA | EmptyA -> srl
+  | EpsilonA phi -> EpsilonA (Qualifiercheck.type_check_qualifier opctx ctx phi)
   | EventA se -> EventA (Secheck.check opctx ctx se)
   | LorA (t1, t2) -> LorA (check opctx ctx t1, check opctx ctx t2)
   | SetMinusA (t1, t2) -> SetMinusA (check opctx ctx t1, check opctx ctx t2)

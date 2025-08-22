@@ -17,10 +17,10 @@ include
 let from_regex ~is_bot =
   let quotient l r =
     let rec aux = function
-      | EmptyA | EpsilonA -> EmptyA
-      | AnyA -> EpsilonA
+      | EmptyA | EpsilonA _ -> EmptyA
+      | AnyA -> mk_epsilon_true
       | EventA sev when LAlg.entails_sevent ~check:(not << is_bot) l sev ->
-          EpsilonA
+          mk_epsilon_true
       | EventA _ -> EmptyA
       | LorA (r, s) -> mk_orA (aux r, aux s)
       | LandA (r, s) -> mk_andA (aux r, aux s)
@@ -33,7 +33,7 @@ let from_regex ~is_bot =
     aux r
   in
   let rec next = function
-    | EmptyA | EpsilonA -> []
+    | EmptyA | EpsilonA _ -> []
     | AnyA -> [ LAlg.mk_top ]
     | EventA sev -> [ LAlg.of_sevent sev ]
     | LorA (r, s) -> LAlg.join (next r) (next s)

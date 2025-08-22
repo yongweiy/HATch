@@ -116,7 +116,7 @@ and sub_srl_bool rctx (srl1, srl2) =
     (* | _, EmptyA -> *)
     (*     (\* let () = Printf.printf "sdsd\n" in *\) *)
     (*     false *)
-    | EpsilonA, EpsilonA -> true
+    | EpsilonA _, EpsilonA _ -> true
     | srl1, srl2 -> sub_srl_bool_aux rctx (srl1, srl2)
   in
   let () =
@@ -168,7 +168,7 @@ let sub_srl_under_constr ~constr (srl1, srl2) =
     (* | _, EmptyA -> *)
     (*     (\* let () = Printf.printf "sdsd\n" in *\) *)
     (*     false *)
-    | EpsilonA, EpsilonA -> true
+    | EpsilonA _, EpsilonA _ -> true
     | srl1, srl2 -> sub_srl_under_constr_aux ~constr (srl1, srl2)
   in
   let () =

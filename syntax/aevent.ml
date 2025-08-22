@@ -316,7 +316,7 @@ module F (L : Lit.T) = struct
     let all_vars_lits = List.combine (v :: vs) (ret :: args) in
     let non_unit_constraints = 
       List.filter_map (fun (y, z) ->
-        if Nt.eq y.ty Nt.unit_ty then None
+        if eq y.ty unit_ty then None
         else Some (Lit (mk_lit_eq_lit y.ty (AVar y.x) z.x))
       ) all_vars_lits
     in

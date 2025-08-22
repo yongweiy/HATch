@@ -9,7 +9,7 @@ open Aux
 
 let rec pprint_aux = function
   | EmptyA -> ("∅", true)
-  | EpsilonA -> ("ϵ", true)
+  | EpsilonA phi -> (spf "ϵ⟨%s⟩" @@ To_qualifier.layout phi, true)
   | EventA se -> (To_se.pprint se, true)
   | LorA (a1, a2) ->
       (spf "%s%s%s" (p_pprint a1) psetting.sym_or (p_pprint a2), false)
@@ -52,7 +52,7 @@ let of_ocamlexpr_aux expr =
     match expr.pexp_desc with
     | Pexp_ident id ->
         let id = To_id.longid_to_id id in
-        if String.equal "epsilonA" id then EpsilonA
+        if String.equal "epsilonA" id then EpsilonA Cty.mk_true
         else if String.equal "emptyA" id then EmptyA
         else if String.equal "anyA" id then AnyA
         else

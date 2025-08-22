@@ -12,7 +12,7 @@ module C = Choice
 module Tr = Trace
 
 let rec next_literal = function
-  | EmptyA | EpsilonA -> []
+  | EmptyA | EpsilonA _ -> []
   | AnyA -> [ L.mk_true ]
   | EventA sev -> [ L.of_sevent sev ]
   | LorA (r, s) -> L.join (next_literal r) (next_literal s)
@@ -52,19 +52,20 @@ let mk_andA r s =
   else if s = EmptyA then EmptyA
   else if r = StarA AnyA then s
   else if s = StarA AnyA then r
-  else if (r = EpsilonA && is_nullable s) || (s = EpsilonA && is_nullable r)
-  then EpsilonA
+  else if (match r with EpsilonA prop when P.is_true prop -> is_nullable s | _ -> false) || 
+          (match s with EpsilonA prop when P.is_true prop -> is_nullable r | _ -> false)
+  then mk_epsilon_true
   else if r = s then r
   else match s with ComplementA s' when r = s' -> EmptyA | _ -> LandA (r, s)
 
 let mk_seqA r s =
-  if r = EpsilonA then s else if r = EmptyA then EmptyA else SeqA (r, s)
+  if (match r with EpsilonA prop when P.is_true prop -> true | _ -> false) then s else if r = EmptyA then EmptyA else SeqA (r, s)
 
 let quot l r =
   let rec aux = function
-    | EmptyA | EpsilonA -> EmptyA
-    | AnyA -> EpsilonA
-    | EventA sev -> if L.entails_sevent l sev then EpsilonA else EmptyA
+    | EmptyA | EpsilonA _ -> EmptyA
+    | AnyA -> mk_epsilon_true
+    | EventA sev -> if L.entails_sevent l sev then mk_epsilon_true else EmptyA
     | LorA (r, s) -> mk_orA (aux r) (aux s)
     | LandA (r, s) -> mk_andA (aux r) (aux s)
     | SeqA (r, s) when is_nullable r -> mk_orA (mk_seqA (aux r) s) (aux s)

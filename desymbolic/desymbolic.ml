@@ -80,7 +80,7 @@ let partial_evaluate_regex global_tab regex =
   in
   let rec aux regex =
     match regex with
-    | EmptyA | AnyA | EpsilonA -> regex
+    | EmptyA | AnyA | EpsilonA _ -> regex
     | EventA se -> partial_evaluate_sevent global_tab se
     | LorA (t1, t2) -> LorA (aux t1, aux t2)
     | SetMinusA (t1, t2) -> SetMinusA (aux t1, aux t2)
@@ -123,7 +123,7 @@ let desymbolic_local global_embedding dts regex =
     match regex with
     | EmptyA -> Empt
     | AnyA -> Any
-    | EpsilonA -> Epsilon
+    | EpsilonA _ -> Epsilon
     | EventA se -> desymbolic_sevent global_embedding dts se
     | LorA (t1, t2) -> Union [ aux t1; aux t2 ]
     | SetMinusA (t1, t2) -> Diff (aux t1, aux t2)

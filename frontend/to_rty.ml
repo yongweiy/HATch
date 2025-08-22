@@ -12,6 +12,7 @@ open To_qualifier
 
 let pprint_eff_atom (e : Eff.atom) =
   match e with
+  | Id -> spf "ID"
   | Call { op; args; ret } ->
       spf "%s ← %s(%s)" (To_lit.layout_typed_lit ret) op
       @@ String.concat ", " (List.map To_lit.layout_typed_lit args)
@@ -23,33 +24,48 @@ let pprint_eff_atom (e : Eff.atom) =
 let rec pprint_eff (e : Eff.t) =
   match e with
   | Atom atom -> pprint_eff_atom atom
-  | Reach e -> spf "Reach(%s)" @@ pprint_eff e
+  | Constrain (e1, e2) ->
+      spf "Constrain(%s, %s)" (pprint_eff e1) (pprint_eff e2)
   | Bind (cx, e) ->
       spf "%s ← %s; %s" cx.cx
         (pprint_parn @@ To_cty.pprint cx.cty)
         (pprint_eff e)
   | Guard phi -> To_qualifier.layout phi
-  | Seq (e1, e2) -> spf "%s; %s" (pprint_eff e1) (pprint_eff e2)
+  | Seq (e1, e2) -> spf "(%s; %s)" (pprint_eff e1) (pprint_eff e2)
   | Choice (e1, e2) -> spf "(%s) | (%s)" (pprint_eff e1) (pprint_eff e2)
 
 let rec eff_of_ocamlexpr expr : Eff.t =
   match expr.pexp_desc with
+  | Pexp_construct (op, None) when String.equal (To_id.longid_to_id op) "()" ->
+      Atom Id
   | Pexp_construct (op, Some e) -> (
       let op = String.uncapitalize_ascii @@ To_id.longid_to_id op in
       match op with
-      | "reach" -> Reach (eff_of_ocamlexpr e)
+      | "choice" -> (
+          match e.pexp_desc with
+          | Pexp_tuple [ e1; e2 ] ->
+              Choice (eff_of_ocamlexpr e1, eff_of_ocamlexpr e2)
+          | _ -> _failatwith __FILE__ __LINE__ "die")
+      | "constrain" -> (
+          match e.pexp_desc with
+          | Pexp_tuple [ e1; e2 ] ->
+              Constrain (eff_of_ocamlexpr e1, eff_of_ocamlexpr e2)
+          | _ ->
+              _failatwith __FILE__ __LINE__
+                "constrain expects two effects as tuple")
+      | "guard" -> Guard (qualifier_of_ocamlexpr e)
       | "admit" -> Atom (Trans (Admit (To_srl.of_ocamlexpr e)))
       | "reject" -> Atom (Trans (Reject (To_aevent.pred_of_ocamlexpr e)))
       | "append" -> Atom (Trans (Append (To_aevent.ev_of_ocamlexpr e)))
-      | _ -> let args, ret =
-               match e.pexp_desc with
-               | Pexp_tuple es ->
-                 Aux.force_last @@ List.map typed_lit_of_ocamlexpr es
-               | _ -> _failatwith __FILE__ __LINE__ "die"
-        in Atom (Call { op; args; ret })
-    )
+      | _ ->
+          let args, ret =
+            match e.pexp_desc with
+            | Pexp_tuple es ->
+                Aux.force_last @@ List.map typed_lit_of_ocamlexpr es
+            | _ -> _failatwith __FILE__ __LINE__ "die"
+          in
+          Atom (Call { op; args; ret }))
   | Pexp_sequence (e1, e2) -> Seq (eff_of_ocamlexpr e1, eff_of_ocamlexpr e2)
-  | Pexp_assert e -> Guard (qualifier_of_ocamlexpr e)
   | Pexp_let (Asttypes.Nonrecursive, vbs, expr) ->
       let process_vb { pvb_pat; pvb_expr; _ } body : Eff.t =
         let[@warning "-8"] [ { x; ty } ] = To_pat.patten_to_typed_ids pvb_pat in
@@ -180,5 +196,6 @@ let hty_of_ocamlexpr expr =
   (* let () = Printf.printf "ZZ: %s\n" (pprint_hty rty) in *)
   hty
 
+let layout_eff = pprint_eff
 let layout_hty = pprint_hty
 let layout_rty = pprint_rty

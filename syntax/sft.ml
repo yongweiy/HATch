@@ -2,8 +2,8 @@ open Sugar
 
 module F (L : Lit.T) = struct
   module LAlg = Aevent.F (L)
-  module T = StateMachine.Transducer.F (LAlg)
   include LAlg
+  module T = StateMachine.Transducer.F (LAlg)
   include T
 
   let subst yz =

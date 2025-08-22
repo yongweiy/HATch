@@ -34,6 +34,7 @@ let infer (opctx', rctx') structure normalized =
       | None -> failwith "cannot find the implemetation of the given assertion"
       | Some (_, comp) ->
           let comp = TypedCoreEff.to_v comp in
+          (* print_endline @@ Denormalize.layout_value comp; *)
           let () =
             if not (Nt.eq comp.ty (R.erase_rty rty)) then
               let () =
@@ -48,6 +49,7 @@ let infer (opctx', rctx') structure normalized =
               _failatwith __FILE__ __LINE__ "input error"
             else ()
           in
+
           (* let () = Printf.printf "%s\n" @@ R.layout_rty rty in *)
           (* let () = failwith "end" in *)
           (* let () = do_stat comp rty in *)
@@ -58,12 +60,16 @@ let infer (opctx', rctx') structure normalized =
 
           (* Process input rty to replace Call effects with actual operator effects *)
           let processed_rty = Rty_processor.process_input_rty opctx rty in
+          (* Apply automatize to convert sequences to automata *)
+          let automatized_rty = Automatize.do_rty rctx processed_rty in
           let typecheck_time, res =
             Sugar.clock (fun () ->
                 (* Interleaved weakening and inference *)
                 (* try *)
-                let result_rty = Weaken.weaken_pure opctx rctx processed_rty comp in
-                Printf.printf "inferred:\n%s" @@ Rty.layout_rty result_rty;
+                let result_rty =
+                  Weaken.weaken_pure opctx rctx automatized_rty comp
+                in
+                Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty result_rty;
                 Some result_rty
                 (* with *)
                 (* | _ -> *)

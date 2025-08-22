@@ -7,6 +7,8 @@ module type EBA = sig
     val mk_not : prop -> prop
     val mk_and : prop -> prop -> prop
     val mk_or : prop -> prop -> prop
+    val mk_and_multi : prop list -> prop
+    val mk_or_multi : prop list -> prop
   end
 
   type pred [@@deriving sexp, compare, equal, hash]

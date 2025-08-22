@@ -91,18 +91,14 @@ module F (L : Lit.T) = struct
   let mk_and a b = mk_and_multi [ a; b ]
 
   let mk_or_multi =
-    let eliminate_contradicting_lits lits =
-      let contradicts =
-        List.concat_map (function [@warning "-8"] [ p1; p2 ] ->
-            if is_neg p1 p2 then [ p1; p2 ] else [])
-        @@ List.combination_l lits 2
-      in
-      List.filter (fun p -> not @@ List.mem ~eq:equal_prop p contradicts) lits
-    in
     let build_conjunct =
       List.map to_disjuncts
       >> List.fold_left (List.sorted_merge_uniq ~cmp:compare_prop) []
-      >> eliminate_contradicting_lits >> of_disjuncts
+      >> fun lits ->
+           let has_contradiction = 
+             List.exists (fun p1 -> List.exists (is_neg p1) lits) lits
+           in
+           if has_contradiction then mk_true else of_disjuncts lits
     in
     (* (A ∧ B) ∨ (C ∧ D) = (A ∨ C) ∧ (A ∨ D) ∧ (B ∨ C) ∧ (B ∨ D) *)
     List.map_product_l to_conjuncts >> List.map build_conjunct >> mk_and_multi
@@ -246,7 +242,9 @@ module F (L : Lit.T) = struct
   let smart_multi_exists l prop =
     let fvs = fv_prop prop in
     List.fold_right
-      (fun u prop -> if List.mem u.x fvs then Exists (u, prop) else prop)
+      (fun u prop ->
+        if (not @@ eq unit_ty u.ty) && List.mem u.x fvs then Exists (u, prop)
+        else prop)
       l prop
 
   let smart_multi_forall l prop =
@@ -309,6 +307,11 @@ module F (L : Lit.T) = struct
     in
     List.slow_rm_dup String.equal @@ aux prop
 
+  let rec get_must_lits phi =
+    match phi with
+    | Lit lit -> [ lit ]
+    | And lits -> List.concat_map get_must_lits lits
+    | _ -> []
   (* let get_lits prop = *)
   (*   let rec aux e res = *)
   (*     match e with *)

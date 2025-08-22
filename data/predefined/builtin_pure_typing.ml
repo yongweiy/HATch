@@ -53,6 +53,10 @@ let[@libRty] ( / ) ?l:(a = (true : [%v: int]) [@over])
     ?l:(b = (not (v == 0) : [%v: int]) [@over]) : [%v: int] =
   v == a / b
 
+let[@libRty] key_eq ?l:(a = (true : [%v: Key.t]) [@over])
+    ?l:(b = (true : [%v: Key.t]) [@over]) : [%v: bool] =
+  iff v (a == b)
+
 let[@libRty] elem_eq ?l:(a = (true : [%v: Elem.t]) [@over])
     ?l:(b = (true : [%v: Elem.t]) [@over]) : [%v: bool] =
   iff v (a == b)

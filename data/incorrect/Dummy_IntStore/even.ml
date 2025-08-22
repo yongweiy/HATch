@@ -1,15 +1,18 @@
-let test (u: unit) : unit =
+let test (u : unit) : unit =
   let (x : int) = read () in
   (* let (b : bool) = x mod 2 in *)
-  if x mod 2 then
-    write (x/2)
+  if x mod 2 != 0 then
+    let (_ : unit) = write (x + 2) in
+    ()
   else
-    write (x+2)
+    let (_ : unit) = write (x / 2) in
+    ()
 
 let[@assertRty] test ?l:(u = (true : [%v: unit])) =
   {
     ret = (true : [%v: unit]);
-    eff = Reach(
-        let n = (v mod 2 == 0 : [%v: int]) in
-        Write(n, ()));
+    eff =
+      (let (m : int) = (v mod 2 == 0 : [%v: int]) in
+       let (n : int) = (v mod 2 == 0 : [%v: int]) in
+       Constrain (Read ((), m), Read ((), n)));
   }

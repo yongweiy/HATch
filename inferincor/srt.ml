@@ -86,8 +86,8 @@ let restrict_domain ~rctx srt srl =
   let ctx2, sfa = to_sfa srl in
   SFT.display layout_label sft;
   let ctx = ctx1 @ ctx2 in
-  let simp_pred = mk_simp_pred @@ extend_rctx_with_cxs rctx ctx in
-  SftT (ctx1 @ ctx2, SFT.restrict_domain ~simp_pred sft sfa)
+  let is_bot = Subtyping.is_bot_cty (extend_rctx_with_cxs rctx ctx) << Cty.mk_unit_from_prop in
+  SftT (ctx1 @ ctx2, SFT.restrict_domain ~is_bot sft sfa)
 
 let mk_ran ~rctx srt =
   let ctx, sft = to_sft ~rctx srt in
