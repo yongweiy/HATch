@@ -10,7 +10,7 @@ module F (P : PROP) (MT : MINTERM) (R : REGEX with type mt = MT.mt) = struct
 
   let ctx =
     Z3.mk_context
-      [ ("model", "true"); ("proof", "false"); ("timeout", "9999999") ]
+      [ ("model", "true"); ("proof", "false"); ("timeout", "999") ]
 
   let _check q = Check.(handle_check_res (fun () -> smt_neg_and_solve ctx q))
   (* let check_with_pre pres vc = _check pres vc *)
@@ -18,7 +18,7 @@ module F (P : PROP) (MT : MINTERM) (R : REGEX with type mt = MT.mt) = struct
   let check_implies_with_pre a b = _check P.(mk_implies a b)
   let check vc = _check vc
   let check_sat vc = Check.(handle_check_res (fun () -> smt_sat_solve ctx vc))
-  let cache_size = 600
+  let cache_size = 6000
   let check_bool_cache = Hashtbl.create cache_size
 
   let layout_cache cache =

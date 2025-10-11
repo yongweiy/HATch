@@ -46,7 +46,8 @@ module F (L : Lit.T) = struct
     | Atom Id -> Atom Id
     | Atom (Call _ as call) -> Atom call
     | Atom (Trans trans) -> Atom (Trans (apply_pred_trans pred trans))
-    | Constrain (eff1, eff2) -> Constrain (apply_pred_eff pred eff1, apply_pred_eff pred eff2)
+    | Constrain (eff1, eff2) ->
+        Constrain (apply_pred_eff pred eff1, apply_pred_eff pred eff2)
     | Bind (ctyped, eff) -> Bind (ctyped, apply_pred_eff pred eff)
     | Guard p -> Guard p
     | Seq (eff1, eff2) ->
@@ -98,7 +99,8 @@ module F (L : Lit.T) = struct
   let rec normalize_name_eff : Eff.t -> Eff.t = function
     | Bind ({ cx; cty }, eff) ->
         Bind ({ cx; cty = Cty.normalize_name cty }, normalize_name_eff eff)
-    | Constrain (eff1, eff2) -> Constrain (normalize_name_eff eff1, normalize_name_eff eff2)
+    | Constrain (eff1, eff2) ->
+        Constrain (normalize_name_eff eff1, normalize_name_eff eff2)
     | Seq (eff1, eff2) -> Seq (normalize_name_eff eff1, normalize_name_eff eff2)
     | Choice (eff1, eff2) ->
         Choice (normalize_name_eff eff1, normalize_name_eff eff2)
@@ -121,7 +123,9 @@ module F (L : Lit.T) = struct
     | Atom eff_atom -> Atom (subst_eff_atom yz eff_atom)
     | Constrain (eff1, eff2) -> Constrain (subst_eff yz eff1, subst_eff yz eff2)
     | Bind ({ cx; cty }, eff) ->
-        Bind ({ cx; cty = Cty.subst yz cty }, subst_eff yz eff)
+        Bind
+          ( { cx; cty = Cty.subst yz cty },
+            if String.equal (fst yz) cx then eff else subst_eff yz eff )
     | Guard p -> Guard (subst_prop yz p)
     | Seq (eff1, eff2) -> Seq (subst_eff yz eff1, subst_eff yz eff2)
     | Choice (eff1, eff2) -> Choice (subst_eff yz eff1, subst_eff yz eff2)
@@ -151,10 +155,10 @@ module F (L : Lit.T) = struct
     else Eff.Bind (cx, eff)
 
   let mk_seq : Eff.t * Eff.t -> Eff.t = function
-    | Atom (Id), eff -> eff
+    | Atom Id, eff -> eff
     | eff, Atom Id -> eff
     | eff1, eff2 -> Seq (eff1, eff2)
-    
+
   let rec normalize_name_rty : rty -> rty = function
     | BaseRty { cty } -> BaseRty { cty = Cty.normalize_name cty }
     | ArrRty { arr; rethty } ->

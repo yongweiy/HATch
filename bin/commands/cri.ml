@@ -297,9 +297,13 @@ let type_infer_under_ setting source_files =
     normalized_ @@ automatize_ @@ ntyped_
     @@ print_source_code_ setting source_files
   in
-  let _ = Inferincor.infer (setting.oprctx, setting.rctx) code normalized in
-  ()
-
+  List.iter ~f:(fun res ->
+      (match res with
+      | _, _, Some rty, _ ->
+          Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty rty
+      | _ -> ());
+      Typecheck.pprint_res_one res)
+  @@ Inferincor.infer (setting.oprctx, setting.rctx) code normalized
 (* Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ]; *)
 
 (* let () = *)

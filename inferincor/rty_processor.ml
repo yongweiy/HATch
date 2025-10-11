@@ -26,8 +26,8 @@ let extract_op_params_and_effect opctx op args =
                 ( List.rev acc_rxs,
                   { rx = "ret"; rty = hty_force_rty hty },
                   Eff.Atom Eff.Id )
-            | _ -> 
-                _failatwith __FILE__ __LINE__ 
+            | _ ->
+                _failatwith __FILE__ __LINE__
                   "extract_op_params_and_effect: unsupported hty type")
         | arg :: remaining_args -> (
             (* More arguments to process, destructure the function type *)
@@ -36,21 +36,23 @@ let extract_op_params_and_effect opctx op args =
             match arr with
             | NormalArr rx ->
                 extract_params_and_effect (rx :: acc_rxs) rethty remaining_args
-            | _ -> 
-                _failatwith __FILE__ __LINE__ 
+            | _ ->
+                _failatwith __FILE__ __LINE__
                   "extract_op_params_and_effect: unsupported array type")
       in
       extract_params_and_effect [] (Rty op_rty) args
-  | None -> 
-      _failatwith __FILE__ __LINE__ 
+  | None ->
+      _failatwith __FILE__ __LINE__
         "extract_op_params_and_effect: operator not found in opctx"
 
 (** Process refinement types to replace Call effects with actual operator effects *)
 
-let rec process_eff opctx = function
-  | Eff.Atom (Call { op; args; ret }) -> (
+let rec process_eff opctx : Eff.t -> Eff.t = function
+  | Atom (Call { op; args; ret }) ->
+      process_eff opctx
+      @@
       (* Use shared extraction logic *)
-      let (rxs, final_ret, eff) = extract_op_params_and_effect opctx op args in
+      let rxs, final_ret, eff = extract_op_params_and_effect opctx op args in
       (* TODO: assumed that [rxs] and [final_ret] has top
          qualifier *)
       let substitutions =
@@ -59,15 +61,18 @@ let rec process_eff opctx = function
       in
       List.fold_left
         (fun eff_acc (var, lit_val) -> subst_eff (var, lit_val) eff_acc)
-        eff substitutions)
-  | Eff.Atom atom -> Eff.Atom atom
-  | Eff.Constrain (eff1, eff2) -> Eff.Constrain (process_eff opctx eff1, process_eff opctx eff2)
-  | Eff.Bind (ctyped, eff) -> Eff.Bind (ctyped, process_eff opctx eff)
-  | Eff.Guard p -> Eff.Guard p
-  | Eff.Seq (eff1, eff2) ->
-      Eff.Seq (process_eff opctx eff1, process_eff opctx eff2)
-  | Eff.Choice (eff1, eff2) ->
-      Eff.Choice (process_eff opctx eff1, process_eff opctx eff2)
+        eff substitutions
+  | Atom atom -> Atom atom
+  | Constrain (eff1, eff2) ->
+      Constrain (process_eff opctx eff1, process_eff opctx eff2)
+  | Bind (ctyped, eff) -> Bind (ctyped, process_eff opctx eff)
+  | Guard p -> Guard p
+  | Seq (eff1, eff2) -> Seq (process_eff opctx eff1, process_eff opctx eff2)
+  | Choice (Seq (Guard phi1, eff1), Seq (Guard phi2, eff2)) ->
+      if is_true phi1 && is_false phi2 then process_eff opctx eff1
+      else if is_false phi2 && is_true phi1 then process_eff opctx eff2
+      else _failatwith __FILE__ __LINE__ "die"
+  | Choice _ -> _failatwith __FILE__ __LINE__ "die"
 
 let rec process_hty opctx = function
   | Rty rty -> Rty (process_rty opctx rty)

@@ -21,7 +21,9 @@ let rec step opctx (rctx, eff, sfa, path) =
   | Atom (Trans (Explicit sft)) ->
       (* SBAtom: config{Γ}{SFT}{SFA[post]}{FT} → config{Γ}{ID}{SFA[pre]}{SFT; FT} *)
       (* print_endline @@ layout_sft sfa; *)
+      (* print_endline @@ layout_sft sft; *)
       let sfa_pre = Sft.mk_compose ~is_bot sft sfa in
+      (* print_endline @@ layout_sft sfa_pre; *)
       (* Don't add low-level SFT operations to path - only high-level Call operations *)
       return (rctx, Atom Id, sfa_pre, path)
   (* SBChoice: Non-deterministic choice *)

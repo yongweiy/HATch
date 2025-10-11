@@ -23,9 +23,10 @@ module F (L : Lit.T) = struct
   (* open Sugar *)
   (* open Common *)
 
-  let mk_regex_any = AnyA
-  let mk_regex_all = StarA AnyA
-  let mk_epsilon_true = EpsilonA (P.mk_true)
+  let mk_anyA = AnyA
+  let mk_allA = StarA AnyA
+  let mk_epsilon_true = EpsilonA P.mk_true
+  let mk_setMinusA (r, s) = SetMinusA (r, s)
 
   let mk_complementA = function
     | EmptyA -> StarA AnyA

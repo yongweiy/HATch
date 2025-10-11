@@ -12,10 +12,12 @@ let tpEvent str = spf "⟨%s⟩" str
 let pprint = function
   | GuardEvent phi -> tpEvent @@ To_qualifier.layout phi
   | EffEvent { op; vs; v; phi } ->
-      tpEvent
-      @@ spf "%s %s = %s | %s" op
-           (List.split_by " " (fun x -> x.x) vs)
-           v.x (To_qualifier.layout phi)
+      if is_true phi then tpEvent op
+      else
+        tpEvent
+        @@ spf "%s %s = %s | %s" op
+             (List.split_by " " (fun x -> x.x) vs)
+             v.x (To_qualifier.layout phi)
 
 let layout = pprint
 

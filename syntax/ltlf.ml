@@ -118,7 +118,7 @@ module F (L : Lit.T) = struct
 
   let rec to_srl_aux (a : ltlf) : regex =
     match a with
-    | EventL sevent -> SeqA (EventA sevent, mk_regex_all)
+    | EventL sevent -> SeqA (EventA sevent, mk_allA)
     | LastL -> AnyA
     | GlobalL (EventL se) -> StarA (EventA se)
     | GlobalL (NegL (EventL se)) -> StarA (SetMinusA (AnyA, EventA se))
@@ -130,6 +130,7 @@ module F (L : Lit.T) = struct
     | FinalL a -> SeqA (StarA AnyA, to_srl_aux a)
     | NegL a -> ComplementA (to_srl_aux a)
     | LorL (a1, a2) -> LorA (to_srl_aux a1, to_srl_aux a2)
+    | LandL (EventL se, NextL a) -> SeqA (EventA se, to_srl_aux a)
     (* | LandL (LastL, a2) -> *)
     (*     let a2 = to_srl_aux a2 in *)
     (*     if has_len a2 1 then a2 else LandA (to_srl_aux LastL, a2) *)

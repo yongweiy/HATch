@@ -4,11 +4,6 @@ open Zzdatatype.Datatype
 open Sugar
 open Language.Rty
 
-(* Temporarily simplified for debugging module import issues *)
-let sft_to_regex sft =
-  (* TODO: implement proper SFT to regex conversion *)
-  EmptyA
-
 module State = struct
   type t = Final | Normal [@@deriving sexp, compare, equal, hash]
 end
@@ -63,6 +58,7 @@ type regex_automaton = { init : RegexGraph.V.t; g : RegexGraph.t }
 
 module VertexMap = Map.Make (Sft.G.V)
 module RegexVertexMap = Map.Make (RegexGraph.V)
+module SftToRegexMap = Map.Make (Sft.G.V)
 
 (** Convert SFT transducer label to regex *)
 let transducer_label_to_regex = function
@@ -74,10 +70,11 @@ let transducer_label_to_regex = function
         | Whitelist ops -> List.map (aux << Sft.mk_event_from_op) ops
         | Blacklist (phi, ops) ->
             let r =
-              mk_complementA
-              @@ List.fold_left
-                   (fun r op -> mk_orA (r, aux @@ Sft.mk_event_from_op op))
-                   EmptyA ops
+              mk_setMinusA
+                ( mk_anyA,
+                  List.fold_left
+                    (fun r op -> mk_orA (r, aux @@ Sft.mk_event_from_op op))
+                    EmptyA ops )
             in
             if is_true phi then [ r ]
             else [ mk_andA (EventA (GuardEvent phi), r) ]
@@ -86,6 +83,11 @@ let transducer_label_to_regex = function
   | Sft.Label.Epsilon (phi, _) ->
       (* Convert guarded epsilon to regex epsilon *)
       EpsilonA phi
+
+let transducer_labels_to_regex labels =
+  List.fold_right
+    (fun label r -> mk_seqA (transducer_label_to_regex label, r))
+    labels mk_epsilon_true
 
 (** Convert SFT to regex automaton *)
 let sft_to_regex_automaton (sft : Sft.sft) =
@@ -124,26 +126,118 @@ let sft_to_regex_automaton (sft : Sft.sft) =
   let regex_init = get_regex_vertex sft.init in
   { init = regex_init; g = regex_g }
 
-(** State elimination algorithm to convert regex automaton to single regex *)
-let regex_automaton_to_regex regex_automaton =
+(** Convert regex automaton to GNFA following reference PDF algorithm *)
+let to_gnfa regex_automaton =
   let { init; g } = regex_automaton in
   let finals = RegexGraph.get_finals g in
 
+  (* Create new initial and final states *)
+  let new_init = RegexGraph.V.create State.Normal in
+  let new_final = RegexGraph.V.create State.Final in
+
+  (* Start with empty graph and add new states *)
+  let g' = RegexGraph.empty in
+  let g' = RegexGraph.add_vertex g' new_init in
+  let g' = RegexGraph.add_vertex g' new_final in
+
+  (* Create vertex mapping from original to new graph *)
+  let vertex_map = ref RegexVertexMap.empty in
+  let g' =
+    RegexGraph.fold_vertex
+      (fun old_v g' ->
+        let new_v = RegexGraph.V.create State.Normal in
+        vertex_map := RegexVertexMap.add old_v new_v !vertex_map;
+        RegexGraph.add_vertex g' new_v)
+      g g'
+  in
+  let find_new_vertex old_v = RegexVertexMap.find old_v !vertex_map in
+
+  (* Add epsilon transition from new_init to old initial *)
+  let mapped_init_vertex = find_new_vertex init in
+  let g' =
+    RegexGraph.add_edge_e g'
+      (RegexGraph.E.create new_init mk_epsilon_true mapped_init_vertex)
+  in
+
+  (* Add epsilon transitions from old finals to new_final *)
+  let g' =
+    List.fold_left
+      (fun g' old_final ->
+        let mapped_final_vertex = find_new_vertex old_final in
+        RegexGraph.add_edge_e g'
+          (RegexGraph.E.create mapped_final_vertex mk_epsilon_true new_final))
+      g' finals
+  in
+
+  (* Copy all original edges *)
+  let g' =
+    RegexGraph.fold_edges_e
+      (fun edge g' ->
+        let src = RegexGraph.E.src edge in
+        let dst = RegexGraph.E.dst edge in
+        let label = RegexGraph.E.label edge in
+        let new_src = find_new_vertex src in
+        let new_dst = find_new_vertex dst in
+        RegexGraph.add_edge_e g' (RegexGraph.E.create new_src label new_dst))
+      g g'
+  in
+
+  (* Get all vertices in new graph *)
+  let all_vertices = RegexGraph.fold_vertex (fun v acc -> v :: acc) g' [] in
+
+  (* Add missing transitions with EmptyA (∅) labels *)
+  let g' =
+    List.fold_left
+      (fun g src ->
+        List.fold_left
+          (fun g dst ->
+            if RegexGraph.V.equal src dst then g
+              (* Don't add self-loops with EmptyA *)
+            else if RegexGraph.mem_edge g src dst then g
+              (* Edge already exists *)
+            else RegexGraph.add_edge_e g (RegexGraph.E.create src EmptyA dst))
+          g all_vertices)
+      g' all_vertices
+  in
+
+  { init = new_init; g = g' }
+
+(** State elimination algorithm following reference PDF *)
+let regex_automaton_to_regex regex_automaton =
+  (* Convert to GNFA first *)
+  let gnfa = to_gnfa regex_automaton in
+  let { init; g } = gnfa in
+
+  (* Find the single final state *)
+  let finals = RegexGraph.get_finals g in
+  let final =
+    match finals with
+    | [ f ] -> f
+    | [] -> failwith "No final state in GNFA"
+    | _ -> failwith "Multiple final states in GNFA"
+  in
+
   (* Handle trivial cases *)
-  if List.is_empty finals then EmptyA
-  else if RegexGraph.nb_vertex g = 0 then EmptyA
-  else if RegexGraph.nb_vertex g = 1 then
-    (* Single vertex case *)
-    if List.exists (RegexGraph.V.equal init) finals then mk_epsilon_true
+  if RegexGraph.nb_vertex g <= 2 then
+    (* Should have only init and final, extract the direct transition *)
+    if RegexGraph.mem_edge g init final then
+      let edges = RegexGraph.find_all_edges g init final in
+      let combined =
+        List.fold_left
+          (fun acc edge ->
+            let label = RegexGraph.E.label edge in
+            if equal_sfa acc EmptyA then label else LorA (acc, label))
+          EmptyA edges
+      in
+      simpl combined
     else EmptyA
   else
     (* Main state elimination algorithm *)
     let vertices = RegexGraph.fold_vertex (fun v acc -> v :: acc) g [] in
-    let non_final_vertices =
+    let intermediate_vertices =
       List.filter
         (fun v ->
-          (not (List.exists (RegexGraph.V.equal v) finals))
-          && not (RegexGraph.V.equal v init))
+          (not (RegexGraph.V.equal v init)) && not (RegexGraph.V.equal v final))
         vertices
     in
 
@@ -176,64 +270,61 @@ let regex_automaton_to_regex regex_automaton =
         let existing = get_transition src dst in
         let combined =
           if equal_sfa existing EmptyA then label else LorA (existing, label)
+          (* Union of parallel edges *)
         in
         set_transition src dst combined)
       g;
-
-    (* Add self-loops for vertices (epsilon transitions to self) *)
-    List.iter
-      (fun v ->
-        let existing = get_transition v v in
-        if equal_sfa existing EmptyA then set_transition v v mk_epsilon_true
-        else set_transition v v (LorA (existing, mk_epsilon_true)))
-      vertices;
 
     (* Eliminate intermediate vertices one by one *)
     let rec eliminate_vertices remaining_vertices =
       match remaining_vertices with
       | [] -> ()
-      | q :: rest ->
-          (* For each pair of vertices (p, r), update transition p -> r *)
-          List.iter
-            (fun p ->
-              List.iter
-                (fun r ->
-                  if
-                    (not (RegexGraph.V.equal p q))
-                    && not (RegexGraph.V.equal r q)
-                  then
-                    let p_to_q = get_transition p q in
-                    let q_to_q = get_transition q q in
-                    let q_to_r = get_transition q r in
-                    let p_to_r = get_transition p r in
+      | qrip :: rest ->
+          (* Get self-loop of qrip *)
+          let qrip_loop = get_transition qrip qrip in
 
-                    (* New transition: p_to_r | (p_to_q . q_to_q* . q_to_r) *)
-                    let q_star = StarA q_to_q in
-                    let new_path = SeqA (SeqA (p_to_q, q_star), q_to_r) in
-                    let updated = LorA (p_to_r, new_path) in
-                    set_transition p r (simpl updated))
+          (* For each pair of vertices (qin, qout), update transition qin -> qout *)
+          List.iter
+            (fun qin ->
+              List.iter
+                (fun qout ->
+                  if
+                    (not (RegexGraph.V.equal qin qrip))
+                    && not (RegexGraph.V.equal qout qrip)
+                  then
+                    let rin = get_transition qin qrip in
+                    let rout = get_transition qrip qout in
+                    let rdir = get_transition qin qout in
+
+                    (* Formula from reference PDF: Rdir + Rin(Rrip)* Rout *)
+                    let new_path =
+                      if equal_sfa rin EmptyA || equal_sfa rout EmptyA then
+                        EmptyA
+                      else
+                        let rrip_star =
+                          if equal_sfa qrip_loop EmptyA then mk_epsilon_true
+                          else StarA qrip_loop
+                        in
+                        SeqA (SeqA (rin, rrip_star), rout)
+                    in
+                    let updated =
+                      if equal_sfa rdir EmptyA && equal_sfa new_path EmptyA then
+                        EmptyA
+                      else if equal_sfa rdir EmptyA then new_path
+                      else if equal_sfa new_path EmptyA then rdir
+                      else LorA (rdir, new_path)
+                    in
+                    set_transition qin qout (simpl updated))
                 vertices)
             vertices;
           eliminate_vertices rest
     in
 
-    eliminate_vertices non_final_vertices;
+    eliminate_vertices intermediate_vertices;
 
-    (* Collect final expressions: init -> final for each final state *)
-    let final_expressions =
-      List.filter_map
-        (fun final ->
-          let expr = get_transition init final in
-          if equal_sfa expr EmptyA then None else Some expr)
-        finals
-    in
-
-    (* Combine all paths to final states *)
-    match final_expressions with
-    | [] -> EmptyA
-    | [ single ] -> simpl single
-    | multiple ->
-        simpl (List.fold_left (fun acc r -> LorA (acc, r)) EmptyA multiple)
+    (* Extract final result: init -> final *)
+    let result = get_transition init final in
+    simpl result
 
 (** Main function: convert SFT to regex *)
 let sft_to_regex sft =

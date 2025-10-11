@@ -134,7 +134,7 @@ let type_check (opctx : NOpTypectx.ctx) (nctx : NTypectx.ctx) (x : term typed)
               match mk_tuple xsty with
               | None ->
                   _failatwith __FILE__ __LINE__
-                    "infer: let binding lhs is not typed"
+                    @@ spf "infer: let binding lhs is not typed %s" @@ String.concat "," @@ List.map (fun x -> x.x) lhs
               | Some ty -> ty)
         in
         let rhs =

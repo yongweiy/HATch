@@ -30,7 +30,26 @@
         "cell_eq",
         "ptr_eq",
         "is_nullptr",
-        "nullptr"
+        "get_nullptr",
+        // NodeSet.t
+        "mem_node",
+        "add_node",
+        "del_node",
+        "is_empty",
+        // NodeList.t
+        "is_nil",
+        "hd",
+        "tl",
+        // NodeTree.t
+        "is_leaf",
+        "is_node",
+        "node",
+        "is_left",
+        "left",
+        "is_right",
+        "right",
+        "mk_tree",
+        "mk_leaf"
     ],
     "prim_path": {
         "qualifier_builtin_type": "data/predefined/qualifier_builtin_type.ml",

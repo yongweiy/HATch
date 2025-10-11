@@ -9,7 +9,9 @@ open Aux
 
 let rec pprint_aux = function
   | EmptyA -> ("∅", true)
-  | EpsilonA phi -> (spf "ϵ⟨%s⟩" @@ To_qualifier.layout phi, true)
+  | EpsilonA phi ->
+      ( (if is_true phi then "ϵ" else spf "ϵ⟨%s⟩" @@ To_qualifier.layout phi),
+        true )
   | EventA se -> (To_se.pprint se, true)
   | LorA (a1, a2) ->
       (spf "%s%s%s" (p_pprint a1) psetting.sym_or (p_pprint a2), false)

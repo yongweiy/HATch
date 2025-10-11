@@ -5,7 +5,11 @@ open Rty
 open Eff
 
 let rec do_eff rctx =
-  let is_bot = Subtyping.is_bot_cty rctx << Cty.mk_unit_from_prop in
+  let is_bot prop =
+    (* Printf.printf "is_bot: %s\n" @@ layout_prop prop; *)
+    (* flush stdout; *)
+    Subtyping.is_bot_cty rctx @@ Cty.mk_unit_from_prop prop
+  in
   function
   | Atom Id -> Atom (Trans (Explicit Sft.mk_ident))
   | Atom (Call ev) -> Atom (Call ev)
@@ -28,12 +32,26 @@ let rec do_eff rctx =
       Atom (Trans (Explicit { init; g }))
   | Atom (Trans (Reject pred)) ->
       let open Sft in
+      (* let init = G.V.create Final in *)
+      (* let keep = *)
+      (*   G.E.create init (T.Label.Pred (LAlg.mk_not pred, [ IdentityF ])) init *)
+      (* in *)
+      (* let del = G.E.create init (T.Label.Pred (pred, [])) init in *)
+      (* let g = G.add_edge_e (G.add_edge_e G.empty keep) del in *)
       let init = G.V.create Final in
-      let keep =
-        G.E.create init (T.Label.Pred (LAlg.mk_not pred, [ IdentityF ])) init
+      let final = G.V.create Final in
+      let g =
+        G.add_edge_e G.empty @@ G.E.create init (T.Label.Pred (pred, [])) final
       in
-      let del = G.E.create init (T.Label.Pred (pred, [])) init in
-      let g = G.add_edge_e (G.add_edge_e G.empty keep) del in
+      let g =
+        G.add_edge_e g
+        @@ G.E.create init (Label.Pred (LAlg.mk_not pred, [ IdentityF ])) init
+      in
+      let g =
+        G.add_edge_e g
+        @@ G.E.create final (Label.Pred (LAlg.mk_top, [ IdentityF ])) final
+        (* @@ G.E.create final (Label.Pred (LAlg.mk_not pred, [ IdentityF ])) final *)
+      in
       Atom (Trans (Explicit { init; g }))
   | Constrain (eff1, eff2) ->
       let eff1 = do_eff rctx eff1 in
@@ -46,13 +64,20 @@ let rec do_eff rctx =
       let cty = cx.cty in
       let rctx = RTypectx.new_to_right rctx cx.cx #:: (BaseRty { cty }) in
       Bind (cx, do_eff rctx eff)
-  | Choice (Seq (Guard phi1, eff1), Seq (Guard phi2, eff2)) -> (
-      match (do_eff rctx eff1, do_eff rctx eff2) with
-      | Atom (Trans (Explicit sft1)), Atom (Trans (Explicit sft2)) ->
-          let sft = Sft.mk_disjunct (phi1, sft1) (phi2, sft2) in
-          assert (Sft.G.mem_vertex sft.g sft.init);
-          Atom (Trans (Explicit sft))
-      | eff1, eff2 -> Choice (Seq (Guard phi1, eff1), Seq (Guard phi2, eff2)))
+  (* | Choice (Seq (Guard phi1, eff1), Seq (Guard phi2, eff2)) -> ( *)
+  (*     (\* Printf.printf "rctx: %s\nguard1: %s\nguard2: %s\n" *\) *)
+  (*     (\*   (RTypectx.layout_typed_l rctx) *\) *)
+  (*     (\*   (layout_prop phi1) (layout_prop phi2); *\) *)
+  (*     match (do_eff rctx eff1, do_eff rctx eff2) with *)
+  (*     | Atom (Trans (Explicit sft1)), Atom (Trans (Explicit sft2)) -> *)
+  (*         let sft = *)
+  (*           if is_bot (mk_not phi1) && is_bot phi2 then sft1 *)
+  (*           else if is_bot phi1 && is_bot (mk_not phi2) then sft2 *)
+  (*           else Sft.mk_disjunct (phi1, sft1) (phi2, sft2) *)
+  (*         in *)
+  (*         assert (Sft.G.mem_vertex sft.g sft.init); *)
+  (*         Atom (Trans (Explicit sft)) *)
+  (*     | eff1, eff2 -> Choice (Seq (Guard phi1, eff1), Seq (Guard phi2, eff2))) *)
   | Guard phi -> Guard phi
   | Choice (eff1, eff2) -> Choice (do_eff rctx eff1, do_eff rctx eff2)
   | Seq (eff1, eff2) -> (

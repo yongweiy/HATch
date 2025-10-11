@@ -173,7 +173,9 @@ module F (L : Lit.T) = struct
    TODO: how much faster using syntactic approach instead of calling solver *)
   let entails_sevent ~check { events; op_pred } = function
     | GuardEvent phi' -> (
-        let entails_ev { op; vs; v; phi } = check @@ smart_implies phi phi' in
+        let entails_ev { op; vs; v; phi } =
+          check @@ smart_multi_forall (v :: vs) @@ smart_implies phi phi'
+        in
         match op_pred with
         | Blacklist (phi, _) when check @@ smart_implies phi phi' ->
             List.for_all entails_ev events
@@ -182,8 +184,8 @@ module F (L : Lit.T) = struct
         | Whitelist _ -> check phi')
     | EffEvent ev' -> (
         match (events, op_pred) with
-        | [ ev ], Whitelist [] when String.equal ev.op ev'.op ->
-            check @@ smart_implies ev.phi ev'.phi
+        | [ { op; vs; v; phi } ], Whitelist [] when String.equal op ev'.op ->
+            check @@ smart_multi_forall (v :: vs) @@ smart_implies phi ev'.phi
         | [], Whitelist [ op ] when String.equal op ev'.op -> check ev'.phi
         | _ -> false)
 
@@ -212,7 +214,7 @@ module F (L : Lit.T) = struct
   let is_bot ~is_bot { events; op_pred } =
     match op_pred with
     | Whitelist [] -> List.for_all (is_bot_ev ~is_bot) events
-    | Blacklist (phi, _) when is_bot @@ mk_not phi ->
+    | Blacklist (phi, _) when is_bot phi ->
         List.for_all (is_bot_ev ~is_bot) events
     | _ -> false
 
@@ -314,13 +316,15 @@ module F (L : Lit.T) = struct
     let vs = vs_names_from_types tys in
     let v = v_ret_name #: ret.ty in
     let all_vars_lits = List.combine (v :: vs) (ret :: args) in
-    let non_unit_constraints = 
-      List.filter_map (fun (y, z) ->
-        if eq y.ty unit_ty then None
-        else Some (Lit (mk_lit_eq_lit y.ty (AVar y.x) z.x))
-      ) all_vars_lits
+    let non_unit_constraints =
+      List.filter_map
+        (fun (y, z) ->
+          if eq y.ty unit_ty then None
+          else Some (Lit (mk_lit_eq_lit y.ty (AVar y.x) z.x)))
+        all_vars_lits
     in
-    let phi = match non_unit_constraints with
+    let phi =
+      match non_unit_constraints with
       | [] -> mk_true
       | constraints -> And constraints
     in

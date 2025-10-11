@@ -62,15 +62,12 @@ let infer (opctx', rctx') structure normalized =
           let processed_rty = Rty_processor.process_input_rty opctx rty in
           (* Apply automatize to convert sequences to automata *)
           let automatized_rty = Automatize.do_rty rctx processed_rty in
+          (* Printf.printf "user query:\n%s\n" @@ Rty.layout_rty automatized_rty; *)
           let typecheck_time, res =
             Sugar.clock (fun () ->
                 (* Interleaved weakening and inference *)
                 (* try *)
-                let result_rty =
-                  Weaken.weaken_pure opctx rctx automatized_rty comp
-                in
-                Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty result_rty;
-                Some result_rty
+                Weaken.weaken_pure opctx rctx automatized_rty comp
                 (* with *)
                 (* | _ -> *)
                 (* print_endline "failed"; *)

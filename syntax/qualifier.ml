@@ -27,12 +27,12 @@ module F (L : Lit.T) = struct
   let some_if_not_true p = if is_true p then None else Some p
 
   let to_conjuncts = function
-    | And ps -> ps
+    | And ps -> List.sort_uniq ~cmp:compare_prop ps
     | p when p = mk_true -> []
     | p -> [ p ]
 
   let to_disjuncts = function
-    | Or ps -> ps
+    | Or ps -> List.sort_uniq ~cmp:compare_prop ps
     | p when p = mk_false -> []
     | p -> [ p ]
 
@@ -187,9 +187,9 @@ module F (L : Lit.T) = struct
       | Lit lit -> Lit (subst_lit (y, f) lit)
       | Implies (e1, e2) -> Implies (aux e1, aux e2)
       | Ite (e1, e2, e3) -> Ite (aux e1, aux e2, aux e3)
-      | Not e -> Not (aux e)
-      | And es -> And (List.map aux es)
-      | Or es -> Or (List.map aux es)
+      | Not e -> mk_not (aux e)
+      | And es -> mk_and_multi (List.map aux es)
+      | Or es -> mk_or_multi (List.map aux es)
       | Iff (e1, e2) -> Iff (aux e1, aux e2)
       | Forall (u, body) ->
           if String.equal u.x y then e else Forall (u, aux body)

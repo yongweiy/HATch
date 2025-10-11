@@ -28,7 +28,7 @@ module F (L : Lit.T) = struct
     subst (y, z) cty
 
   (* fv *)
-  let fv { v; phi } = List.filter (fun x -> String.equal x v.x) @@ fv_prop phi
+  let fv { v; phi } = List.filter (fun x -> not @@ String.equal x v.x) @@ fv_prop phi
 
   (* erase *)
 

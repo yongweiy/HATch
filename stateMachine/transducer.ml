@@ -24,6 +24,8 @@ module F (A : ELA) = struct
   module G = struct
     include Graph.Persistent.Digraph.AbstractLabeled (State) (Label)
 
+    let is_final v = match V.label v with Final -> true | Normal -> false
+
     let comb v1 v2 =
       V.create
       @@
@@ -116,42 +118,41 @@ module F (A : ELA) = struct
 
   let display layout_l sft =
     (* Check if this is a single-path automaton *)
-    if is_single_path sft then
-      (* Return readable path representation *)
-      let path_labels = extract_path_labels layout_l sft in
-      String.concat " → " path_labels
-    else
-      (* Use original PDF generation for complex automata *)
-      let { init; g } = sft in
-      let module Dot = Graph.Graphviz.Dot (struct
-        include G
+    (* if is_single_path sft then *)
+    (*   (\* Return readable path representation *\) *)
+    (*   let path_labels = extract_path_labels layout_l sft in *)
+    (*   String.concat " → " path_labels *)
+    (* else *)
+    (* Use original PDF generation for complex automata *)
+    let { init; g } = sft in
+    let module Dot = Graph.Graphviz.Dot (struct
+      include G
 
-        let graph_attributes _ = []
-        let default_vertex_attributes _ = []
-        let default_edge_attributes _ = []
-        let vertex_name v = "S_" ^ string_of_int @@ V.hash v
+      let graph_attributes _ = []
+      let default_vertex_attributes _ = []
+      let default_edge_attributes _ = []
+      let vertex_name v = "S_" ^ string_of_int @@ V.hash v
 
-        let vertex_attributes v =
-          [
-            `Label (vertex_name v);
-            `Shape
-              (match V.label v with Final -> `Doublecircle | _ -> `Circle);
-            `Color (if V.equal init v then 0x00eeff else 0x000000);
-          ]
+      let vertex_attributes v =
+        [
+          `Label (vertex_name v);
+          `Shape (match V.label v with Final -> `Doublecircle | _ -> `Circle);
+          `Color (if V.equal init v then 0x00eeff else 0x000000);
+        ]
 
-        let edge_attributes e = [ `Label (layout_l @@ E.label e) ]
-        let get_subgraph _ = None
-      end) in
-      let tmp_dot = Filename.temp_file "graph" ".dot" in
-      let tmp_pdf = Filename.temp_file "graph" ".pdf" in
-      let oc = open_out tmp_dot in
-      Dot.output_graph oc g;
-      close_out oc;
-      ignore (Sys.command ("dot -Tpdf " ^ tmp_dot ^ " -o " ^ tmp_pdf));
-      ignore (Sys.command ("evince " ^ tmp_pdf));
-      Sys.remove tmp_dot;
-      Sys.remove tmp_pdf;
-      "SFT"
+      let edge_attributes e = [ `Label (layout_l @@ E.label e) ]
+      let get_subgraph _ = None
+    end) in
+    let tmp_dot = Filename.temp_file "graph" ".dot" in
+    let tmp_pdf = Filename.temp_file "graph" ".pdf" in
+    let oc = open_out tmp_dot in
+    Dot.output_graph oc g;
+    close_out oc;
+    ignore (Sys.command ("dot -Tpdf " ^ tmp_dot ^ " -o " ^ tmp_pdf));
+    ignore (Sys.command ("evince " ^ tmp_pdf));
+    Sys.remove tmp_dot;
+    Sys.remove tmp_pdf;
+    "SFT"
 
   let map ~f_pred ~f_func ~f_prop ~f_ev { init; g } =
     {
@@ -260,7 +261,8 @@ module F (A : ELA) = struct
     let g =
       G.map_labels
         (function
-          | Pred (p, _) -> Pred (p, []) | Epsilon (phi, _) -> Epsilon (phi, []))
+          | Pred (p, _) -> Pred (p, [ A.mk_ident ])
+          | Epsilon (phi, _) -> Epsilon (phi, []))
         g
     in
     { init; g }
@@ -366,12 +368,16 @@ module F (A : ELA) = struct
           @@ G.fold_succ_e
                (fun e2 g ->
                  match G.E.label e2 with
-                 | Pred _ -> g
-                 | Epsilon _ as l ->
+                 (* | Epsilon (phi2, []) when is_bot @@ A.P.mk_not phi2 -> *)
+                 (*     let v2' = G.E.dst e2 in *)
+                 (*     dfs ~g (`Go v1) v2' v *)
+                 | Epsilon (phi2, evs2) as l
+                   when (not @@ is_bot phi2) || (not @@ List.is_empty evs2) ->
                      let v2' = G.E.dst e2 in
                      let v' = comb_if_not_yet m (v1, v2') in
                      let g = G.add_edge_e g @@ G.E.create v l v' in
-                     dfs ~g (`Go v1) v2' v')
+                     dfs ~g (`Go v1) v2' v'
+                 | _ -> g)
                g2 v2 g
       | `Wait (p1, [], v1, pred, fns) -> (
           let pred = A.mk_and pred p1 in
@@ -455,7 +461,7 @@ module F (A : ELA) = struct
                           G.add_edge_e g @@ G.E.create v (Epsilon (phi, evs)) v'
                         in
                         dfs ~g v1 v2' v'
-                    | Pred (p2, [ fun_id ]) when fun_id = A.mk_ident -> (
+                    | Pred (p2, [ fn ]) when A.equal_func fn A.mk_ident -> (
                         let v' = comb_if_not_yet m (v1', v2') in
                         let p = A.mk_and p1 p2 in
                         match A.simp_opt ~is_bot p with
@@ -478,59 +484,46 @@ module F (A : ELA) = struct
     let g = dfs ~g:(G.add_vertex G.empty init) init1 init2 init in
     clean_states { init; g }
 
-  (** Find a witness path from initial to final state with satisfiable predicates *)
+  let print_stats { init; g } =
+    Printf.printf "#V = %d; #E = %d\n" (G.nb_vertex g) (G.nb_edges g)
+
   let find_witness ~is_bot { init; g } =
     let finals = G.get_finals g in
     if List.is_empty finals then None
     else
-      (* BFS to find shortest path, tracking path and accumulated constraint separately *)
-      let rec bfs queue visited =
+      let rec bfs queue =
         match queue with
-        | [] -> None (* No satisfiable path found *)
-        | (curr_vertex, path, accumulated_constraint, path_length) :: rest ->
-            if List.exists (G.V.equal curr_vertex) finals then
-              (* Found a final state - check if accumulated constraint is satisfiable *)
-              if is_bot accumulated_constraint then
-                bfs rest visited (* Path unsatisfiable, continue search *)
-              else Some (path, path_length) (* Found satisfiable witness *)
-            else if List.exists (G.V.equal curr_vertex) visited then
-              bfs rest visited (* Already visited, skip *)
+        | [] -> None
+        | (curr_vertex, path, accumulated_constraint, visited) :: rest ->
+            if G.is_final curr_vertex then (
+              assert (not @@ is_bot accumulated_constraint);
+              Some (path, List.length path))
             else
-              (* Explore successors *)
-              let new_visited = curr_vertex :: visited in
               let successors =
                 G.fold_succ_e
                   (fun edge acc ->
                     let next_vertex = G.E.dst edge in
                     let label = G.E.label edge in
-                    match label with
-                    | Pred (pred, _) ->
-                        let new_constraint =
+                    let new_constraint =
+                      match label with
+                      | Pred (pred, _) ->
                           A.P.mk_and accumulated_constraint (A.to_prop pred)
-                        in
-                        (* Only add to queue if constraint remains satisfiable *)
-                        if not (is_bot new_constraint) then
-                          ( next_vertex,
-                            label :: path,
-                            new_constraint,
-                            path_length + 1 )
-                          :: acc
-                        else acc
-                    | Epsilon (phi, evs) ->
-                        let new_constraint =
+                      | Epsilon (phi, evs) ->
                           A.P.mk_and accumulated_constraint phi
-                        in
-                        (* Only add to queue if constraint remains satisfiable *)
-                        if not (is_bot new_constraint) then
-                          ( next_vertex,
-                            label :: path,
-                            new_constraint,
-                            path_length + 1 )
-                          :: acc
-                        else acc)
+                    in
+                    if
+                      List.exists (G.V.equal curr_vertex) visited
+                      || is_bot new_constraint
+                    then acc
+                    else
+                      ( next_vertex,
+                        label :: path,
+                        new_constraint,
+                        curr_vertex :: visited )
+                      :: acc)
                   g curr_vertex []
               in
-              bfs (rest @ successors) new_visited
+              bfs (rest @ successors)
       in
-      bfs [ (init, [], A.P.mk_true, 0) ] []
+      bfs [ (init, [], A.P.mk_true, []) ]
 end

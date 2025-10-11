@@ -28,6 +28,11 @@ let from_regex ~is_bot =
       | SeqA (r, s) -> mk_seqA (aux r, s)
       | StarA r -> mk_seqA (aux r, mk_starA r)
       | ComplementA r -> mk_complementA (aux r)
+      | SetMinusA (AnyA, EventA sev) ->
+          if
+            Option.is_none @@ LAlg.simp_opt ~is_bot @@ mk_and l @@ of_sevent sev
+          then mk_epsilon_true
+          else EmptyA
       | SetMinusA (r, s) -> aux @@ mk_andA (r, mk_complementA s)
     in
     aux r

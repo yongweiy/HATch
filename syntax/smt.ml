@@ -22,6 +22,9 @@ module F (Ax : module type of Axiom.F (Lit.Lit)) = struct
       | AVar x -> Smtquery.tpedvar_to_z3 ctx (lit.ty, x)
       | AAppOp (op, args) -> (
           let open Z3 in
+          (* let args = *)
+          (*   match args with [ { x = AC U; ty = Ty_unit } ] -> [] | _ -> args *)
+          (* in *)
           let args = List.map (typed_lit_to_z3 ctx) args in
           match (op.x, args) with
           | Op.BuiltinOp "==", [ a; b ] -> Boolean.mk_eq ctx a b

@@ -51,7 +51,8 @@ let ocaml_structure_to_structure structure =
       let name =
         match (To_pat.pattern_to_term value_binding.pvb_pat).x with
         | Var name -> name
-        | _ -> failwith "die"
+        | _ ->
+          failwith "die"
       in
       match value_binding.pvb_attributes with
       | [ x ] -> (

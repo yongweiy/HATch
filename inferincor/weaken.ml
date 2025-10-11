@@ -7,10 +7,6 @@ open Typing
 
 (** Interleaved type weakening and inference following updated rules *)
 
-let ( let* ) x f = Choice.bind f x
-let ( let^ ) x f = Choice.fmap f x
-let ( let+ ) x f = Choice.map f x
-
 (** Type synthesis for values following Syn* rules *)
 let rec infer_pure opctx rctx (value : value typed) : rty =
   match value.x with
@@ -53,15 +49,24 @@ let rec infer_pure opctx rctx (value : value typed) : rty =
                 eff = Eff.Atom Eff.Id;
               }
       in
-      let fix_type0 = hty_force_rty @@ make_bottom value.ty in
-      let rctx0 =
-        RTypectx.new_to_right rctx { rx = fixname.x; rty = fix_type0 }
+      let rec unroll ?(fuel = 1) fix_type =
+        if fuel < 0 then fix_type
+        else
+          let rctx' =
+            RTypectx.new_to_right rctx { rx = fixname.x; rty = fix_type }
+          in
+          unroll ~fuel:(fuel - 1) @@ infer_pure opctx rctx' func
       in
-      let fix_type1 = infer_pure opctx rctx0 func in
-      let rctx1 =
-        RTypectx.new_to_right rctx { rx = fixname.x; rty = fix_type1 }
-      in
-      infer_pure opctx rctx1 func
+      unroll @@ hty_force_rty @@ make_bottom value.ty
+      (* let fix_type0 = hty_force_rty @@ make_bottom value.ty in *)
+      (* let rctx0 = *)
+      (*   RTypectx.new_to_right rctx { rx = fixname.x; rty = fix_type0 } *)
+      (* in *)
+      (* let fix_type1 = infer_pure opctx rctx0 func in *)
+      (* let rctx1 = *)
+      (*   RTypectx.new_to_right rctx { rx = fixname.x; rty = fix_type1 } *)
+      (* in *)
+      (* infer_pure opctx rctx1 func *)
   | VTu _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type synthesis for computations following Syn* rules *)
@@ -150,7 +155,7 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
   | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type weakening for values following WK* rules *)
-and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
+and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty option =
   match value.x with
   | VLam { lamarg; lambody } -> (
       (* Handle lambda weakening with input type (updated SynFun rule) *)
@@ -162,34 +167,30 @@ and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty =
           (* SynFun rule: Γ,x:t_x ⊢ τ₁ ↓ e ↑ τ₂ ⟹ Γ ⊢ x:t_x→τ₁ ↓ λx.e ↑ x:t_x→τ₂ *)
           assert (rx.rx = lamarg.x);
           let rctx' = RTypectx.new_to_right rctx rx in
-          let effty_in = hty_to_monad __FILE__ __LINE__ rethty in
-          let effty_out = weaken_eff opctx rctx' effty_in lambody in
-          let result_rty =
-            ArrRty { arr = NormalArr rx; rethty = Monad effty_out }
-          in
-          if Subtyping.is_bot_rty rctx result_rty then
-            _failatwith __FILE__ __LINE__ "Weakening Failure"
-          else result_rty)
-  | _ -> (
+          let%map hty = weaken_eff opctx rctx' rethty lambody in
+          ArrRty { arr = NormalArr rx; rethty = hty }
+          |> tap @@ fun result_rty ->
+             assert (not @@ Subtyping.is_bot_rty rctx result_rty))
+  | _ ->
       (* WKPure rule: Γ ⊢ v ↑ t, Γ ⊢ t₁ ∨ t = t₂ ⟹ Γ ⊢ t₁ ↓ v ↑ t₂ *)
       let inferred_rty = infer_pure opctx rctx value in
-      match union_rty opctx (rty_in, inferred_rty) with
-      | Some result_rty ->
-          if Subtyping.is_bot_rty rctx result_rty then
-            _failatwith __FILE__ __LINE__ "Weakening Failure"
-          else result_rty
-      | None -> _failatwith __FILE__ __LINE__ "Weakening Failure")
+      union_rty opctx rctx rty_in inferred_rty
 
 (** Type weakening for computations following WK* rules *)
-and weaken_eff opctx rctx (eff_ty_in : monad) (expr : comp typed) : monad =
-  (* WKEff rule: Γ ⊢ e ↑ τ, Γ ⊢ τ₁ ∨ τ = τ₂ ⟹ Γ ⊢ τ₁ ↓ e ↑ τ₂ *)
-  let inferred_eff = infer_eff opctx rctx expr in
-  match union_effty opctx rctx eff_ty_in inferred_eff with
-  | Some result_eff ->
-      if Subtyping.is_bot_rty rctx result_eff.ret.rty then
-        _failatwith __FILE__ __LINE__ "Weakening Failure"
-      else result_eff
-  | None -> _failatwith __FILE__ __LINE__ "Weakening Failure"
+and weaken_eff opctx rctx (hty_in : hty) (expr : comp typed) : hty option =
+  match hty_in with
+  | Monad monad_in ->
+      (* WKEff rule: Γ ⊢ e ↑ τ, Γ ⊢ τ₁ ∨ τ = τ₂ ⟹ Γ ⊢ τ₁ ↓ e ↑ τ₂ *)
+      let%map monad_out =
+        union_effty opctx rctx monad_in @@ infer_eff opctx rctx expr
+      in
+      Monad monad_out
+  | Rty rty_in ->
+      let%map rty_out =
+        union_rty opctx rctx rty_in @@ infer_pure opctx rctx @@ to_v expr
+      in
+      Rty rty_out
+  | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Generic function application logic *)
 and infer_function_application opctx rctx lhs_name arg_rtys func_hty :
@@ -206,7 +207,7 @@ and infer_function_application opctx rctx lhs_name arg_rtys func_hty :
         | GhostArr _ -> _failatwith __FILE__ __LINE__ "die"
         | NormalArr rx ->
             let rx' =
-              match union_rty opctx (rx.rty, arg_rty) with
+              match union_rty opctx rctx rx.rty arg_rty with
               | Some rty -> { rx = rx.rx ^ "_" ^ lhs_name; rty }
               | None ->
                   _failatwith __FILE__ __LINE__
