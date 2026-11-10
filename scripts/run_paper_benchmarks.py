@@ -38,15 +38,9 @@ OUT = ROOT / "benchmark_results"
 # Order and numbers follow Table 3 of IncorrectHAT eval.tex (github/main 4299036).
 # None for HATch = cell left empty in the paper ("projected to be T/O").
 #
-# TODO (HATch / symb-exec-incor baseline specs):
-#   - Profile Scraper (JS_Facebook/lib_rty_old.ml): update findByClass (Node.t vs
-#     Iterator.t) and 1-arg hasNext/next to match JS_Facebook/lib_nty.ml.
-#   - Graph BFS (Dafny_Graph_List_Variants/lib_rty_old.ml): currently a copy of
-#     lib_rty.ml ({ ret; eff }) instead of HATch Htriple ({ pre; res; newadding }).
-#   - Set Copy (Dafny_Set/lib_rty_old.ml): hasNext/next have stub `pre = _G (Any true)`
-#     instead of the iterator temporal precondition in Dafny_Set/lib_rty.ml.
-#   - RB Tree Insert (RedBlackTree_CElem/insert_single_path.ml): Constrain query
-#     observation events (GetLeft/GetRight on x) are not emitted by the client body.
+# HATch reads its own library specs (lib_rty_old.ml, append-only HATch
+# format), not lib_rty.ml; see data/ri-with-bug/HATCH_SPECS.md for how they
+# are kept equivalent and where they approximate.
 BENCHMARKS = [
     ("Set Insert",      "Set_KVStore/insert_buggy.ml",                         0.45,  "0.70"),
     ("Heap Insert",     "Heap_LinkedList/insert_buggy.ml",                     0.96,  "0.85"),
@@ -110,18 +104,44 @@ def run_ours(bench, max_bound, timeout):
     }
 
 
-def run_hatch(bench, timeout):
-    log = OUT / f"hatch_{bench.replace('/', '_')[:-3]}.log"
-    r = run([EXE, "symb-exec-incor", META, DATA / bench], timeout, log)
+# HATch (srlexec) runs once with its default search bounds; see
+# `main.exe symb-exec-incor -help`.  The 1 GiB heap cap that used to be
+# hard-coded is relaxed to HATCH_MEM_LIMIT_GB.
+HATCH_EXEC_BOUND = 20  # srlexec default; override with --hatch-exec-bound
+HATCH_MEM_LIMIT_GB = 64
+HATCH_FLAGS = []  # set in main()
+
+# Benchmarks whose Constrain query the HATch adapter cannot express (e.g. it
+# conjoins sequential events, which is wrong for consuming observations): HATch
+# runs a sibling client with a hand-written Htriple instead.
+HATCH_CLIENT_OVERRIDE = {
+    "Dafny_Queue/to_stream.ml": "Dafny_Queue/to_stream_hatch.ml",
+}
+
+
+def classify_hatch(r):
+    """Map a symb-exec-incor run to one table status (see srlexec/engine.ml main)."""
+    out = r["stdout"]
     if r["timed_out"]:
-        status = "T/O"
-    elif r["rc"] not in (0, None):
-        status = "error"
-    elif "Hatch" in r["stdout"]:  # "Terminated Hatch" / "Preemptive Hatch" = bug witness found
-        status = "ok"
-    else:
-        status = "no witness"
-    return {"status": status,
+        return "T/O"
+    if r["rc"] not in (0, None):
+        # constrain_to_htriple fails loudly when the query cannot be expressed
+        return "query not translated" if "cannot translate query" in r["stderr"] else "crash"
+    if "Hatch" in out:  # "Terminated Hatch" / "Preemptive Hatch": bug witness found
+        return "ok"
+    if "Out of memory:" in out:
+        return "OOM"
+    if "type check succeeded" in out:  # bounded search exhausted
+        return f"no witness (bound {HATCH_EXEC_BOUND})"
+    return "query not translated"  # zero Htriples: "type check failed", nothing explored
+
+
+def run_hatch(bench, timeout):
+    client = HATCH_CLIENT_OVERRIDE.get(bench, bench)
+    log = OUT / f"hatch_{bench.replace('/', '_')[:-3]}.log"
+    r = run([EXE, "symb-exec-incor", META, DATA / client, *HATCH_FLAGS], timeout, log)
+    status = classify_hatch(r)
+    return {"status": status, "client": client,
             "time": r["exec_time"] if r["exec_time"] is not None else r["wall"],
             "wall": r["wall"]}
 
@@ -131,13 +151,18 @@ def fmt(x):
 
 
 def main():
+    global HATCH_EXEC_BOUND
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", help="substring filter on paper name or file")
     ap.add_argument("--max-bound", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=300, help="per-attempt timeout for our tool (s)")
     ap.add_argument("--hatch-timeout", type=int, default=300, help="timeout for HATch (s)")
+    ap.add_argument("--hatch-exec-bound", type=int, default=20,
+                    help="HATch -exec-bound (reduction steps explored)")
     ap.add_argument("--no-hatch", action="store_true")
     args = ap.parse_args()
+    HATCH_EXEC_BOUND = args.hatch_exec_bound
+    HATCH_FLAGS[:] = ["-exec-bound", str(HATCH_EXEC_BOUND), "-mem-limit-gb", str(HATCH_MEM_LIMIT_GB)]
 
     if not EXE.exists():
         sys.exit(f"{EXE} not found; run `dune build --profile release` first")
@@ -170,7 +195,8 @@ def main():
         f"# Paper benchmark reproduction ({time.strftime('%Y-%m-%d %H:%M')})",
         "",
         f"Our tool: iterative deepening of `-unroll-bound` 1..{args.max_bound}, "
-        f"{args.timeout}s per attempt; time = cumulative exec time. HATch timeout: {args.hatch_timeout}s.",
+        f"{args.timeout}s per attempt; time = cumulative exec time. "
+        f"HATch: `symb-exec-incor {' '.join(HATCH_FLAGS)}`, timeout {args.hatch_timeout}s.",
         "",
         "| Client | File | Bound | Ours (s) | Paper ours | HATch (s) | Paper HATch |",
         "|---|---|---:|---:|---:|---:|---:|",
@@ -187,8 +213,16 @@ def main():
         o = r["ours"]
         ours_cell = fmt(o["cumulative"]) if o["status"] == "ok" else "T/O"
         h = r["hatch"]
-        hc = "" if h is None else (fmt(h["time"]) if h["status"] == "ok" else "T/O")
-        tex.append(f"         {r['name']}&  {ours_cell}&  {hc}\\\\")
+        note = ""
+        if h is None:
+            hc = ""
+        elif h["status"] == "ok":
+            hc = fmt(h["time"])
+        elif h["status"] in ("T/O", "OOM"):
+            hc = h["status"]
+        else:  # not a resource limit: leave the cell empty, say why
+            hc, note = "", f" % HATch: {h['status']}"
+        tex.append(f"         {r['name']}&  {ours_cell}&  {hc}\\\\{note}")
     tex.append("    \\end{tabular}")
     (OUT / "table.tex").write_text("\n".join(tex) + "\n")
 
