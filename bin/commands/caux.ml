@@ -104,6 +104,25 @@ let cmd_infer_incor_config_source summary f =
       in
       f meta_config_file source_file unroll_bound)
 
+let cmd_infer_incor_config_source_with_witness summary f =
+  Command.basic ~summary
+    Command.Let_syntax.(
+      let%map_open meta_config_file = anon ("meta_config_file" %: regular_file)
+      and source_file = anon ("source_code_file" %: regular_file)
+      and unroll_bound =
+        flag "-unroll-bound"
+          (optional_with_default 1 int)
+          ~doc:
+            "<int> Set the bound on the number of times to unroll recursive \
+             functions during type inference (default: 1)"
+      and no_witness =
+        flag "-no-witness" no_arg
+          ~doc:
+            " Do not print the witness type (surface effect syntax) after the \
+             inferred type"
+      in
+      f meta_config_file source_file unroll_bound (not no_witness))
+
 let cmd_infer_incor_config_source_with_forward summary f =
   Command.basic ~summary
     Command.Let_syntax.(

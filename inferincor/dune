@@ -8,6 +8,7 @@
    weaken
    rty_processor
    inferincor
+   witness
  )
  (preprocess
   (pps ppx_let)))

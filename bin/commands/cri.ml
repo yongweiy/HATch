@@ -294,16 +294,26 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
         Typecheck.pprint_res_one res)
     @@ DerivEngine.main (setting.oprctx, setting.rctx) code normalized
 
-let type_infer_under_ setting source_files unroll_bound =
+let type_infer_under_ ?(witness = true) setting source_files unroll_bound =
   (* here automatize only applies on library specification *)
+  let setting, typed_code = ntyped_ @@ print_source_code_ setting source_files in
+  (* the queries as written, before their effects are lowered to SFTs *)
+  let queries = RTypectx.get_task typed_code in
   let setting, code, normalized, interfaceStaic =
-    normalized_ @@ automatize_ @@ ntyped_
-    @@ print_source_code_ setting source_files
+    normalized_ @@ automatize_ (setting, typed_code)
   in
   List.iter ~f:(fun res ->
       (match res with
-      | _, _, Some rty, _ ->
-          Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty rty
+      | _, name, Some rty, _ -> (
+          Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty rty;
+          match
+            List.Assoc.find queries ~equal:String.equal name
+          with
+          | Some query when witness -> (
+              match Inferincor.Witness.render ~name ~query ~result:rty with
+              | Ok s -> Printf.printf "witness:\n%s\n" s
+              | Error msg -> Printf.printf "witness: not available (%s)\n" msg)
+          | _ -> ())
       | _ -> ());
       Typecheck.pprint_res_one res)
   @@ Inferincor.infer ~unroll_bound (setting.oprctx, setting.rctx) code normalized
@@ -592,11 +602,11 @@ let typecheck_cmds =
       let ri_input, s, dt_stat = prepare_ri s source_file in
       symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ] );
     ( "infer-incorrectness",
-      cmd_infer_incor_config_source "infer incorrectness"
-        (fun meta_config_file source_file unroll_bound () ->
+      cmd_infer_incor_config_source_with_witness "infer incorrectness"
+        (fun meta_config_file source_file unroll_bound witness () ->
           let s = mk_inputs_setting meta_config_file in
           let s = prepare_incor s source_file in
-          let _ = type_infer_under_ s [ source_file ] unroll_bound in
+          let _ = type_infer_under_ ~witness s [ source_file ] unroll_bound in
           (* let dt_stat = { dt_stat with interfaceStatStatic } in *)
           (* let () = update_dt_static_stat dt_stat in *)
           ()) );

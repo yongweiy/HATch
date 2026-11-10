@@ -5,6 +5,8 @@ module R = Rty
 open Nt
 open Sugar
 
+module Witness = Witness
+
 let pprint_res_one (id, name, res, timef) =
   match res with
   | Some _ ->
