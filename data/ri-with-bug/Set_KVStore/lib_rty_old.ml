@@ -26,10 +26,12 @@ let[@libRty] exists ?l:(k = (true : [%v: Key.t])) =
     };
   |]
 
-let[@libRty] hasValue ?l:(a = (true : [%v: Elem.t])) =
+(* true: some key [k] currently stores [a]; false: [a] was never stored
+   (under-approximates: ignores values overwritten or deleted since) *)
+let[@libRty] hasValue ((k : Key.t) [@ghost]) ?l:(a = (true : [%v: Elem.t])) =
   [|
     {
-      pre = has_valueP a;
+      pre = storedP k a;
       res = (v : [%v: bool]);
       newadding = lastL && HasValue ((a [@d]), v, v);
     };

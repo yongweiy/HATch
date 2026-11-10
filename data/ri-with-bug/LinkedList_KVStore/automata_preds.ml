@@ -1,6 +1,8 @@
+(* last link written for [a] and not deleted since (lib_rty.ml's putNext and
+   delNext Reject the previous PutNext) *)
 let[@pred] nextP (a : Ptr.t) (b : Ptr.t) =
   _F (PutNext ((a [@d]), (b [@d]), u, true) &&
-        _X (_G (not (PutNext ((a [@d]), c, u, true)))))
+        _X (_G (not (PutNext ((a [@d]), c, u, true) || DelNext ((a [@d]), c, true)))))
 
 let[@pred] valP (a : Ptr.t) (v : Elem.t) =
   _F (PutVal ((a [@d]), (v [@d]), u, true) &&

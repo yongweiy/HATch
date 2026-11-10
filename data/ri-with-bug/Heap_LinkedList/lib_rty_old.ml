@@ -54,3 +54,19 @@ let[@libRty] hasNext ?l:(a = (true : [%v: Elem.t])) =
       newadding = lastL && HasNext (x_0, v, not v);
     };
   |]
+
+(* true: some cell [b] currently links to [a]; false: no cell ever linked to
+   [a] (under-approximates: ignores links that were overwritten since) *)
+let[@libRty] hasPrev ((b : Elem.t) [@ghost]) ?l:(a = (true : [%v: Elem.t])) =
+  [|
+    {
+      pre = nextP b a;
+      res = (v : [%v: bool]);
+      newadding = lastL && HasPrev ((a [@d]), v, v);
+    };
+    {
+      pre = _G (not (SetNext (x_0, (a [@d]), v, true)));
+      res = (not v : [%v: bool]);
+      newadding = lastL && HasPrev ((a [@d]), v, not v);
+    };
+  |]

@@ -5,24 +5,28 @@ let[@libRty] putNext ?l:(k = (true : [%v: Ptr.t])) ?l:(a = (true : [%v: Ptr.t]))
     newadding = lastL && PutNext ((k [@d]), (a [@d]), v, true);
   }
 
-let[@libRty] getNext ((a : Ptr.t) [@ghost]) ?l:(k = (true : [%v: Ptr.t])) =
+let[@libRty] getNext ((a : Ptr.t) [@ghost])
+    ?l:(k = (not (is_nullptr v) : [%v: Ptr.t])) =
   {
     pre = nextP k a;
     res = (v == a : [%v: Ptr.t]);
     newadding = lastL && GetNext ((k [@d]), v, v == a);
   }
 
-let[@libRty] delNext ((a : Ptr.t) [@ghost]) ?l:(k = (true : [%v: Ptr.t])) =
+let[@libRty] delNext ((a : Ptr.t) [@ghost])
+    ?l:(k = (not (is_nullptr v) : [%v: Ptr.t])) =
   {
     pre = nextP k a;
     res = (v == a : [%v: Ptr.t]);
     newadding = lastL && DelNext ((k [@d]), v, v == a);
   }
 
-let[@libRty] hasPrev ?l:(k = (true : [%v: Ptr.t])) =
+(* true: some cell [b] currently links to [k]; false: no cell ever linked to
+   [k] (under-approximates: ignores links that were overwritten since) *)
+let[@libRty] hasPrev ((b : Ptr.t) [@ghost]) ?l:(k = (true : [%v: Ptr.t])) =
   [|
     {
-      pre = _F (PutNext (x_0, (k [@d]), v, true));
+      pre = nextP b k;
       res = (v : [%v: bool]);
       newadding = lastL && HasPrev ((k [@d]), v, v);
     };
@@ -40,7 +44,8 @@ let[@libRty] putVal ?l:(k = (true : [%v: Ptr.t])) ?l:(a = (true : [%v: Elem.t]))
     newadding = lastL && PutVal ((k [@d]), (a [@d]), v, true);
   }
 
-let[@libRty] getVal ((a : Elem.t) [@ghost]) ?l:(k = (true : [%v: Ptr.t])) =
+let[@libRty] getVal ((a : Elem.t) [@ghost])
+    ?l:(k = (not (is_nullptr v) : [%v: Ptr.t])) =
   {
     pre = valP k a;
     res = (v == a : [%v: Elem.t]);

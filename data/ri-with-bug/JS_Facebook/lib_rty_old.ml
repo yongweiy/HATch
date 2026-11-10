@@ -1,3 +1,7 @@
+(* HATch-format counterpart of lib_rty.ml (append-only history, every call is
+   logged; see data/ri-with-bug/HATCH_SPECS.md).  lib_rty.ml's setters Reject
+   the previous write, so reads here return the last write. *)
+
 let[@libRty] setClassName ?l:(node = (true : [%v: Node.t])) ?l:(cls = (true : [%v: int])) =
   {
     pre = _G (Any true);
@@ -7,7 +11,10 @@ let[@libRty] setClassName ?l:(node = (true : [%v: Node.t])) ?l:(cls = (true : [%
 
 let[@libRty] getClassName ((cls : int) [@ghost]) ?l:(node = (true : [%v: Node.t])) =
   {
-    pre = _F (SetClassName ((node [@d]), (cls [@d]), u, true));
+    pre =
+      _F
+        (SetClassName ((node [@d]), (cls [@d]), u, true)
+        && _X (_G (not (SetClassName ((node [@d]), a, u, true)))));
     res = (v == cls : [%v: int]);
     newadding = lastL && GetClassName ((node [@d]), v, v == cls);
   }
@@ -21,7 +28,10 @@ let[@libRty] setNodeId ?l:(node = (true : [%v: Node.t])) ?l:(id = (true : [%v: i
 
 let[@libRty] getNodeId ((id : int) [@ghost]) ?l:(node = (true : [%v: Node.t])) =
   {
-    pre = _F (SetNodeId ((node [@d]), (id [@d]), u, true));
+    pre =
+      _F
+        (SetNodeId ((node [@d]), (id [@d]), u, true)
+        && _X (_G (not (SetNodeId ((node [@d]), a, u, true)))));
     res = (v == id : [%v: int]);
     newadding = lastL && GetNodeId ((node [@d]), v, v == id);
   }
@@ -40,52 +50,58 @@ let[@libRty] getChildren ?l:(node = (true : [%v: Node.t])) =
     newadding = lastL && GetChildren ((node [@d]), v, true);
   }
 
-let[@libRty] findByClass ?l:(iter = (true : [%v: Iterator.t])) ?l:(cls = (true : [%v: int])) =
+(* a child [n] of [parent] (n <> parent) whose current class is [cls] *)
+let[@libRty] findByClass ((n : Node.t) [@ghost]) ?l:(parent = (true : [%v: Node.t]))
+    ?l:(cls = (true : [%v: int])) =
   {
-    pre = _G (Any true);
-    res = (true : [%v: Node.t]);
-    newadding = lastL && FindByClass ((iter [@d]), (cls [@d]), v, true);
+    pre =
+      _F
+        (SetClassName ((n [@d]), (cls [@d]), u, true)
+        && _X
+             (_G (not (SetClassName ((n [@d]), a, u, true)))
+             && _F (AddChild ((parent [@d]), (n [@d]), u, true))));
+    res = (v == n && not (v == parent) : [%v: Node.t]);
+    newadding = lastL && FindByClass ((parent [@d]), (cls [@d]), v, v == n);
   }
 
-let[@libRty] hasNext ((child : Node.t) [@ghost]) ?l:(node = (true : [%v: Node.t])) ?l:(iter = (true : [%v: Iterator.t])) =
+(* [iter] came from getChildren [parent]; lib_rty.ml binds [parent] and [child]
+   existentially inside the effect, here they are ghosts *)
+let[@libRty] hasNext ((parent : Node.t) [@ghost]) ((child : Node.t) [@ghost])
+    ?l:(iter = (true : [%v: Iterator.t])) =
   [|
     {
       pre =
         _F
-          (AddChild ((node [@d]), (child [@d]), u, true)
+          (AddChild ((parent [@d]), (child [@d]), u, true)
           && _X
                (_F
-                  (GetChildren ((node [@d]), (iter [@d]), true)
-                  && _X
-                       (not
-                          (_F
-                             (Next
-                                ((node [@d]), (iter [@d]), (child [@d]), true)))))));
+                  (GetChildren ((parent [@d]), (iter [@d]), true)
+                  && _X (not (_F (Next ((iter [@d]), (child [@d]), true)))))));
       res = (v : [%v: bool]);
-      newadding = lastL && HasNext ((node [@d]), (iter [@d]), v, v);
+      newadding = lastL && HasNext ((iter [@d]), v, v);
     };
     {
       pre =
         _U
-          (not (AddChild ((node [@d]), child, u, true)))
-          (GetChildren ((node [@d]), (iter [@d]), true));
+          (not (AddChild ((parent [@d]), c, u, true)))
+          (GetChildren ((parent [@d]), (iter [@d]), true));
       res = (not v : [%v: bool]);
-      newadding = lastL && HasNext ((node [@d]), (iter [@d]), v, not v);
+      newadding = lastL && HasNext ((iter [@d]), v, not v);
     };
   |]
 
-let[@libRty] next ?l:(node = (true : [%v: Node.t])) ?l:(iter = (true : [%v: Iterator.t])) =
+let[@libRty] next ((parent : Node.t) [@ghost]) ((c : Node.t) [@ghost])
+    ?l:(iter = (true : [%v: Iterator.t])) =
   {
     pre =
       _F
-        (AddChild ((node [@d]), v, u, true)
+        (AddChild ((parent [@d]), (c [@d]), u, true)
         && _X
              (_F
-                (GetChildren ((node [@d]), (iter [@d]), true)
-                && _X
-                     (not (_F (Next ((node [@d]), (iter [@d]), v, true)))))));
-    res = (true : [%v: Node.t]);
-    newadding = lastL && Next ((node [@d]), (iter [@d]), v, true);
+                (GetChildren ((parent [@d]), (iter [@d]), true)
+                && _X (not (_F (Next ((iter [@d]), (c [@d]), true)))))));
+    res = (v == c : [%v: Node.t]);
+    newadding = lastL && Next ((iter [@d]), v, v == c);
   }
 
 let[@libRty] putContact ?l:(id = (true : [%v: int])) ?l:(contact = (true : [%v: int])) =
@@ -97,7 +113,10 @@ let[@libRty] putContact ?l:(id = (true : [%v: int])) ?l:(contact = (true : [%v: 
 
 let[@libRty] getContact ((contact : int) [@ghost]) ?l:(id = (true : [%v: int])) =
   {
-    pre = _F (PutContact ((id [@d]), (contact [@d]), u, true));
+    pre =
+      _F
+        (PutContact ((id [@d]), (contact [@d]), u, true)
+        && _X (_G (not (PutContact ((id [@d]), a, u, true)))));
     res = (v == contact : [%v: int]);
     newadding = lastL && GetContact ((id [@d]), v, v == contact);
   }
@@ -105,12 +124,12 @@ let[@libRty] getContact ((contact : int) [@ghost]) ?l:(id = (true : [%v: int])) 
 let[@libRty] memContact ?l:(id = (true : [%v: int])) =
   [|
     {
-      pre = _F (PutContact ((id [@d]), x_0, u, true));
+      pre = _F (PutContact ((id [@d]), c, u, true));
       res = (v : [%v: bool]);
       newadding = lastL && MemContact ((id [@d]), v, v);
     };
     {
-      pre = not (_F (PutContact ((id [@d]), x_0, u, true)));
+      pre = not (_F (PutContact ((id [@d]), c, u, true)));
       res = (not v : [%v: bool]);
       newadding = lastL && MemContact ((id [@d]), v, not v);
     };
