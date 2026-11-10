@@ -107,7 +107,10 @@ def run_ours(bench, max_bound, timeout):
 # HATch (srlexec) runs once with its default search bounds; see
 # `main.exe symb-exec-incor -help`.  The 1 GiB heap cap that used to be
 # hard-coded is relaxed to HATCH_MEM_LIMIT_GB.
-HATCH_EXEC_BOUND = 20  # srlexec default; override with --hatch-exec-bound
+# srlexec's own default (-exec-bound 20) cannot fit the loop iterations some
+# witnesses need (UI Interact: no witness at 20, 0.1 s at 40).  Larger bounds
+# (60, 100) changed no other result in a sweep, so use the smallest that works.
+HATCH_EXEC_BOUND = 40  # override with --hatch-exec-bound
 HATCH_MEM_LIMIT_GB = 64
 HATCH_FLAGS = []  # set in main()
 
@@ -157,7 +160,7 @@ def main():
     ap.add_argument("--max-bound", type=int, default=8)
     ap.add_argument("--timeout", type=int, default=300, help="per-attempt timeout for our tool (s)")
     ap.add_argument("--hatch-timeout", type=int, default=300, help="timeout for HATch (s)")
-    ap.add_argument("--hatch-exec-bound", type=int, default=20,
+    ap.add_argument("--hatch-exec-bound", type=int, default=HATCH_EXEC_BOUND,
                     help="HATch -exec-bound (reduction steps explored)")
     ap.add_argument("--no-hatch", action="store_true")
     args = ap.parse_args()
