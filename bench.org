@@ -5,44 +5,120 @@
 
 #+RESULTS:
 #+begin_src org
+before union_rty
+after union_rty
+#V = 4; #E = 7
 inferred:
-(x:{v:Elem.t | true}) → (ret:{v:unit | true})!k ← {v:Key.t | true}; k_0 ← {v:Key.t | true}; x_20 ← {v:bool | true}; br_6 ← {v:unit | ¬x_20}; (admit(ϵ⟨∃x_0. (∃x_1. (x_1 == x ∧ x_0 == k_0 ∧ ¬x_0 == k))⟩;⟨put x_0 x_1 = vret | x_1 == x ∧ x_0 == k ∧ ¬x_0 == k_0⟩); (k_0 ← randomKey(()); (x_20 ← exists(k_0); () ← put(k_0, x))))
-Task 1(insert): exec time 0.127189(s), type check succeeded
+(x:{v:Elem.t | true}) → (ret:{v:unit | true})!k ← {v:Key.t | true}; k_0 ← {v:Key.t | true}; x_20 ← {v:bool | true}; br_4 ← {v:unit | ¬x_20}; u_1 ← {v:unit | ¬x_20}; (admit(ϵ⟨∃x_0. (∃x_1. (x_1 == x ∧ x_0 == k_0 ∧ ¬x_0 == k))⟩;⟨put x_0 x_1 = vret | x_1 == x ∧ x_0 == k ∧ ¬x_0 == k_0⟩); (k_0 ← randomKey(()); (x_20 ← exists(k_0); () ← put(k_0, x))))
+Task 1(insert): exec time 0.161493(s), type check succeeded
 #+end_src
 
 #+call: ihat(bench="Heap_LinkedList/insert_buggy")
 
 #+RESULTS:
 #+begin_src org
-inferred:
-(x:{v:Elem.t | true}) → (ret:{v:unit | true})!min ← {v:Elem.t | elem_lt v x}; min' ← {v:Elem.t | elem_lt min v}; x_19 ← {v:bool | true}; br_21 ← {v:unit | x_19}; hd_0 ← {v:Elem.t | true}; res_0 ← {v:Elem.t | true}; br_22 ← {v:unit | ¬hd_0 == x}; br_24 ← {v:unit | ¬elem_lt x hd_0}; x_20 ← {v:bool | true}; br_27 ← {v:unit | x_20}; next_0 ← {v:Elem.t | true}; res_1 ← {v:Elem.t | true}; u_5 ← {v:unit | res_1 == res_1}; br_28 ← {v:unit | next_0 == x}; u_7 ← {v:unit | res_1 == next_0}; (admit(⟨setHead x_0 = vret | x_0 == hd_0 ∧ x_0 == min ∧ (∃x_0. (x_0 == min' ∧ x_0 == res_0))⟩;⟨setNext x_0 x_1 = vret | x_0 == hd_0 ∧ x_1 == next_0⟩); (x_19 ← hasHead(()); (hd_0 ← getHead(()); (x_20 ← hasNext(hd_0); (next_0 ← getNext(hd_0); () ← setHead(res_0))))))
-Task 1(insert): exec time 1.827056(s), type check succeeded
+  before union_rty
+  after union_rty
+  #V = 1; #E = 1
+  #V = 1; #E = 0
+  #V = 1; #E = 1
+  #V = 1; #E = 1
+  #V = 4; #E = 5
+  #V = 5; #E = 9
+  inferred:
+  (x:{v:Elem.t | true}) → (ret:{v:unit | true})!min ← {v:Elem.t | elem_lt v x}; min' ← {v:Elem.t | elem_lt min v}; x_19 ← {v:bool | true}; br_15 ← {v:unit | x_19}; hd_0 ← {v:Elem.t | true}; res_0 ← {v:Elem.t | true}; br_16 ← {v:unit | ¬hd_0 == x}; br_18 ← {v:unit | ¬elem_lt x hd_0}; x_20 ← {v:bool | true}; br_21 ← {v:unit | x_20}; next_0 ← {v:Elem.t | true}; res_1 ← {v:Elem.t | true}; u_6 ← {v:unit | res_1 == res_1}; br_22 ← {v:unit | next_0 == x}; u_7 ← {v:unit | res_1 == next_0}; u_28 ← {v:unit | x_20}; u_45 ← {v:unit | x_19}; (admit(ϵ⟨∃x_0. (x_0 == min' ∧ x_0 == res_0)⟩;(⟨setNext x_0 x_1 = vret | x_0 == hd_0 ∧ x_1 == next_0⟩;⟨setHead x_0 = vret | x_0 == hd_0 ∧ x_0 == min⟩)); (x_19 ← hasHead(()); (hd_0 ← getHead(()); (x_20 ← hasNext(hd_0); (next_0 ← getNext(hd_0); () ← setHead(res_0))))))
+  Task 1(insert): exec time 1.348008(s), type check succeeded
+#+end_src
+
+#+call: hatch(bench="Heap_LinkedList/insert_buggy")
+
+#+RESULTS:
+#+begin_src org
+[DEBUG] symb_exec_incor_: Starting
+[DEBUG] symb_exec_incor_: Parsed and normalized 1 tasks
+[DEBUG] convert_hty: Converting Constrain to Htriple with 2 ghost bindings
+[DEBUG] symb_exec_incor_: Converted Constrain to Htriple with 2 ghost bindings
+[DEBUG] symb_exec_incor_: Using Deriv engine with bounds: exec=10, accel=5, append=3
+[DEBUG] symb_exec_incor_: Starting engine execution
+Terminated Hatch
+rctx = x:{v:Elem.t | true}, x_15_0:{v:bool | v}, a_4:{v:Elem.t | true}, hd_0:{v:Elem.t | v == a_4}, x_12_5:{v:bool | (v <=> hd_0 == x) ∧ v}
+prefix = ⟨setHead x_0 = vret | x_0 == a_4⟩; ⟨hasHead x_0 = vret | vret⟩; ⟨getHead x_0 = vret | vret == a_4⟩; ⟨setHead x_0 = vret | x_0 == hd_0 ∧ x_0 == a⟩
+cont = ((.*;(⟨setHead x_0 = vret | x_0 == a⟩;(.\⟨setHead⟩)*)) ∨ (.\⟨setHead⟩)*)ᶜ
+comp = (() : unit)
+[DEBUG] symb_exec_incor_: Got result
+Task 1(insert): exec time 0.305090(s), type check failed
 #+end_src
 
 #+call: ihat(bench="LinkedList_KVStore/remove_buggy")
 
 #+RESULTS:
 #+begin_src org
-SFT
-Task 1(remove): exec time 3.097544(s), type check failed
-Task 2(remove): exec time 2.788152(s), type check succeeded
+before union_rty
+after union_rty
+#V = 1; #E = 0
+#V = 64; #E = 348
 inferred:
-(hd:{v:Ptr.t | ¬is_nullptr v}) → (ret:(vl:{v:Elem.t | true}) → (ret:{v:Ptr.t | v == hd ∨ v == next'})!a ← {v:Ptr.t | true}; br_41 ← {v:unit | x_42}; u_40 ← {v:unit | ret == hd}; admit((((((⟨putNext x_0 x_1 = vret | ¬x_0 == ret⟩ ∨ (⟨putVal x_0 x_1 = vret | ¬x_0 == a⟩ ∨ (.\(⟨putNext⟩ ∨ ⟨putVal⟩))))*;⟨putVal x_0 x_1 = vret | x_1 == vl ∧ x_0 == a⟩);(⟨putNext x_0 x_1 = vret | ¬x_0 == ret⟩ ∨ (⟨putVal x_0 x_1 = vret | ¬x_0 == a⟩ ∨ (.\(⟨putNext⟩ ∨ ⟨putVal⟩))))*);⟨putNext x_0 x_1 = vret | x_0 == ret ∧ x_1 == a⟩);(⟨putNext x_0 x_1 = vret | ¬x_0 == ret⟩ ∨ (⟨putVal x_0 x_1 = vret | ¬x_0 == a⟩ ∨ (.\(⟨putNext⟩ ∨ ⟨putVal⟩))))*) ∨ ((((⟨putNext x_0 x_1 = vret | ¬x_0 == ret⟩ ∨ (⟨putVal x_0 x_1 = vret | ¬x_0 == a⟩ ∨ (.\(⟨putNext⟩ ∨ ⟨putVal⟩))))*;⟨putNext x_0 x_1 = vret | x_0 == ret ∧ x_1 == a⟩);(⟨putNext x_0 x_1 = vret | ¬x_0 == ret⟩ ∨ (⟨putVal x_0 x_1 = vret | ¬x_0 == a⟩ ∨ (.\(⟨putNext⟩ ∨ ⟨putVal⟩))))*);(⟨putVal x_0 x_1 = vret | x_1 == vl ∧ x_0 == a⟩;(⟨putNext x_0 x_1 = vret | ¬x_0 == ret⟩ ∨ (⟨putVal x_0 x_1 = vret | ¬x_0 == a⟩ ∨ (.\(⟨putNext⟩ ∨ ⟨putVal⟩))))*))))!ID
+(hd:{v:Ptr.t | ¬is_nullptr v}) → (vl:{v:Elem.t | true}) → (ret:{v:Ptr.t | true})!a ← {v:Ptr.t | true}; b ← {v:Ptr.t | true}; c ← {v:Ptr.t | true}; br_12 ← {v:unit | ¬is_nullptr hd}; k_x_23 ← {v:Ptr.t | v == hd ∧ ¬is_nullptr v}; x_24 ← {v:Elem.t | true}; br_15 ← {v:unit | x_24 == vl}; k_0 ← {v:Ptr.t | v == hd ∧ ¬is_nullptr v}; next'_0 ← {v:Ptr.t | true}; u_1 ← {v:unit | ret == next'_0}; (admit(⟨putVal x_0 x_1 = vret | x_1 == vl ∧ x_1 == x_24 ∧ x_0 == c ∧ x_0 == k_x_23⟩;⟨putNext x_0 x_1 = vret | x_0 == a ∧ x_0 == b ∧ x_0 == k_0 ∧ x_0 == ret ∧ x_1 == a ∧ x_1 == b ∧ x_1 == c ∧ x_1 == next'_0⟩); (x_24 ← getVal(k_x_23); next'_0 ← getNext(k_0)))
+Task 1(remove): exec time 1.292611(s), type check succeeded
 #+end_src
+
 
 #+call: ihat(bench="LinkedList_KVStore/concat")
 
 #+RESULTS:
 #+begin_src org
-inferred:
-(xs:{v:Ptr.t | ¬is_nullptr v}) → (ys:{v:Ptr.t | ¬is_nullptr v}) → (ret:{v:Ptr.t | true})!zs ← {v:Ptr.t | true}; bs ← {v:Ptr.t | true}; cs ← {v:Ptr.t | true}; res_0 ← {v:Ptr.t | v == xs ∨ v == ys}; u_0 ← {v:unit | ret == res_0}; br_6 ← {v:unit | ¬is_nullptr xs}; k_0 ← {v:Ptr.t | v == xs ∧ ¬is_nullptr v}; next_0 ← {v:Ptr.t | true}; ys'_0 ← {v:Ptr.t | v == next_0 ∨ v == ys}; br_9 ← {v:unit | is_nullptr next_0}; u_2 ← {v:unit | ys'_0 == ys}; u_4 ← {v:unit | res_0 == xs}; (admit(⟨putNext x_0 x_1 = vret | x_0 == k_0 ∧ x_0 == xs ∧ x_1 == next_0 ∧ (∃x_0. (∃x_1. (x_0 == bs ∧ x_0 == cs ∧ x_0 == ret ∧ x_0 == xs ∧ x_0 == zs ∧ x_1 == bs ∧ x_1 == cs ∧ x_1 == ret ∧ x_1 == ys'_0 ∧ x_1 == zs)))⟩); (next_0 ← getNext(k_0); () ← putNext(xs, ys'_0)))
-Task 1(concat): exec time 4.915811(s), type check succeeded
+  before union_rty
+  after union_rty
+  #V = 1; #E = 0
+  #V = 17; #E = 55
+  inferred:
+  (xs:{v:Ptr.t | ¬is_nullptr v}) → (ys:{v:Ptr.t | ¬is_nullptr v}) → (ret:{v:Ptr.t | true})!zs ← {v:Ptr.t | true}; bs ← {v:Ptr.t | true}; cs ← {v:Ptr.t | true}; res_0 ← {v:Ptr.t | v == xs ∨ v == ys}; u_0 ← {v:unit | ret == res_0}; br_4 ← {v:unit | ¬is_nullptr xs}; k_0 ← {v:Ptr.t | v == xs ∧ ¬is_nullptr v}; next_0 ← {v:Ptr.t | true}; ys'_0 ← {v:Ptr.t | v == next_0 ∨ v == ys}; br_7 ← {v:unit | is_nullptr next_0}; u_2 ← {v:unit | ys'_0 == ys}; u_3 ← {v:unit | res_0 == xs}; (admit(ϵ⟨∃x_0. (∃x_1. (x_0 == bs ∧ x_0 == cs ∧ x_0 == ret ∧ x_0 == xs ∧ x_0 == zs ∧ x_1 == bs ∧ x_1 == cs ∧ x_1 == ret ∧ x_1 == ys'_0 ∧ x_1 == zs))⟩;⟨putNext x_0 x_1 = vret | x_0 == k_0 ∧ x_0 == xs ∧ x_1 == next_0⟩); (next_0 ← getNext(k_0); () ← putNext(xs, ys'_0)))
+  Task 1(concat): exec time 0.900725(s), type check succeeded
+#+end_src
+
+#+call: hatch(bench="LinkedList_KVStore/concat")
+
+#+RESULTS:
+#+begin_src org
+[DEBUG] symb_exec_incor_: Starting
+[DEBUG] symb_exec_incor_: Parsed and normalized 1 tasks
+[DEBUG] convert_hty: Converting Constrain to Htriple with 3 ghost bindings
+[DEBUG] symb_exec_incor_: Converted Constrain to Htriple with 3 ghost bindings
+[DEBUG] symb_exec_incor_: Using Deriv engine with bounds: exec=10, accel=5, append=3
+[DEBUG] symb_exec_incor_: Starting engine execution
+[DEBUG] symb_exec_incor_: Got result
+Task 1(concat): exec time 0.619074(s), type check succeeded
 #+end_src
 
 #+call: ihat(bench="FileSystem_KVStore/delete_buggy")
 
 #+RESULTS:
 #+begin_src org
+before union_rty
+after union_rty
+#V = 1; #E = 1
+#V = 1; #E = 0
+#V = 16; #E = 48
+#V = 34; #E = 122
+#V = 132; #E = 844
+inferred:
+(path:{v:Path.t | true}) → (res:{v:bool | true})!bytes ← {v:Bytes.t | true}; child ← {v:Path.t | path == (parent v)}; x_42 ← {v:bool | true}; x_43 ← {v:bool | v <=> ¬x_42}; br_16 ← {v:unit | ¬x_43}; bytes_0 ← {v:Bytes.t | true}; down_0 ← {v:bool | true}; br_19 ← {v:unit | down_0}; bytes_2 ← {v:Bytes.t | true}; bytes_3 ← {v:Bytes.t | true}; children_0 ← {v:Iterator.t | true}; more_0 ← {v:bool | true}; br_21 ← {v:unit | more_0}; child_0 ← {v:Path.t | true}; _0 ← {v:bool | true}; x_44 ← {v:bool | true}; x_45 ← {v:bool | v <=> ¬x_44}; br_22 ← {v:unit | x_45}; u_7 ← {v:unit | ¬_0}; u_8 ← {v:unit | ¬x_44}; child_4 ← {v:Path.t | true}; u_22 ← {v:unit | more_0}; u_26 ← {v:unit | ret}; u_31 ← {v:unit | down_0}; u_33 ← {v:unit | ret}; u_36 ← {v:unit | x_42}; (admit(⟨addChild x_0 x_1 = vret | x_0 == bytes ∧ x_0 == bytes_0 ∧ x_0 == bytes_3 ∧ path == (parent x_1) ∧ x_1 == child ∧ x_1 == child_0 ∧ x_1 == child_4 ∧ ((parent path) == (parent x_1) ∨ ¬x_0 == bytes_2) ∧ (¬x_0 == bytes_2 ∨ ¬x_1 == path)⟩;(⟨put x_0 x_1 = vret | x_1 == bytes_2 ∧ x_0 == (parent path) ∧ ¬x_0 == child_0 ∧ ¬x_0 == path⟩;⟨put x_0 x_1 = vret | x_1 == bytes ∧ x_1 == bytes_0 ∧ x_1 == bytes_3 ∧ x_0 == path ∧ ¬x_0 == child_0⟩)); (x_42 ← exists(path); (bytes_0 ← get(path); (down_0 ← isDir(bytes_0); (bytes_3 ← get(path); (children_0 ← getChildren(bytes_3); (more_0 ← hasNext(bytes_3, children_0); (child_0 ← next(bytes_3, children_0); (x_44 ← exists(child_0); (() ← del(path); (bytes_2 ← get(parent path); () ← delChild(bytes_2, path))))))))))))
+Task 1(delete): exec time 53.620687(s), type check succeeded
+#+end_src
+
+#+call: hatch(bench="FileSystem_KVStore/delete_buggy")
+
+#+RESULTS:
+#+begin_src org
+[DEBUG] symb_exec_incor_: Starting
+[DEBUG] symb_exec_incor_: Parsed and normalized 1 tasks
+[DEBUG] call_to_sfa_opt: Operation memChild not found in oprctx
+[DEBUG] convert_hty: Could not extract SFAs
+[DEBUG] symb_exec_incor_: Converted Constrain to Htriple with 0 ghost bindings
+[DEBUG] symb_exec_incor_: Using Deriv engine with bounds: exec=10, accel=5, append=3
+[DEBUG] symb_exec_incor_: Starting engine execution
+[DEBUG] symb_exec_incor_: Got result
+Task 1(delete): exec time 0.000002(s), type check failed
 #+end_src
 
 #+call: ihat(bench="Dafny_Queue/to_stream")
@@ -122,17 +198,14 @@ ef2b56c3-8220-4a1c-8958-6277937b13ce
 
 #+RESULTS:
 : bench='Dafny_Graph_List_Variants/single_queue_counter'
-: <-incorrectness meta-config.json data/ri-with-bug/${bench}.ml
-: inferred:
-: (start:{v:Node.t | true}) → (target:{v:Node.t | true}) → (ret:{v:int | 2})!final_0 ← {v:int | true}; u_0 ← {v:unit | ret == final_0}; x_31 ← {v:bool | true}; br_130 ← {v:unit | ¬x_31}; br_132 ← {v:unit | ¬1 == 0}; current_0 ← {v:Node.t | true}; br_134 ← {v:unit | ¬current_0 == target}; neighbors_0 ← {v:NodeList.t | is_nil (tl (tl v))}; updated_next_0 ← {v:int | true}; result_0 ← {v:int | true}; u_5 ← {v:unit | final_0 == result_0}; x_33 ← {v:bool | true}; br_143 ← {v:unit | ¬x_33}; br_144 ← {v:unit | (1 - 1) == 0}; res_2 ← {v:int | true}; u_13 ← {v:unit | result_0 == res_2}; x_36 ← {v:bool | true}; br_157 ← {v:unit | ¬x_36}; br_163 ← {v:unit | ¬updated_next_0 == 0}; current_4 ← {v:Node.t | true}; br_167 ← {v:unit | ¬current_4 == target}; neighbors_4 ← {v:NodeList.t | is_nil (tl (tl v))}; updated_next_4 ← {v:int | true}; result_5 ← {v:int | true}; u_40 ← {v:unit | res_2 == result_5}; x_46 ← {v:bool | true}; br_209 ← {v:unit | ¬x_46}; br_218 ← {v:unit | (updated_next_4 - 1) == 0}; res_13 ← {v:int | true}; u_84 ← {v:unit | result_5 == res_13}; x_64 ← {v:bool | true}; br_283 ← {v:unit | ¬x_64}; br_303 ← {v:unit | ¬updated_next_4 == 0}; current_24 ← {v:Node.t | true}; br_332 ← {v:unit | current_24 == target}; u_217 ← {v:unit | res_13 == ((0 + 1) + 1)}; u_15379 ← {v:unit | ¬x_64}; u_15383 ← {v:unit | ¬x_46}; br_7386 ← {v:unit | ¬is_nil neighbors_4}; xs_3536 ← {v:NodeList.t | v == neighbors_4 ∧ ¬is_nil v}; xs_3537 ← {v:NodeList.t | v == neighbors_4 ∧ ¬is_nil v}; x_3598 ← {v:bool | true}; x_3599 ← {v:bool | v <=> ¬x_3598}; br_7390 ← {v:unit | x_3599}; new_3536 ← {v:int | true}; u_15391 ← {v:unit | updated_next_4 == new_3536}; br_7396 ← {v:unit | is_nil (tl xs_3537)}; u_15395 ← {v:unit | new_3536 == (0 + 1)}; u_15403 ← {v:unit | ¬x_3598}; u_15785 ← {v:unit | ¬x_36}; u_15815 ← {v:unit | ¬x_33}; br_7725 ← {v:unit | ¬is_nil neighbors_0}; xs_3720 ← {v:NodeList.t | v == neighbors_0 ∧ ¬is_nil v}; xs_3721 ← {v:NodeList.t | v == neighbors_0 ∧ ¬is_nil v}; x_3782 ← {v:bool | true}; x_3783 ← {v:bool | v <=> ¬x_3782}; br_7758 ← {v:unit | x_3783}; new_3720 ← {v:int | true}; u_15896 ← {v:unit | updated_next_0 == new_3720}; br_7764 ← {v:unit | is_nil (tl xs_3721)}; u_15901 ← {v:unit | new_3720 == (0 + 1)}; u_15907 ← {v:unit | ¬x_3782}; u_16029 ← {v:unit | ¬x_31}; (admit(ϵ⟨∃x_0. (x_0 == current_0 ∧ x_0 == start ∧ (∃x_0. (x_0 == (hd xs_3720) ∧ x_0 == current_4 ∧ (∃x_0. (x_0 == (hd xs_3536) ∧ x_0 == current_24)))) ∧ (∃x_0. (x_0 == (hd xs_3720) ∧ ¬x_0 == (hd xs_3536))))⟩;(ϵ⟨∃x_0. (x_0 == start ∧ ¬x_0 == (hd xs_3536) ∧ ¬x_0 == (hd xs_3720))⟩;(⟨connect x_0 x_1 = vret | x_0 == current_0 ∧ x_1 == (hd (tl neighbors_0)) ∧ ¬x_0 == current_4⟩;(⟨connect x_0 x_1 = vret | x_0 == current_0 ∧ x_1 == (hd neighbors_0) ∧ ¬x_0 == current_4⟩;(⟨connect x_0 x_1 = vret | x_0 == current_4 ∧ x_1 == (hd (tl neighbors_4)) ∧ ¬x_0 == current_0⟩;⟨connect x_0 x_1 = vret | x_0 == current_4 ∧ x_1 == (hd neighbors_4) ∧ ¬x_0 == current_0⟩))))); (() ← initVisited(()); (() ← markVisited(start); (() ← add(start); (x_31 ← isEmpty(()); (current_0 ← take(()); (neighbors_0 ← getNeighbors(current_0); (x_3782 ← isVisited(hd xs_3720); (() ← markVisited(hd xs_3720); (() ← add(hd xs_3720); (x_33 ← isEmpty(()); (x_36 ← isEmpty(()); (current_4 ← take(()); (neighbors_4 ← getNeighbors(current_4); (x_3598 ← isVisited(hd xs_3536); (() ← markVisited(hd xs_3536); (() ← add(hd xs_3536); (x_46 ← isEmpty(()); (x_64 ← isEmpty(()); current_24 ← take(()))))))))))))))))))))
-: Task 1(shortest_path): exec time 94.834519(s), type check succeeded
-: <8efb798-db35-44dc-8c61-a21c0d7d292e'[?2004l
+: _build/default/bin/main.exe infer-incorrectness meta-config.json data/ri-with-bug/${bench}.ml
+: echo '
 
 #+call: ihat[:session axiom :async](bench="Dafny_Graph_List_Variants/single_queue_counter")
 
 #+RESULTS:
 #+begin_src org
-08efb798-db35-44dc-8c61-a21c0d7d292e
+737fb43d-4db0-4f6d-ac87-66a5c8c98a86
 #+end_src
 
 #+RESULTS:
@@ -144,7 +217,7 @@ ef2b56c3-8220-4a1c-8958-6277937b13ce
 
 #+RESULTS:
 #+begin_src org
-b504b953-58a2-4faa-91db-d3e412fb660f
+e915b3b0-7493-4a45-a70a-d1d791666d18
 #+end_src
 
 #+RESULTS:
@@ -156,7 +229,7 @@ b504b953-58a2-4faa-91db-d3e412fb660f
 
 #+RESULTS:
 #+begin_src org
-46434205-e882-4a18-983c-468d2b9a5271
+de88a3fd-5c9c-488d-8723-166d87341b3a
 #+end_src
 
 #+RESULTS:
@@ -168,7 +241,7 @@ b504b953-58a2-4faa-91db-d3e412fb660f
 
 #+RESULTS:
 #+begin_src org
-5030f99b-39f6-49af-b5d8-8f90a8da1369
+9160e649-f99d-4157-9dd6-1f3fd74301b2
 #+end_src
 
 #+call: ihat(bench="RedBlackTree_FunTree/test")
@@ -193,6 +266,31 @@ Task 1(insert): exec time 0.140036(s), type check succeeded
   inferred:
   (x:{v:Node.t | true}) → (root:{v:NodeTree.t | true}) → (ret:{v:NodeTree.t | true})!what ← {v:Node.t | true}; leaf_0 ← {v:NodeTree.t | is_leaf v}; vx_0 ← {v:Elem.t | true}; root'_0 ← {v:NodeTree.t | true}; u_0 ← {v:unit | ret == root'_0}; br_18 ← {v:unit | ¬is_leaf root}; n_0 ← {v:Node.t | is_node v root}; l_0 ← {v:NodeTree.t | is_left v root}; r_0 ← {v:NodeTree.t | is_right v root}; vn_0 ← {v:Elem.t | true}; br_20 ← {v:unit | ¬elem_lt vx_0 vn_0}; x_17 ← {v:bool | v <=> ¬elem_lt vn_0 vx_0}; br_23 ← {v:unit | x_17}; r'_0 ← {v:NodeTree.t | true}; c'_2 ← {v:NodeTree.t | is_left l_0 v ∧ is_node n_0 v ∧ is_right r'_0 v}; c''_1 ← {v:NodeTree.t | true}; u_6 ← {v:unit | root'_0 == c''_1}; n_2 ← {v:Node.t | is_node v c'_2}; x_19 ← {v:bool | true}; br_26 ← {v:unit | ¬x_19}; l_2 ← {v:NodeTree.t | is_left v c'_2}; r_2 ← {v:NodeTree.t | is_right v c'_2}; ln_1 ← {v:Node.t | is_node v l_2}; rn_1 ← {v:Node.t | is_node v r_2}; x_21 ← {v:bool | true}; br_31 ← {v:unit | x_21}; ll_1 ← {v:NodeTree.t | is_left v l_2}; lr_1 ← {v:NodeTree.t | is_right v l_2}; lln_1 ← {v:Node.t | is_node v ll_1}; lrn_1 ← {v:Node.t | is_node v lr_1}; x_23 ← {v:bool | true}; br_34 ← {v:unit | x_23}; r'_2 ← {v:NodeTree.t | is_left lr_1 v ∧ is_node n_2 v ∧ is_right r_2 v}; c'_4 ← {v:NodeTree.t | is_left ll_1 v ∧ is_node ln_1 v ∧ is_right r'_2 v}; c_unused_2 ← {v:bool | ¬v}; u_19 ← {v:unit | c''_1 == c'_4}; br_112 ← {v:unit | is_leaf r_0}; c'_26 ← {v:NodeTree.t | is_left leaf_0 v ∧ is_node x v ∧ is_right leaf_0 v}; u_95 ← {v:unit | r'_0 == c'_26}; (admit(⟨setColor x_0 x_1 = vret | x_1 == true ∧ x_1 == x_21 ∧ x_1 == x_23 ∧ x_0 == lln_1 ∧ x_0 == ln_1 ∧ x_0 == what ∧ ¬x_0 == n_2 ∧ (∃x_0. (∃x_1. (x_1 == false ∧ x_1 == c_unused_2 ∧ x_0 == lln_1 ∧ x_0 == what)))⟩;(⟨setColor x_0 x_1 = vret | x_1 == x_19 ∧ x_0 == n_2 ∧ ¬x_0 == lln_1 ∧ ¬x_0 == ln_1 ∧ ¬x_0 == what⟩;⟨setValue x_0 x_1 = vret | x_1 == vn_0 ∧ x_1 == vx_0 ∧ x_0 == n_0 ∧ x_0 == x⟩)); (vx_0 ← getValue(x); (vn_0 ← getValue(n_0); (x_19 ← getColor(n_2); (x_21 ← getColor(ln_1); (x_23 ← getColor(lln_1); () ← setColor(lln_1, c_unused_2)))))))
   Task 1(insert): exec time 9.424114(s), type check succeeded
+#+end_src
+
+#+RESULTS:
+: timeout 60
+: bench='RedBlackTree_CElem/insert_single_path'
+: _build/default/bin/main.exe symb-exec-incor meta-config.json data/ri-with-bug/${bench}.ml
+: echo '
+
+#+call: hatch[:session RBT :async :prologue timeout 60](bench="RedBlackTree_CElem/insert_single_path")
+
+#+RESULTS:
+#+begin_src org
+be7b6698-1928-491b-bca1-17f12bb43658
+#+end_src
+
+#+RESULTS:
+: bench='RedBlackTree_CElem/insert_single_path'
+: _build/default/bin/main.exe infer-incorrectness meta-config.json data/ri-with-bug/${bench}.ml
+: echo '
+
+#+call: ihat[:session RBT :async](bench="RedBlackTree_CElem/insert_single_path")
+
+#+RESULTS:
+#+begin_src org
+7ac37eb6-dee8-4fb8-ad2c-4fddd1f69645
 #+end_src
 
 #+call: ihat(bench="JS_Magnifier/magnifier")
@@ -220,6 +318,150 @@ inferred:
 Task 1(scrapeProfile): exec time 134.534078(s), type check succeeded
 #+end_src
 
+* retrofitting HATch
+#+call: ihat(bench="Set_KVStore/test")
+
+#+RESULTS:
+#+begin_src org
+before union_rty
+after union_rty
+#V = 1; #E = 1
+#V = 1; #E = 1
+Task 1(test): exec time 0.078841(s), type check failed
+#+end_src
+
+#+call: hatch(bench="Set_KVStore/test")
+
+#+RESULTS:
+#+begin_src org
+Task 1(test): exec time 0.682766(s), type check succeeded
+#+end_src
+
+#+call: ihat(bench="Set_KVStore/insert_buggy")
+
+#+RESULTS:
+#+begin_src org
+inferred:
+(x:{v:Elem.t | true}) → (ret:{v:unit | true})!k1 ← {v:Key.t | true}; k2 ← {v:Key.t | ¬v == k1}; k_0 ← {v:Key.t | true}; x_20 ← {v:bool | true}; br_6 ← {v:unit | ¬x_20}; u_1 ← {v:unit | ¬x_20}; (admit(ϵ⟨∃x_0. (∃x_1. (x_1 == x ∧ x_0 == k2 ∧ x_0 == k_0 ∧ ¬x_0 == k1))⟩;⟨put x_0 x_1 = vret | x_1 == x ∧ x_0 == k1 ∧ ¬x_0 == k2 ∧ ¬x_0 == k_0⟩); (k_0 ← randomKey(()); (x_20 ← exists(k_0); () ← put(k_0, x))))
+Task 1(insert): exec time 0.209781(s), type check succeeded
+#+end_src
+
+#+call: hatch(bench="Set_KVStore/insert_buggy")
+
+#+RESULTS:
+#+begin_src org
+Terminated Hatch
+ghost_rctx = getParent:(a:{v:Path.t | true}) → {v:Path.t | v == (parent a)}, isRoot:(a:{v:Path.t | true}) → {v:bool | v == (is_root a)}, getRoot:(a:{v:unit | true}) → {v:Path.t | is_root v}, fileInit:(a:{v:unit | true}) → {v:Bytes.t | is_dir v}, addChild:(a:{v:Bytes.t | true}) → (b:{v:Path.t | true}) → {v:Bytes.t | is_dir v}, delChild:(a:{v:Bytes.t | true}) → (b:{v:Path.t | true}) → {v:Bytes.t | is_del v ∧ is_dir v}, getChild:(a:{v:Bytes.t | true}) → {v:Path.t | true}, hasChild:(a:{v:Bytes.t | true}) → {v:bool | true}, setDeleted:(a:{v:Bytes.t | true}) → {v:Bytes.t | is_del v}, isDir:(a:{v:Bytes.t | true}) → {v:bool | v == (is_dir a)}, k1:{v:Key.t | true}, k2:{v:Key.t | ¬v == k1}
+rctx = x:{v:Elem.t | true}, k_0:{v:Key.t | true}, x_13_0:{v:bool | v}, k_4:{v:Key.t | true}, x_13_4:{v:bool | v}, k_8:{v:Key.t | true}, x_13_8:{v:bool | v}, k_12:{v:Key.t | true}, x_13_12:{v:bool | ¬v}
+prefix = ⟨put x_0 x_1 = vret | x_1 == x ∧ x_0 == k2 ∧ x_0 == k_0 ∧ x_0 == k_4 ∧ x_0 == k_8 ∧ ¬x_0 == k1 ∧ ¬x_0 == k_12⟩; ⟨randomKey⟩; ⟨exists x_0 = vret | x_0 == k_0 ∧ vret⟩; ⟨randomKey⟩; ⟨exists x_0 = vret | x_0 == k_4 ∧ vret⟩; ⟨randomKey⟩; ⟨exists x_0 = vret | x_0 == k_8 ∧ vret⟩; ⟨randomKey⟩; ⟨exists x_0 = vret | x_0 == k_12 ∧ ¬vret⟩; ⟨put x_0 x_1 = vret | x_1 == x ∧ x_0 == k_12 ∧ x_0 == k1 ∧ (¬x_1 == x ∨ ¬x_0 == k2) ∧ ¬x_0 == k2⟩
+cont = (((.*;(⟨put x_0 x_1 = vret | x_1 == x ∧ x_0 == k1⟩;(.\⟨put x_0 x_1 = vret | x_0 == k1⟩)*)) ∨ (.\⟨put x_0 x_1 = vret | x_0 == k1⟩)*) ∧ ((.*;(⟨put x_0 x_1 = vret | x_1 == x ∧ x_0 == k2⟩;(.\⟨put x_0 x_1 = vret | x_0 == k2⟩)*)) ∨ (.\⟨put x_0 x_1 = vret | x_0 == k2⟩)*))ᶜ
+comp = (() : unit)
+Task 1(insert): exec time 0.697619(s), type check failed
+#+end_src
+
+#+call: ihat(bench="Heap_LinkedList/insert_buggy")
+
+#+RESULTS:
+#+begin_src org
+inferred:
+(x:{v:Elem.t | true}) → (ret:{v:unit | true})!min ← {v:Elem.t | elem_lt v x}; min' ← {v:Elem.t | elem_lt min v}; x_19 ← {v:bool | true}; br_15 ← {v:unit | x_19}; hd_0 ← {v:Elem.t | true}; res_0 ← {v:Elem.t | true}; br_16 ← {v:unit | ¬hd_0 == x}; br_18 ← {v:unit | ¬elem_lt x hd_0}; x_20 ← {v:bool | true}; br_21 ← {v:unit | x_20}; next_0 ← {v:Elem.t | true}; res_1 ← {v:Elem.t | true}; u_6 ← {v:unit | res_1 == res_1}; br_22 ← {v:unit | next_0 == x}; u_7 ← {v:unit | res_1 == next_0}; u_28 ← {v:unit | x_20}; u_45 ← {v:unit | x_19}; (admit(ϵ⟨∃x_0. (x_0 == min' ∧ x_0 == res_0)⟩;(⟨setNext x_0 x_1 = vret | x_0 == hd_0 ∧ x_1 == next_0⟩;⟨setHead x_0 = vret | x_0 == hd_0 ∧ x_0 == min⟩)); (x_19 ← hasHead(()); (hd_0 ← getHead(()); (x_20 ← hasNext(hd_0); (next_0 ← getNext(hd_0); () ← setHead(res_0))))))
+Task 1(insert): exec time 1.348135(s), type check succeeded
+#+end_src
+
+#+call: hatch(bench="Heap_LinkedList/insert_buggy")
+
+#+RESULTS:
+#+begin_src org
+Terminated Hatch
+ghost_rctx = getParent:(a:{v:Path.t | true}) → {v:Path.t | v == (parent a)}, isRoot:(a:{v:Path.t | true}) → {v:bool | v == (is_root a)}, getRoot:(a:{v:unit | true}) → {v:Path.t | is_root v}, fileInit:(a:{v:unit | true}) → {v:Bytes.t | is_dir v}, addChild:(a:{v:Bytes.t | true}) → (b:{v:Path.t | true}) → {v:Bytes.t | is_dir v}, delChild:(a:{v:Bytes.t | true}) → (b:{v:Path.t | true}) → {v:Bytes.t | is_del v ∧ is_dir v}, getChild:(a:{v:Bytes.t | true}) → {v:Path.t | true}, hasChild:(a:{v:Bytes.t | true}) → {v:bool | true}, setDeleted:(a:{v:Bytes.t | true}) → {v:Bytes.t | is_del v}, isDir:(a:{v:Bytes.t | true}) → {v:bool | v == (is_dir a)}, x_ghost:{v:Elem.t | true}, min:{v:Elem.t | elem_lt v x_ghost}, min':{v:Elem.t | elem_lt min v}
+rctx = x:{v:Elem.t | x == x_ghost}, x_12_0:{v:bool | v}, a_4:{v:Elem.t | true}, hd_0:{v:Elem.t | v == a_4}, x_9_5:{v:bool | (v <=> hd_0 == x) ∧ ¬v}, x_10_5:{v:bool | (v <=> elem_lt x hd_0) ∧ ¬v}, x_11_5:{v:bool | v}, a_12:{v:Elem.t | true}, next_5:{v:Elem.t | v == a_12}, x_9_13:{v:bool | (v <=> next_5 == x) ∧ v}
+prefix = ⟨setHead x_0 = vret | x_0 == a_4 ∧ x_0 == min ∧ ¬x_0 == min'⟩; ⟨setNext x_0 x_1 = vret | x_0 == hd_0 ∧ x_1 == a_12⟩; ⟨hasHead x_0 = vret | vret⟩; ⟨getHead x_0 = vret | vret == a_4⟩; ⟨hasNext x_0 = vret | vret⟩; ⟨getNext x_0 = vret | vret == a_12 ∧ x_0 == hd_0⟩; ⟨setHead x_0 = vret | x_0 == next_5 ∧ x_0 == min'⟩
+cont = ((.*;(⟨setHead x_0 = vret | x_0 == min'⟩;(.\⟨setHead⟩)*)) ∨ (.\⟨setHead⟩)*)ᶜ
+comp = (() : unit)
+Task 1(insert): exec time 0.848619(s), type check failed
+#+end_src
+
+#+call: ihat(bench="FileSystem_PathList/delete_buggy")
+
+#+RESULTS:
+#+begin_src org
+  inferred:
+  (path:{v:Path.t | true}) → (res:{v:bool | true})!bytes ← {v:Bytes.t | true}; child ← {v:Path.t | path == (parent v)}; x_26 ← {v:bool | true}; x_27 ← {v:bool | v <=> ¬x_26}; br_30 ← {v:unit | ¬x_27}; bytes_0 ← {v:Bytes.t | true}; down_0 ← {v:bool | true}; br_33 ← {v:unit | down_0}; bytes_2 ← {v:Bytes.t | true}; bytes_3 ← {v:Bytes.t | true}; children_0 ← {v:PathList.t | true}; x_28 ← {v:bool | v <=> ¬is_path_nil children_0}; br_34 ← {v:unit | ¬x_28}; u_27 ← {v:unit | ret}; u_29 ← {v:unit | down_0}; u_31 ← {v:unit | ret}; u_33 ← {v:unit | x_26}; (admit(⟨addChild x_0 x_1 = vret | x_0 == bytes ∧ x_0 == bytes_0 ∧ path == (parent x_1) ∧ x_1 == child ∧ ((parent path) == (parent x_1) ∨ ¬x_0 == bytes_2) ∧ (¬x_0 == bytes_2 ∨ ¬x_1 == path)⟩;(⟨put x_0 x_1 = vret | x_1 == bytes_2 ∧ x_0 == (parent path) ∧ ¬x_0 == path⟩;⟨put x_0 x_1 = vret | x_1 == bytes ∧ x_1 == bytes_0 ∧ x_1 == bytes_3 ∧ x_0 == path⟩)); (x_26 ← exists(path); (bytes_0 ← get(path); (down_0 ← isDir(bytes_0); (bytes_3 ← get(path); (children_0 ← getChildren(bytes_3); (() ← del(path); (parent path ← getParent(path); (bytes_2 ← get(parent path); () ← delChild(bytes_2, path))))))))))
+  Task 1(delete): exec time 42.346536(s), type check succeeded
+#+end_src
+
+#+call: ihat(bench="FileSystem_KVStore/delete_buggy")
+
+#+RESULTS:
+#+begin_src org
+inferred:
+(path:{v:Path.t | true}) → (res:{v:bool | true})!bytes ← {v:Bytes.t | true}; child ← {v:Path.t | path == (parent v)}; x_42 ← {v:bool | true}; x_43 ← {v:bool | v <=> ¬x_42}; br_30 ← {v:unit | ¬x_43}; bytes_0 ← {v:Bytes.t | true}; down_0 ← {v:bool | true}; br_33 ← {v:unit | down_0}; bytes_2 ← {v:Bytes.t | true}; bytes_3 ← {v:Bytes.t | true}; children_0 ← {v:Iterator.t | true}; more_0 ← {v:bool | true}; br_35 ← {v:unit | more_0}; child_0 ← {v:Path.t | true}; _0 ← {v:bool | true}; x_44 ← {v:bool | true}; x_45 ← {v:bool | v <=> ¬x_44}; br_36 ← {v:unit | x_45}; u_7 ← {v:unit | ¬_0}; u_8 ← {v:unit | ¬x_44}; child_6 ← {v:Path.t | true}; u_29 ← {v:unit | more_0}; u_33 ← {v:unit | ret}; u_38 ← {v:unit | down_0}; u_40 ← {v:unit | ret}; u_44 ← {v:unit | x_42}; (admit(⟨addChild x_0 x_1 = vret | x_0 == bytes ∧ x_0 == bytes_0 ∧ x_0 == bytes_3 ∧ path == (parent x_1) ∧ x_1 == child ∧ x_1 == child_0 ∧ x_1 == child_6 ∧ ((parent path) == (parent x_1) ∨ ¬x_0 == bytes_2) ∧ (¬x_0 == bytes_2 ∨ ¬x_1 == path)⟩;(⟨put x_0 x_1 = vret | x_1 == bytes_2 ∧ x_0 == (parent path) ∧ ¬x_0 == child_0 ∧ ¬x_0 == path⟩;⟨put x_0 x_1 = vret | x_1 == bytes ∧ x_1 == bytes_0 ∧ x_1 == bytes_3 ∧ x_0 == path ∧ ¬x_0 == child_0⟩)); (x_42 ← exists(path); (bytes_0 ← get(path); (down_0 ← isDir(bytes_0); (bytes_3 ← get(path); (children_0 ← getChildren(bytes_3); (more_0 ← hasNext(bytes_3, children_0); (child_0 ← next(bytes_3, children_0); (x_44 ← exists(child_0); (() ← del(path); (bytes_2 ← get(parent path); () ← delChild(bytes_2, path))))))))))))
+Task 1(delete): exec time 126.862586(s), type check succeeded
+#+end_src
+
+#+call: hatch(bench="FileSystem_PathList/delete_buggy")
+
+#+RESULTS:
+#+begin_src org
+#+end_src
+
+#+call: hatch(bench="RedBlackTree_CElem/insert_single_path")
+
+#+call: ihat[:session FB :async](bench="JS_Facebook/scraper", timeout=300)
+
+#+RESULTS:
+#+begin_src org
+8b96ff7e-68f7-47c7-a2fd-ed055b275eec
+#+end_src
+
+#+call: hatch(bench="JS_Magnifier/magnifier")
+
+#+RESULTS:
+#+begin_src org
+Terminated Hatch
+ghost_rctx = getParent:(a:{v:Path.t | true}) → {v:Path.t | v == (parent a)}, isRoot:(a:{v:Path.t | true}) → {v:bool | v == (is_root a)}, getRoot:(a:{v:unit | true}) → {v:Path.t | is_root v}, fileInit:(a:{v:unit | true}) → {v:Bytes.t | is_dir v}, addChild:(a:{v:Bytes.t | true}) → (b:{v:Path.t | true}) → {v:Bytes.t | is_dir v}, delChild:(a:{v:Bytes.t | true}) → (b:{v:Path.t | true}) → {v:Bytes.t | is_del v ∧ is_dir v}, getChild:(a:{v:Bytes.t | true}) → {v:Path.t | true}, hasChild:(a:{v:Bytes.t | true}) → {v:bool | true}, setDeleted:(a:{v:Bytes.t | true}) → {v:Bytes.t | is_del v}, isDir:(a:{v:Bytes.t | true}) → {v:bool | v == (is_dir a)}, small:{v:int | true}, large:{v:int | v > small}, x:{v:Elem.t | true}
+rctx = uu:{v:unit | true}, hasEvent_3:{v:bool | ¬v}
+prefix = ⟨putSize x_0 x_1 = vret | x_1 == small ∧ x_0 == x ∧ (¬x_1 == large ∨ ¬x_0 == x)⟩; ⟨putSize x_0 x_1 = vret | x_1 == large ∧ x_0 == x⟩; ⟨hasNextEvent x_0 = vret | ¬vret⟩
+cont = ∅
+comp = (() : unit)
+Task 1(handleEvents): exec time 1.112044(s), type check failed
+#+end_src
+
+#+RESULTS:
+: timeout='180'
+: bench='Dafny_Graph_List_Variants/single_queue_counter'
+: timeout ${timeout} _build/default/bin/main.exe infer-incorrectness meta-config.json data/ri-with-bug/${bench}.ml
+: echo '
+
+#+call: ihat[:session axiom :async](bench="Dafny_Graph_List_Variants/single_queue_counter")
+
+#+RESULTS:
+#+begin_src org
+ae7f11ae-25c8-4271-9231-ad5ba9760bd6
+#+end_src
+
+#+call: hatch(bench="Dafny_Graph_List_Variants/single_queue_counter")
+
+#+RESULTS:
+#+begin_src org
+#+end_src
+
+#+call: ihat(bench="Dafny_Queue/to_stream")
+
+#+RESULTS:
+#+begin_src org
+inferred:
+(q:{v:Queue.t | true}) → (s:{v:Stream.t | true}) → (ret:{v:unit | true})!h ← {v:Char.t | true}; i ← {v:Char.t | ¬v == h}; x_16 ← {v:bool | true}; br_6 ← {v:unit | ¬x_16}; c_0 ← {v:Char.t | true}; x_17 ← {v:bool | true}; br_8 ← {v:unit | ¬x_17}; c_1 ← {v:Char.t | true}; x_18 ← {v:bool | true}; br_10 ← {v:unit | x_18}; u_5 ← {v:unit | x_18}; u_9 ← {v:unit | ¬x_17}; u_11 ← {v:unit | ¬x_16}; (admit(ϵ⟨∃x_0. (∃x_1. (x_1 == c_1 ∧ x_1 == i ∧ x_0 == s))⟩;(ϵ⟨∃x_0. (∃x_1. (x_1 == c_0 ∧ x_1 == h ∧ x_0 == s))⟩;(⟨add x_0 x_1 = vret | x_1 == c_1 ∧ x_0 == q⟩;⟨add x_0 x_1 = vret | x_1 == c_0 ∧ x_0 == q⟩))); (x_16 ← isEmpty(q); (c_0 ← take(q); (() ← putChar(s, c_0); (x_17 ← isEmpty(q); (c_1 ← take(q); (() ← putChar(s, c_1); x_18 ← isEmpty(q))))))))
+Task 1(write_chars): exec time 0.568390(s), type check succeeded
+#+end_src
+
+#+call: ihat[:session iter :async](bench="Dafny_Set/iterate")
+
+#+RESULTS:
+#+begin_src org
+528acb34-54ed-48e9-90dc-3de1beb878e4
+#+end_src
+
 * benchmarks with interesting queries
 
 #+name: get_time
@@ -237,32 +479,45 @@ Task 1(scrapeProfile): exec time 134.534078(s), type check succeeded
 #+end_src
 
 #+name: ihat-bench
-#+begin_src shell :var bench="" :results output :post get_time(str="succeed", out=*this*)
+#+begin_src bash :session bench :var bench="" :results output :post get_time(str="succeed", out=*this*)
   timeout -v 5m _build/default/bin/main.exe infer-incorrectness meta-config.json data/ri-with-bug/${bench}.ml
 #+end_src
 
-|---------------------------------+--------+-----------+------------------+--------|
-| task                            |   time | scaled up | note             | result |
-|---------------------------------+--------+-----------+------------------+--------|
-| Set_KVStore/insert_buggy        |   0.13 |           |                  |        |
-| Heap_LinkedList/insert_buggy    |   2.28 |           |                  |        |
-| LinkedList_KVStore/remove_buggy |   1.64 | yes       |                  |        |
-| LinkedList_KVStore/concat       |   6.17 | yes       |                  |        |
-| FileSystem_KVStore/delete_buggy | 184.51 |           | functional tree? |        |
-| RedBlackTree_Tree/insert        |        |           | functional tree? |        |
-| JS_Magnifier/magnifier          |   3.05 |           |                  |        |
-| JS_Facebook/scraper             | 138.01 |           | functional tree  |        |
-| Dafny_Graph/shortest_path       | 927.48 |           |                  |        |
-| Dafny_Queue/to_stream           |   2.54 | yes       |                  |        |
-| Dafny_Set/iterate               | 137.57 |           |                  |        |
-|---------------------------------+--------+-----------+------------------+--------|
+#+call: ihat-bench(bench="Set_KVStore/insert_buggy")
+
+#+RESULTS:
+: 0.17
+
+RESULTS:
+
+|---------------------------------+--------+-------+-----------+------------------+--------|
+| task                            |   time | hatch | scaled up | note             | result |
+|---------------------------------+--------+-------+-----------+------------------+--------|
+| Set_KVStore/insert_buggy        |   0.22 |   del |           |                  |        |
+| Heap_LinkedList/insert_buggy    |   3.67 |  0.31 |           |                  |        |
+| LinkedList_KVStore/remove_buggy |   1.30 |  0.60 | yes       |                  |        |
+| LinkedList_KVStore/concat       |  19.23 |  0.62 | yes       |                  |        |
+| FileSystem_KVStore/delete_buggy |  53.62 |  iter |           | functional tree? |        |
+| RedBlackTree_CElem/insert_single_path        |  27.12 |       |           | functional tree? |        |
+| JS_Magnifier/magnifier          |   3.05 |       |           |                  |        |
+| JS_Facebook/scraper             |    T/O |       |           | functional tree  |        |
+| Dafny_Graph/shortest_path       |  94.48 |       |           |                  |        |
+| Dafny_Queue/to_stream           |   2.54 |       | yes       |                  |        |
+| Dafny_Set/iterate               | 137.57 |       |           |                  |        |
+|---------------------------------+--------+-------+-----------+------------------+--------|
 #+TBLFM: $2='(org-sbe "ihat-bench" (bench $$1))
 
 * benchmark list
 #+name: ihat 
-#+begin_src shell :var bench="" :results output org
-  _build/default/bin/main.exe infer-incorrectness meta-config.json data/ri-with-bug/${bench}.ml
+#+begin_src shell :var bench="" timeout=180 :results output org
+  timeout ${timeout} _build/default/bin/main.exe infer-incorrectness meta-config.json data/ri-with-bug/${bench}.ml
 #+end_src
+
+#+name: hatch
+#+begin_src shell :var bench="" :results output org
+  _build/default/bin/main.exe symb-exec-incor meta-config.json data/ri-with-bug/${bench}.ml
+#+end_src
+
 
 |-------------------------------------+------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | program                             | incorrectness specification                                                              | precondition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
