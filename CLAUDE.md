@@ -4,10 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
+The OCaml toolchain is a project-local opam switch in `./_opam` (pinned by
+`coreeff.opam.locked`; `make switch` creates it, see README "Building from
+Source"). Run `eval $(opam env)` first, or prefix commands with `opam exec --`.
+Edit dependencies in `dune-project` (never `coreeff.opam`), then `make lock`.
+
 **Primary build command:**
 ```bash
-dune build --profile release
+dune build --profile release   # or: make build
 ```
+
+**Paper benchmarks:** `make bench` (`scripts/run_paper_benchmarks.py`,
+options via `BENCH_ARGS='--only Set --no-hatch'`; results in `benchmark_results/`).
 
 **Run the tool directly:**
 ```bash

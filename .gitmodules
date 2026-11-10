@@ -1,0 +1,4 @@
+[submodule "vendor/language_utils"]
+	path = vendor/language_utils
+	url = https://github.com/yongweiy/language_utils.git
+	branch = hatch

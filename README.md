@@ -4,6 +4,26 @@ This is the accompanying artifact for the PLDI 2024 submission _A HAT Trick: Aut
 
 A docker image of this repo with all required dependecies is available on: `https://hub.docker.com/r/marple24/marple`.
 
+## Building from Source (local opam switch)
+
+The toolchain lives in a project-local opam switch (`./_opam`, git-ignored)
+whose exact package set is pinned by `coreeff.opam.locked`. Dependencies are
+declared in `dune-project` (`coreeff.opam` is generated from it).
+`language_utils` is not on opam-repository; it is a git submodule under
+`vendor/` and dune builds it as part of this workspace.
+
+    $ git submodule update --init --recursive
+    $ brew install opam gmp pkgconf
+    $ opam init --bare --no-setup      # once per machine
+    $ make switch                      # creates ./_opam from the lock file (z3 builds from source)
+    $ make build                       # dune build --profile release
+    $ make bench                       # scripts/run_paper_benchmarks.py -> benchmark_results/
+
+Inside the repo `opam` selects `./_opam` automatically; use `eval $(opam env)`
+(or direnv with `eval "$(opam env --switch=. --set-switch)"` in `.envrc`) to
+put `dune`/`ocaml` on `PATH`. After changing dependencies in `dune-project`,
+run `make lock` to refresh the lock file.
+
 ## Getting Started Guide
 
 We recommend machines have at least 8 GB of memory and 8 GB of hard

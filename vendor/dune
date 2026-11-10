@@ -1,0 +1,2 @@
+; Third-party dune projects built as part of this workspace (git submodules).
+(vendored_dirs language_utils)

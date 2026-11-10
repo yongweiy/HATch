@@ -16,6 +16,10 @@ module FastDT : FastDT = struct
   open Array
   open Printf
   open Bigarray
+
+  (* OCaml >= 5.4 adds Array.compare, which [open Array] would otherwise use. *)
+  let compare = Stdlib.compare
+
   module H = Hashtbl
   module A = Array1
 

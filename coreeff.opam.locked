@@ -1,0 +1,132 @@
+opam-version: "2.0"
+name: "coreeff"
+version: "dev"
+synopsis:
+  "HATch: falsifying representation invariants with Hoare Automata Types"
+description:
+  "Type-and-effect inference with Hoare Automata Types (HATs) and symbolic finite automata, used to find incorrectness witnesses for ADT implementations."
+maintainer: "Yongwei Yuan"
+authors: ["Zhe Zhou" "Yongwei Yuan"]
+homepage: "https://github.com/yongweiy/HATch"
+bug-reports: "https://github.com/yongweiy/HATch/issues"
+depends: [
+  "base" {= "v0.17.3"}
+  "base-bigarray" {= "base"}
+  "base-domains" {= "base"}
+  "base-effects" {= "base"}
+  "base-nnp" {= "base"}
+  "base-threads" {= "base"}
+  "base-unix" {= "base"}
+  "base_bigstring" {= "v0.17.0"}
+  "base_quickcheck" {= "v0.17.1"}
+  "bin_prot" {= "v0.17.0-1"}
+  "capitalization" {= "v0.17.0"}
+  "choice" {= "0.4"}
+  "conf-c++" {= "1.0"}
+  "conf-gmp" {= "5"}
+  "conf-pkg-config" {= "5"}
+  "conf-python-3" {= "14.0.0"}
+  "containers" {= "3.18"}
+  "core" {= "v0.17.2"}
+  "core_kernel" {= "v0.17.0"}
+  "core_unix" {= "v0.17.1"}
+  "cppo" {= "1.8.0"}
+  "csexp" {= "1.5.2"}
+  "dolog" {= "6.0.0"}
+  "dune" {= "3.24.2"}
+  "dune-configurator" {= "3.24.2"}
+  "either" {= "1.0.0"}
+  "expect_test_helpers_core" {= "v0.17.0"}
+  "fieldslib" {= "v0.17.0"}
+  "gel" {= "v0.17.0"}
+  "int_repr" {= "v0.17.0"}
+  "jane-street-headers" {= "v0.17.0"}
+  "jst-config" {= "v0.17.0"}
+  "num" {= "1.6"}
+  "ocaml" {= "5.4.1"}
+  "ocaml-base-compiler" {= "5.4.1"}
+  "ocaml-compiler" {= "5.4.1"}
+  "ocaml-compiler-libs" {= "v0.17.0"}
+  "ocaml-config" {= "3"}
+  "ocaml-options-vanilla" {= "1"}
+  "ocaml_intrinsics_kernel" {= "v0.17.3"}
+  "ocamlfind" {= "1.9.8"}
+  "ocamlgraph" {= "2.2.0"}
+  "ocolor" {= "1.3.1"}
+  "oseq" {= "0.5.1"}
+  "ounit2" {= "2.2.7"}
+  "parsexp" {= "v0.17.0"}
+  "ppx_assert" {= "v0.17.0"}
+  "ppx_base" {= "v0.17.0"}
+  "ppx_bench" {= "v0.17.1"}
+  "ppx_bin_prot" {= "v0.17.1"}
+  "ppx_cold" {= "v0.17.0"}
+  "ppx_compare" {= "v0.17.0"}
+  "ppx_custom_printf" {= "v0.17.0"}
+  "ppx_derivers" {= "1.2.1"}
+  "ppx_diff" {= "v0.17.1"}
+  "ppx_disable_unused_warnings" {= "v0.17.0"}
+  "ppx_enumerate" {= "v0.17.0"}
+  "ppx_expect" {= "v0.17.3"}
+  "ppx_fields_conv" {= "v0.17.0"}
+  "ppx_fixed_literal" {= "v0.17.0"}
+  "ppx_globalize" {= "v0.17.2"}
+  "ppx_hash" {= "v0.17.0"}
+  "ppx_here" {= "v0.17.0"}
+  "ppx_ignore_instrumentation" {= "v0.17.0"}
+  "ppx_inline_test" {= "v0.17.1"}
+  "ppx_jane" {= "v0.17.0"}
+  "ppx_let" {= "v0.17.1"}
+  "ppx_log" {= "v0.17.0"}
+  "ppx_module_timer" {= "v0.17.0"}
+  "ppx_optcomp" {= "v0.17.1"}
+  "ppx_optional" {= "v0.17.0"}
+  "ppx_pipebang" {= "v0.17.0"}
+  "ppx_sexp_conv" {= "v0.17.1"}
+  "ppx_sexp_message" {= "v0.17.0"}
+  "ppx_sexp_value" {= "v0.17.0"}
+  "ppx_stable" {= "v0.17.1"}
+  "ppx_stable_witness" {= "v0.17.0"}
+  "ppx_string" {= "v0.17.0"}
+  "ppx_string_conv" {= "v0.17.0"}
+  "ppx_tydi" {= "v0.17.1"}
+  "ppx_typerep_conv" {= "v0.17.1"}
+  "ppx_variants_conv" {= "v0.17.1"}
+  "ppxlib" {= "0.39.0"}
+  "ppxlib_jane" {= "v0.17.4"}
+  "qcheck" {= "0.91"}
+  "qcheck-core" {= "0.91"}
+  "qcheck-ounit" {= "0.91"}
+  "re" {= "1.14.0"}
+  "seq" {= "base"}
+  "sexp_pretty" {= "v0.17.0"}
+  "sexplib" {= "v0.17.0"}
+  "sexplib0" {= "v0.17.0"}
+  "spawn" {= "v0.17.0"}
+  "splittable_random" {= "v0.17.0"}
+  "stdio" {= "v0.17.0"}
+  "stdlib-shims" {= "0.3.0"}
+  "time_now" {= "v0.17.0"}
+  "timezone" {= "v0.17.0"}
+  "typerep" {= "v0.17.1"}
+  "uopt" {= "v0.17.0"}
+  "variantslib" {= "v0.17.0"}
+  "yojson" {= "3.0.0"}
+  "z3" {= "4.13.3"}
+  "zarith" {= "1.14"}
+]
+build: [
+  ["dune" "subst"] {dev}
+  [
+    "dune"
+    "build"
+    "-p"
+    name
+    "-j"
+    jobs
+    "@install"
+    "@runtest" {with-test}
+    "@doc" {with-doc}
+  ]
+]
+dev-repo: "git+https://github.com/yongweiy/HATch.git"
