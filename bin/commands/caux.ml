@@ -80,9 +80,15 @@ let cmd_symb_exec_config_source summary f =
           ~doc:
             "<int> Set the look-ahead depth for empty state in SFA during \
              symbolic execution"
+      and mem_limit_gb =
+        flag "-mem-limit-gb"
+          (optional_with_default 64 int)
+          ~doc:
+            "<int> Heap cap in GiB per task; exceeding it reports \
+             \"Out of memory\""
       in
       f meta_config_file source_file exec_bound (not no_derivative) append_bound
-        empty_aware look_ahead accel_bound)
+        empty_aware look_ahead accel_bound mem_limit_gb)
 
 let cmd_infer_incor_config_source summary f =
   Command.basic ~summary

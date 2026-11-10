@@ -4,71 +4,53 @@ open Rty
 
 (** Convert Constrain queries to Htriple format for srlexec *)
 
-(* Extract htriple from rty by traversing arrow types *)
-let rec extract_htriple_from_rty = function
-  | ArrRty { rethty = Htriple htriple; _ } -> Some htriple
-  | ArrRty { rethty = Rty rty; _ } -> extract_htriple_from_rty rty
-  | _ -> None
+(* All Htriple cases of a (possibly multi-case, i.e. [| ... |]) spec. *)
+let rec extract_htriples_from_rty = function
+  | ArrRty { rethty; _ } -> extract_htriples_from_hty rethty
+  | _ -> []
 
-(* Helper to extract htriple from hty *)
-let rec extract_htriple_from_hty = function
-  | Htriple htriple -> Some htriple
-  | Rty rty -> extract_htriple_from_rty rty
-  | Inter (hty1, hty2) -> (
-      (* TODO: as a implementation shortcut, we under-approximate extract either branch of the intersection *)
-      match extract_htriple_from_hty hty1 with
-      | Some _ as result -> result
-      | None -> extract_htriple_from_hty hty2)
-  | _ -> None
+and extract_htriples_from_hty = function
+  | Htriple htriple -> [ htriple ]
+  | Rty rty -> extract_htriples_from_rty rty
+  | Inter (hty1, hty2) ->
+      extract_htriples_from_hty hty1 @ extract_htriples_from_hty hty2
+  | _ -> []
 
-(* Helper to collect ghost parameters from hty *)
+(* Ghost parameters (name, type) of an operator type, outermost first *)
 let collect_ghost_params hty =
   let rec aux acc hty =
     match hty with
-    | Rty (ArrRty { arr = GhostArr Nt.{ x; _ }; rethty }) ->
-        aux (x :: acc) rethty
-    | Rty (ArrRty { arr = _; rethty }) ->
-        aux acc rethty
+    | Rty (ArrRty { arr = GhostArr Nt.{ x; ty }; rethty }) ->
+        aux ((x, ty) :: acc) rethty
+    | Rty (ArrRty { arr = _; rethty }) -> aux acc rethty
     | _ -> List.rev acc
   in
   aux [] hty
 
-(* Helper to extract parameters and htriple from operator type *)
-let extract_op_params_and_htriple oprctx op args =
+(* Normal parameters, ghost parameters and Htriple cases of [op]'s spec,
+   provided [args] supplies exactly one actual per normal parameter. *)
+let extract_op_params_and_htriples oprctx op args =
   match ROpTypectx.get_ty_opt oprctx (Op.EffOp op) with
-  | Some op_rty ->
-      (* First collect ghost parameters from the full type *)
-      let ghost_params = collect_ghost_params (Rty op_rty) in
-
-      let rec extract_params_and_htriple acc_rxs hty remaining_args =
-        match hty with
-        | Rty (ArrRty { arr; rethty }) -> (
-            match arr with
-            | NormalArr rx -> (
-                match remaining_args with
-                | [] ->
-                    (* No more arguments but still have normal params - error *)
-                    None
-                | arg :: remaining_args' ->
-                    extract_params_and_htriple (rx :: acc_rxs) rethty
-                      remaining_args')
-            | GhostArr _ ->
-                (* Skip ghost parameters - don't consume from remaining_args *)
-                extract_params_and_htriple acc_rxs rethty remaining_args
-            | _ -> None)
-        | _ -> (
-            (* No more parameters, extract the htriple *)
-            match remaining_args with
-            | [] -> (
-                match extract_htriple_from_hty hty with
-                | Some htriple -> Some (List.rev acc_rxs, ghost_params, htriple)
-                | None -> None)
-            | _ ->
-                (* Still have arguments but no more parameters - error *)
-                None)
-      in
-      extract_params_and_htriple [] (Rty op_rty) args
   | None -> None
+  | Some op_rty -> (
+      let ghost_params = collect_ghost_params (Rty op_rty) in
+      let rec aux acc_rxs hty remaining_args =
+        match (hty, remaining_args) with
+        | Rty (ArrRty { arr = NormalArr rx; rethty }), _ :: remaining_args' ->
+            aux (rx :: acc_rxs) rethty remaining_args'
+        | Rty (ArrRty { arr = NormalArr _; _ }), [] -> None
+        | Rty (ArrRty { arr = GhostArr _; rethty }), _ ->
+            aux acc_rxs rethty remaining_args
+        | Rty (ArrRty _), _ -> None
+        | _, [] -> Some (List.rev acc_rxs, hty)
+        | _, _ :: _ -> None
+      in
+      match aux [] (Rty op_rty) args with
+      | None -> None
+      | Some (rxs, hty) -> (
+          match extract_htriples_from_hty hty with
+          | [] -> None
+          | cases -> Some (rxs, ghost_params, cases)))
 
 (* Extract ghost variable from resrty if it has pattern "v == ghost_var" *)
 let extract_ghost_var_from_resrty resrty =
@@ -89,68 +71,106 @@ let extract_ghost_var_from_resrty resrty =
       find_eq_var cty.phi
   | _ -> None
 
-(* Extract SFA from operation Call by looking up its library spec and applying arguments *)
+(* Translate one query event [Op(args..., ret)] into the HATch precondition SFA
+   it denotes: the [pre] of [Op]'s lib_rty_old.ml spec instantiated with the
+   actual arguments and observed result.  Returns the SFA together with the
+   spec ghosts left free in it; the caller binds those at the top level of the
+   query (they are existentially chosen by the witness).
+
+   - Multi-case specs: only the cases whose result refinement admits [ret] are
+     kept (e.g. [MemContact (name, false)] selects the [not v] case), and their
+     preconditions are joined with [LorA].
+   - Capture: spec formals and ghosts are first renamed apart, so an actual
+     argument that happens to share a name with a spec variable (e.g.
+     [GetNext (a, b)] vs. getNext's ghost [a]) is not substituted again. *)
 let call_to_sfa_opt oprctx (ev : Sft.ev) =
   MetaConfig.show_debug_hatch (fun () ->
-      Pp.printf "@{<cyan>call_to_sfa_opt@}: op=%s, args=[%s], ret=%s\n"
-        ev.op
+      Pp.printf "@{<cyan>call_to_sfa_opt@}: op=%s, args=[%s], ret=%s\n" ev.op
         (List.map (fun arg -> layout_lit arg.x) ev.args |> String.concat ", ")
         (layout_lit ev.ret.x));
-  match extract_op_params_and_htriple oprctx ev.op ev.args with
-  | Some (rxs, ghost_params, { pre; resrty; post }) ->
-      MetaConfig.show_debug_hatch (fun () ->
-          Pp.printf "@{<cyan>  extracted htriple@}: params=[%s], ghosts=[%s]\n"
-            (List.map (fun rx -> rx.rx) rxs |> String.concat ", ")
-            (String.concat ", " ghost_params));
-
-      (* Find which ghost parameter equals the return value *)
-      let ret_ghost_var_opt = extract_ghost_var_from_resrty resrty in
-      MetaConfig.show_debug_hatch (fun () ->
-          Pp.printf "@{<cyan>  ret_ghost_var@}: %s\n"
-            (match ret_ghost_var_opt with Some v -> v | None -> "none"));
-
-      (* Create substitutions for formal parameters to actual arguments *)
-      let param_substitutions =
-        List.map2 (fun rx arg -> (rx.rx, arg.x)) rxs ev.args
-      in
-
-      (* Create substitutions for ghost parameters *)
-      let ghost_substitutions =
-        List.map
-          (fun ghost_var ->
-            match ret_ghost_var_opt with
-            | Some ret_ghost when String.equal ghost_var ret_ghost ->
-                (* This ghost equals the return value, substitute with ev.ret *)
-                (ghost_var, ev.ret.x)
-            | _ ->
-                (* This ghost doesn't equal the return value, rename it uniquely *)
-                let unique_name = Rename.unique ghost_var in
-                (ghost_var, AVar unique_name))
-          ghost_params
-      in
-
-      let all_substitutions = param_substitutions @ ghost_substitutions in
-
-      MetaConfig.show_debug_hatch (fun () ->
-          Pp.printf "@{<cyan>  all_substitutions@}: [%s]\n"
-            (List.map (fun (var, lit) -> Printf.sprintf "%s -> %s" var (layout_lit lit)) all_substitutions
-             |> String.concat ", "));
-
-      (* Apply substitutions to the precondition SFA *)
-      let pre_subst =
-        List.fold_left
-          (fun sfa_acc (var, lit_val) -> subst (var, lit_val) sfa_acc)
-          pre all_substitutions
-      in
-      Some pre_subst
+  match extract_op_params_and_htriples oprctx ev.op ev.args with
   | None ->
       MetaConfig.show_debug_hatch (fun () ->
           Pp.printf "@{<cyan>  extraction failed@}\n");
-      (* If extraction failed, it might be an operation that doesn't need SFA tracking *)
-      (* For now, return None - the caller should handle this *)
       None
+  | Some (rxs, ghost_params, cases) -> (
+      let renaming =
+        List.map (fun rx -> (rx.rx, Rename.unique rx.rx)) rxs
+        @ List.map (fun (g, _) -> (g, Rename.unique g)) ghost_params
+      in
+      let fresh x = List.assoc x renaming in
+      let rename_sfa sfa =
+        List.fold_left (fun acc (x, x') -> subst (x, AVar x') acc) sfa renaming
+      in
+      let rename_prop phi =
+        List.fold_left
+          (fun acc (x, x') -> subst_prop (x, AVar x') acc)
+          phi renaming
+      in
+      let arg_substs =
+        List.map2 (fun rx arg -> (fresh rx.rx, arg.x)) rxs ev.args
+      in
+      let instantiate_case { pre; resrty; _ } =
+        let substs =
+          arg_substs
+          @
+          match extract_ghost_var_from_resrty resrty with
+          | Some g -> [ (fresh g, ev.ret.x) ]
+          | None -> []
+        in
+        let consistent =
+          match resrty with
+          | BaseRty { cty = { v; phi } } -> (
+              let phi =
+                List.fold_left
+                  (fun acc (x, l) -> subst_prop (x, l) acc)
+                  (rename_prop phi) substs
+              in
+              let phi = subst_prop (v.x, ev.ret.x) phi in
+              try Smt.check_sat_bool phi
+              with e ->
+                Printf.eprintf
+                  "[WARNING] constrain_to_htriple: cannot decide whether a %s \
+                   case admits ret=%s (%s); keeping it\n\
+                   %!"
+                  ev.op (layout_lit ev.ret.x) (Printexc.to_string e);
+                true)
+          | _ -> true
+        in
+        if consistent then
+          Some
+            (List.fold_left
+               (fun acc (x, l) -> subst (x, l) acc)
+               (rename_sfa pre) substs)
+        else None
+      in
+      match List.filter_map instantiate_case cases with
+      | [] ->
+          MetaConfig.show_debug_hatch (fun () ->
+              Pp.printf "@{<cyan>  no case admits ret=%s@}\n"
+                (layout_lit ev.ret.x));
+          None
+      | sfa :: sfas ->
+          let sfa = List.fold_left (fun acc s -> LorA (acc, s)) sfa sfas in
+          let free = SRL.fv sfa in
+          let ghost_binds =
+            List.filter_map
+              (fun (g, ty) ->
+                let g' = fresh g in
+                if List.mem g' free then
+                  Some { cx = g'; cty = { v = Nt.{ x = v_name; ty }; phi = mk_true } }
+                else None)
+              ghost_params
+          in
+          MetaConfig.show_debug_hatch (fun () ->
+              Pp.printf "@{<cyan>  %i/%i case(s) admit ret; pre@}: %s\n"
+                (List.length sfas + 1) (List.length cases) (layout_regex sfa));
+          Some (sfa, ghost_binds))
 
-(* Extract SFA from effect body (after all Binds) *)
+(* Extract SFA from effect body (after all Binds), plus the spec ghosts it
+   leaves free.  Sequential events are conjoined over the same final history
+   ([LandA]); this is faithful only for non-consuming observations (reads),
+   not for events whose new-format spec [Reject]s, e.g. dequeuing. *)
 let rec extract_sfa_from_body oprctx eff =
   match eff with
   | Eff.Atom (Call ev) -> call_to_sfa_opt oprctx ev
@@ -158,11 +178,12 @@ let rec extract_sfa_from_body oprctx eff =
       match
         (extract_sfa_from_body oprctx eff1, extract_sfa_from_body oprctx eff2)
       with
-      | Some sfa1, Some sfa2 -> Some (LandA (sfa1, sfa2))
+      | Some (sfa1, binds1), Some (sfa2, binds2) ->
+          Some (LandA (sfa1, sfa2), binds1 @ binds2)
       | _ -> None)
   | Eff.Atom (Trans (Explicit sft_id)) when Syntax.Rty.Sft.(sft_id = mk_ident)
     ->
-      Some mk_allA
+      Some (mk_allA, [])
   | _ -> None
 
 (* Extract ghost bindings and the inner Constrain *)
@@ -211,7 +232,7 @@ let rec convert_hty param_substs oprctx hty =
                 match ret.rty with
                 | BaseRty { cty } ->
                     let eq_lit =
-                      mk_lit_eq_lit cty.v.ty (AVar ret.rx) (AVar ghost_var)
+                      mk_lit_eq_lit cty.v.ty (AVar cty.v.x) (AVar ghost_var)
                     in
                     let eq_prop = Lit eq_lit in
                     let new_phi = mk_and cty.phi eq_prop in
@@ -247,12 +268,19 @@ let rec convert_hty param_substs oprctx hty =
             ( extract_sfa_from_body oprctx eff1_subst,
               extract_sfa_from_body oprctx eff2_subst )
           with
-          | Some sfa_pre, Some sfa_post ->
+          | Some (sfa_pre, ghosts_pre), Some (sfa_post, ghosts_post) ->
               let htriple =
                 Htriple { pre = sfa_pre; resrty; post = ComplementA sfa_post }
               in
-              (new_binds_subst, htriple)
-          | _ -> ([], hty))
+              (new_binds_subst @ ghosts_pre @ ghosts_post, htriple)
+          | _ ->
+              (* Leaving the Monad in place would make srlexec run zero
+                 triples and print a bare "type check failed". *)
+              failwith
+                "constrain_to_htriple: cannot translate query: some event's op \
+                 has no Htriple-format spec in lib_rty_old.ml, no case of it \
+                 admits the observed result, or the effect is not a sequence \
+                 of calls (rerun with the \"hatch\" debug tag for details)")
       | None -> ([], hty))
   | Inter (h1, h2) ->
       let binds1, hty1 = convert_hty param_substs oprctx h1 in
@@ -298,7 +326,7 @@ and convert_rty param_substs oprctx = function
               match rty with
               | BaseRty { cty } ->
                   let eq_lit =
-                    mk_lit_eq_lit cty.v.ty (AVar rx) (AVar ghost_var)
+                    mk_lit_eq_lit cty.v.ty (AVar cty.v.x) (AVar ghost_var)
                   in
                   let eq_prop = Lit eq_lit in
                   let new_phi = mk_and cty.phi eq_prop in

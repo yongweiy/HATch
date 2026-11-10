@@ -14,7 +14,13 @@ module C = Choice
 module L = Literal
 module D = Deriv
 
-module Builder (ExecBound : IntT) (AccelBound : IntT) (Config : Config.T) =
+(* [MemLimitGB]: heap cap (GiB) for one symbolic-execution task; exceeding it
+   aborts the task with "Out of memory". *)
+module Builder
+    (ExecBound : IntT)
+    (AccelBound : IntT)
+    (MemLimitGB : IntT)
+    (Config : Config.T) =
 struct
   let apply ~i ~lhs ~letbody rty args cfg =
     let cfg = Config.with_comp letbody cfg in
@@ -177,7 +183,8 @@ struct
                      hty_to_triples hty
                      |> List.find_opt (fun (sfa_pre, retrty, sfa_post) ->
                             try
-                              Limit.run_with_memory_limit 1000000000
+                              Limit.run_with_memory_limit
+                                (MemLimitGB.value * 1024 * 1024 * 1024)
                               @@ fun () ->
                               ignore @@ C.to_list
                               @@ C.bind

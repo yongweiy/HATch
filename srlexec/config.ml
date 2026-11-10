@@ -118,6 +118,25 @@ module Naive : T = struct
   exception PreemptiveHatch of config
   exception TerminatedHatch of config
 
+  (* [reach_mode]: the witness's result must satisfy [retrty] *)
+  let assume_result_and_hatch ~discard retrty (comp : comp typed) config =
+    let result =
+      match comp.x with
+      | CVal (VConst c) -> Some (AC c)
+      | CVal (VVar x) when Nt.is_base_tp comp.ty -> Some (AVar x)
+      | _ -> None
+    in
+    let config =
+      match result with
+      | None -> Some config
+      | Some lit ->
+          let { v = rv; phi } = rty_to_cty retrty in
+          assume (subst_prop (rv.x, lit) phi) config
+    in
+    Option.bind config @@ fun config ->
+    if reachable config then raise @@ TerminatedHatch config
+    else discard config
+
   let hatch ~mode ({ rctx; curr; comp } as config) =
     let discard cfg =
       MetaConfig.show_debug_hatch (fun _ ->
@@ -128,6 +147,9 @@ module Naive : T = struct
     | `PassThrough -> Some config
     | `TopLevel (retrty, sfa_post) -> (
         match comp.x with
+        | CVal _ when !reach_mode ->
+            if Subtyping.sub_srl_bool rctx (curr, sfa_post) then discard config
+            else assume_result_and_hatch ~discard retrty comp config
         | CVal _ when not @@ Subtyping.sub_srl_bool rctx (curr, sfa_post) ->
             raise @@ TerminatedHatch config
         | CVal (VConst c) ->
@@ -321,6 +343,25 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
   exception PreemptiveHatch of config
   exception TerminatedHatch of config
 
+  (* [reach_mode]: the witness's result must satisfy [retrty] *)
+  let assume_result_and_hatch ~discard retrty (comp : comp typed) config =
+    let result =
+      match comp.x with
+      | CVal (VConst c) -> Some (AC c)
+      | CVal (VVar x) when Nt.is_base_tp comp.ty -> Some (AVar x)
+      | _ -> None
+    in
+    let config =
+      match result with
+      | None -> Some config
+      | Some lit ->
+          let { v = rv; phi } = rty_to_cty retrty in
+          assume (subst_prop (rv.x, lit) phi) config
+    in
+    Option.bind config @@ fun config ->
+    if reachable config then raise @@ TerminatedHatch config
+    else discard config
+
   (** look for bug and prune terminated good execution
     TODO: create a flag to toggle preemptive bug check
  *)
@@ -337,6 +378,9 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
         | _ when reach_bad_state config ->
             if reachable config then raise @@ PreemptiveHatch config
             else discard config
+        | CVal _ when !reach_mode ->
+            if ContSFA.is_nullable cont then discard config
+            else assume_result_and_hatch ~discard retrty comp config
         | CVal _ when not @@ ContSFA.is_nullable cont ->
             if reachable config then raise @@ TerminatedHatch config
             else discard config

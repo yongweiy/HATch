@@ -13,6 +13,15 @@ module type IntT = sig
   val value : int
 end
 
+(** Reachability ("incorrectness") reading of the top-level Htriple, set by
+    [symb-exec-incor].  Its query [{pre} e {resrty; post = ¬S}] comes from a
+    Constrain query asking for an execution whose result satisfies [resrty]
+    AND whose trace is in [S].  So a witness must terminate with the trace
+    outside [post] while the result refinement is *assumed*; a result merely
+    violating [resrty] is not a bug (the default Hoare reading would report
+    it, e.g. every result other than [ret_ghost]). *)
+let reach_mode = ref false
+
 let ( let* ) x f = Choice.bind f x
 let ( let^ ) x f = Choice.fmap f x
 let ( let+ ) x f = Choice.map f x

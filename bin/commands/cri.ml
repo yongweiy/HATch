@@ -246,7 +246,7 @@ let type_check_ (ri_input, s) source_file =
   interfaceStaic
 
 let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
-    empty_aware look_ahead accel_bound () =
+    empty_aware look_ahead accel_bound mem_limit_gb () =
   let setting, code, normalized, interfaceStaic =
     normalized_ @@ ntyped_ @@ print_source_code_ s source_file
   in
@@ -262,6 +262,9 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
       end)
       (struct
         let value = accel_bound
+      end)
+      (struct
+        let value = mem_limit_gb
       end)
   in
   if not deriv then
@@ -474,12 +477,16 @@ let prepare_symb_exec_incor s source_file =
   }
 
 let symb_exec_incor_ s source_file exec_bound deriv append_bound empty_aware
-    look_ahead accel_bound () =
+    look_ahead accel_bound mem_limit_gb () =
   let setting, code, normalized, interfaceStaic =
     normalized_ @@ automatize_ @@ ntyped_ @@ print_source_code_ s source_file
   in
   (* Convert Constrain queries to Htriple format, collecting ghost bindings *)
   let ghost_binds, code = Constrain_to_htriple.convert_structure setting.oprctx code in
+  Srlexec.Utils.reach_mode := true;
+  (* flush the translation debug output now, so it survives a timeout kill *)
+  Format.pp_print_flush Ocolor_format.raw_std_formatter ();
+  Out_channel.flush stdout;
   (* Convert ghost bindings to rxs and extend rctx *)
   let ghost_rxs = List.map ~f:(fun cx ->
       let rtyped = Rty.(cx.cx #:: (BaseRty { cty = cx.cty })) in
@@ -493,6 +500,9 @@ let symb_exec_incor_ s source_file exec_bound deriv append_bound empty_aware
       end)
       (struct
         let value = accel_bound
+      end)
+      (struct
+        let value = mem_limit_gb
       end)
   in
   if not deriv then (
