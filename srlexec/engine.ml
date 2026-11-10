@@ -189,11 +189,15 @@ struct
                             with
                             | Config.PreemptiveHatch cfg ->
                                 Pp.printf "@{<bold>Preemptive Hatch@}\n";
+                                Pp.printf "ghost_rctx = %s\n"
+                                  (RTypectx.layout_typed_l (List.take (List.length rctx') rctx0));
                                 Config.print_config
                                   ~chop_rctx:(List.length rctx0) cfg;
                                 false
                             | Config.TerminatedHatch cfg ->
                                 Pp.printf "@{<bold>Terminated Hatch@}\n";
+                                Pp.printf "ghost_rctx = %s\n"
+                                  (RTypectx.layout_typed_l (List.take (List.length rctx') rctx0));
                                 Config.print_config
                                   ~chop_rctx:(List.length rctx0) cfg;
                                 false
@@ -201,6 +205,8 @@ struct
                                 Printf.printf "Out of memory: ";
                                 false))
                in
-               Config.output_dot name;
+               (* only dump automata graphs when the "hatch" debug tag is on,
+                  so benchmark runs do not litter the working directory *)
+               MetaConfig.show_debug_hatch (fun () -> Config.output_dot name);
                (id, name, res, exec_time))
 end

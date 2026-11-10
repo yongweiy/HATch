@@ -81,6 +81,7 @@ module F (A : ELA) = struct
 
   let sexp_of_sft _ = _failatwith __FILE__ __LINE__ "sexp_of_sft"
   let sft_of_sexp _ = _failatwith __FILE__ __LINE__ "sft_of_sexp"
+  let emptiness_check_difficuly_of { init; g } = G.nb_vertex g + G.nb_edges g
 
   let width_of { init; g } : int =
     List.fold_left min Int.max_int
@@ -149,7 +150,7 @@ module F (A : ELA) = struct
     Dot.output_graph oc g;
     close_out oc;
     ignore (Sys.command ("dot -Tpdf " ^ tmp_dot ^ " -o " ^ tmp_pdf));
-    ignore (Sys.command ("evince " ^ tmp_pdf));
+    (* ignore (Sys.command ("evince " ^ tmp_pdf)); *)
     Sys.remove tmp_dot;
     Sys.remove tmp_pdf;
     "SFT"
@@ -461,7 +462,8 @@ module F (A : ELA) = struct
                           G.add_edge_e g @@ G.E.create v (Epsilon (phi, evs)) v'
                         in
                         dfs ~g v1 v2' v'
-                    | Pred (p2, [ fn ]) when A.equal_func fn A.mk_ident -> (
+                    | Pred (p2, _) -> (
+                        (* | Pred (p2, [ fn ]) when A.equal_func fn A.mk_ident -> ( *)
                         let v' = comb_if_not_yet m (v1', v2') in
                         let p = A.mk_and p1 p2 in
                         match A.simp_opt ~is_bot p with
@@ -489,41 +491,106 @@ module F (A : ELA) = struct
 
   let find_witness ~is_bot { init; g } =
     let finals = G.get_finals g in
-    if List.is_empty finals then None
+    if List.is_empty finals then (None, 0)
     else
+      let paths_explored = ref 0 in
+      let max_queue_size = ref 0 in
+      let max_path_length = ref 0 in
+      let pruned_by_subsumption = ref 0 in
+      (* Cache: vertex -> list of constraints that reached this vertex *)
+      let vertex_constraints : (G.V.t, A.P.prop list) Hashtbl.t =
+        Hashtbl.create 100
+      in
       let rec bfs queue =
+        let queue_size = List.length queue in
+        if queue_size > !max_queue_size then max_queue_size := queue_size;
         match queue with
-        | [] -> None
+        | [] ->
+            Printf.printf
+              "  [find_witness stats] max_queue_size=%d, max_path_length=%d, \
+               pruned_by_subsumption=%d\n"
+              !max_queue_size !max_path_length !pruned_by_subsumption;
+            Out_channel.flush stdout;
+            (None, !paths_explored)
         | (curr_vertex, path, accumulated_constraint, visited) :: rest ->
+            incr paths_explored;
+            let path_len = List.length path in
+            if path_len > !max_path_length then max_path_length := path_len;
             if G.is_final curr_vertex then (
               assert (not @@ is_bot accumulated_constraint);
-              Some (path, List.length path))
+              Printf.printf
+                "  [find_witness stats] max_queue_size=%d, max_path_length=%d, \
+                 pruned_by_subsumption=%d\n"
+                !max_queue_size !max_path_length !pruned_by_subsumption;
+              Out_channel.flush stdout;
+              (Some path, !paths_explored))
             else
-              let successors =
-                G.fold_succ_e
-                  (fun edge acc ->
-                    let next_vertex = G.E.dst edge in
-                    let label = G.E.label edge in
-                    let new_constraint =
-                      match label with
-                      | Pred (pred, _) ->
-                          A.P.mk_and accumulated_constraint (A.to_prop pred)
-                      | Epsilon (phi, evs) ->
-                          A.P.mk_and accumulated_constraint phi
-                    in
-                    if
-                      List.exists (G.V.equal curr_vertex) visited
-                      || is_bot new_constraint
-                    then acc
-                    else
-                      ( next_vertex,
-                        label :: path,
-                        new_constraint,
-                        curr_vertex :: visited )
-                      :: acc)
-                  g curr_vertex []
+              (* Check if this vertex was reached with a weaker constraint *)
+              let should_prune =
+                match Hashtbl.find_opt vertex_constraints curr_vertex with
+                | None -> false
+                | Some existing_constraints ->
+                    (* If any existing constraint C_old is weaker than or equal to accumulated_constraint,
+                       then accumulated_constraint => C_old, so we can prune this path *)
+                    List.exists
+                      (fun c_old ->
+                        (* Check if accumulated_constraint => c_old (i.e., accumulated_constraint is stronger) *)
+                        (* This means: if accumulated_constraint is true, then c_old is also true *)
+                        (* We check this by testing if (accumulated_constraint AND NOT c_old) is UNSAT *)
+                        is_bot
+                          (A.P.mk_and accumulated_constraint (A.P.mk_not c_old)))
+                      existing_constraints
               in
-              bfs (rest @ successors)
+              if should_prune then (
+                incr pruned_by_subsumption;
+                bfs rest)
+              else
+                (* Add this constraint to the cache for this vertex *)
+                let existing =
+                  Hashtbl.find_opt vertex_constraints curr_vertex
+                  |> Option.value ~default:[]
+                in
+                Hashtbl.replace vertex_constraints curr_vertex
+                  (accumulated_constraint :: existing);
+
+                let successors =
+                  G.fold_succ_e
+                    (fun edge acc ->
+                      let next_vertex = G.E.dst edge in
+                      let label = G.E.label edge in
+                      let new_constraint =
+                        match label with
+                        | Pred (pred, _) ->
+                            A.P.mk_and accumulated_constraint (A.to_prop pred)
+                        | Epsilon (phi, evs) ->
+                            A.P.mk_and accumulated_constraint phi
+                      in
+                      if
+                        List.exists (G.V.equal curr_vertex) visited
+                        || is_bot new_constraint
+                      then acc
+                      else
+                        ( next_vertex,
+                          label :: path,
+                          new_constraint,
+                          curr_vertex :: visited )
+                        :: acc)
+                    g curr_vertex []
+                in
+                bfs (rest @ successors)
       in
       bfs [ (init, [], A.P.mk_true, []) ]
+
+  (** Compute actual width based on witness path length *)
+  let actual_width_of ~is_bot sft =
+    match fst (find_witness ~is_bot sft) with
+    | None -> Int.max_int (* No witness found, return max_int *)
+    | Some witness_path ->
+        (* Count only Pred labels (non-epsilon transitions) *)
+        List.fold_left
+          (fun count label ->
+            match label with
+            | Label.Pred _ -> count + 1
+            | Label.Epsilon _ -> count)
+          0 witness_path
 end

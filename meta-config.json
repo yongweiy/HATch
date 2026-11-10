@@ -40,6 +40,10 @@
         "is_nil",
         "hd",
         "tl",
+        // PathList.t
+        "is_path_nil",
+        "path_hd",
+        "path_tl",
         // NodeTree.t
         "is_leaf",
         "is_node",
@@ -49,7 +53,13 @@
         "is_right",
         "right",
         "mk_tree",
-        "mk_leaf"
+        "mk_leaf",
+        // colored elem
+        "is_elem",
+        "elem_of",
+        "color_of",
+        "mk_red",
+        "is_red"
     ],
     "prim_path": {
         "qualifier_builtin_type": "data/predefined/qualifier_builtin_type.ml",

@@ -159,6 +159,16 @@ module F (L : Lit.T) = struct
     | eff, Atom Id -> eff
     | eff1, eff2 -> Seq (eff1, eff2)
 
+  (** Compute the maximum depth of an effect tree.
+      This represents the longest path from root to leaf in the effect AST. *)
+  let rec depth_of_eff : Eff.t -> int = function
+    | Atom _ -> 1
+    | Constrain (eff1, eff2) -> _failatwith __FILE__ __LINE__ "depth_of_eff"
+    | Seq (eff1, eff2) -> depth_of_eff eff1 + depth_of_eff eff2
+    | Choice (eff1, eff2) -> min (depth_of_eff eff1) (depth_of_eff eff2)
+    | Bind (_, eff) -> depth_of_eff eff
+    | Guard _ -> 0
+
   let rec normalize_name_rty : rty -> rty = function
     | BaseRty { cty } -> BaseRty { cty = Cty.normalize_name cty }
     | ArrRty { arr; rethty } ->

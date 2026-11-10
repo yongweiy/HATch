@@ -31,6 +31,13 @@ val has_child : Bytes.t -> bool
 val elem_lt : Elem.t -> Elem.t -> bool
 val elem_eq : Elem.t -> Elem.t -> bool
 
+(* celem *)
+val is_elem : Elem.t -> CElem.t -> bool
+val elem_of : CElem.t -> Elem.t
+val is_red : CElem.t -> bool
+val mk_red : CElem.t -> CElem.t
+val is_leaf : CElem.t -> bool
+  
 (* color *)
 val color_eq : Color.t -> Color.t -> bool
 
@@ -60,14 +67,19 @@ val del_node : Node.t -> NodeSet.t -> NodeSet.t
 val is_nil : NodeList.t -> bool
 val hd : NodeList.t -> Node.t
 val tl : NodeList.t -> NodeList.t
+
+(* PathList *)
+val is_path_nil : PathList.t -> bool
+val path_hd : PathList.t -> Path.t
+val path_tl : PathList.t -> PathList.t
                          
 (* tree *)
-val is_leaf : NodeTree.t -> bool
-val is_node : Node.t -> NodeTree.t -> bool
-val node : NodeTree.t -> Node.t
-val is_left : NodeTree.t -> NodeTree.t -> bool
-val left : NodeTree.t -> NodeTree.t
-val is_right : NodeTree.t -> NodeTree.t -> bool
-val right : NodeTree.t -> NodeTree.t
-val mk_leaf : unit -> NodeTree.t
-val mk_tree : Node.t -> NodeTree.t -> NodeTree.t -> NodeTree.t
+(* val is_leaf : NodeTree.t -> bool *)
+(* val is_node : Node.t -> NodeTree.t -> bool *)
+(* val node : NodeTree.t -> Node.t *)
+(* val is_left : NodeTree.t -> NodeTree.t -> bool *)
+(* val left : NodeTree.t -> NodeTree.t *)
+(* val is_right : NodeTree.t -> NodeTree.t -> bool *)
+(* val right : NodeTree.t -> NodeTree.t *)
+(* val mk_leaf : unit -> NodeTree.t *)
+(* val mk_tree : Node.t -> NodeTree.t -> NodeTree.t -> NodeTree.t *)

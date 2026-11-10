@@ -16,7 +16,7 @@ let pprint_res_one (id, name, res, timef) =
         "Task %i(%s): exec time %f(s), incorrectness inference failed\n" id name
         timef
 
-let infer (opctx', rctx') structure normalized =
+let infer ?(unroll_bound = 1) (opctx', rctx') structure normalized =
   let opctx, rctx = ROpCtx.from_code structure in
   let opctx = opctx' @ opctx in
   let rctx = rctx' @ rctx in
@@ -67,7 +67,7 @@ let infer (opctx', rctx') structure normalized =
             Sugar.clock (fun () ->
                 (* Interleaved weakening and inference *)
                 (* try *)
-                Weaken.weaken_pure opctx rctx automatized_rty comp
+                Weaken.weaken_pure ~unroll_bound opctx rctx automatized_rty comp
                 (* with *)
                 (* | _ -> *)
                 (* print_endline "failed"; *)
@@ -92,5 +92,108 @@ let infer (opctx', rctx') structure normalized =
           (*   failwith "end" *)
           (* in *)
           (* let stat = Stat.update_elrond stat elrond_stat_record in *)
+          (id, name, res, typecheck_time))
+    tasks
+
+(** Bidirectional search version of infer *)
+let infer_bidirectional ?(unroll_bound = 1) (opctx', rctx') structure normalized =
+  let opctx, rctx = ROpCtx.from_code structure in
+  let opctx = opctx' @ opctx in
+  let rctx = rctx' @ rctx in
+  let tasks = RCtx.get_task structure in
+  List.mapi
+    (fun id (name, rty) ->
+      let id = id + 1 in
+      let () =
+        MetaConfig.show_debug_typing @@ fun _ ->
+        Pp.printf "@{<bold>Task %i (BIDIRECTIONAL):@}\n" id
+      in
+      match
+        List.find_opt (fun (name', _) -> String.equal name name') normalized
+      with
+      | None -> failwith "cannot find the implemetation of the given assertion"
+      | Some (_, comp) ->
+          let comp = TypedCoreEff.to_v comp in
+          let () =
+            if not (Nt.eq comp.ty (R.erase_rty rty)) then
+              let () =
+                Printf.printf
+                  "The erased type of the refinement type mismacted the \
+                   implementation:\n\
+                   %s (rty) !=\n\
+                   %s (imp)\n"
+                  (Nt.layout (R.erase_rty rty))
+                  (Nt.layout comp.ty)
+              in
+              _failatwith __FILE__ __LINE__ "input error"
+            else ()
+          in
+
+          (* Process input rty to replace Call effects with actual operator effects *)
+          Printf.printf "*** INFER_BIDIRECTIONAL: calling process_input_rty ***\n";
+          Out_channel.flush stdout;
+          let processed_rty = Rty_processor.process_input_rty opctx rty in
+          Printf.printf "*** INFER_BIDIRECTIONAL: calling Automatize.do_rty ***\n";
+          Out_channel.flush stdout;
+          (* Apply automatize to convert sequences to automata *)
+          let automatized_rty = Automatize.do_rty rctx processed_rty in
+          Printf.printf "*** INFER_BIDIRECTIONAL: calling weaken_pure_bidirectional ***\n";
+          Out_channel.flush stdout;
+          let typecheck_time, res =
+            Sugar.clock (fun () ->
+                (* Use bidirectional weakening instead of regular weakening *)
+                Weaken.weaken_pure_bidirectional ~unroll_bound opctx rctx automatized_rty comp)
+          in
+          (id, name, res, typecheck_time))
+    tasks
+
+let infer_forward_backward ~unroll_bound ~forward_steps (opctx', rctx') structure normalized =
+  let opctx, rctx = ROpCtx.from_code structure in
+  let opctx = opctx' @ opctx in
+  let rctx = rctx' @ rctx in
+  let tasks = RCtx.get_task structure in
+  List.mapi
+    (fun id (name, rty) ->
+      let id = id + 1 in
+      let () =
+        MetaConfig.show_debug_typing @@ fun _ ->
+        Pp.printf "@{<bold>Task %i (FORWARD-BACKWARD):@}\n" id
+      in
+      match
+        List.find_opt (fun (name', _) -> String.equal name name') normalized
+      with
+      | None -> failwith "cannot find the implemetation of the given assertion"
+      | Some (_, comp) ->
+          let comp = TypedCoreEff.to_v comp in
+          let () =
+            if not (Nt.eq comp.ty (R.erase_rty rty)) then
+              let () =
+                Printf.printf
+                  "The erased type of the refinement type mismacted the \
+                   implementation:\n\
+                   %s (rty) !=\n\
+                   %s (imp)\n"
+                  (Nt.layout (R.erase_rty rty))
+                  (Nt.layout comp.ty)
+              in
+              _failatwith __FILE__ __LINE__ "input error"
+            else ()
+          in
+
+          (* Process input rty to replace Call effects with actual operator effects *)
+          Printf.printf "*** INFER_FORWARD_BACKWARD: calling process_input_rty ***\n";
+          Out_channel.flush stdout;
+          let processed_rty = Rty_processor.process_input_rty opctx rty in
+          Printf.printf "*** INFER_FORWARD_BACKWARD: calling Automatize.do_rty ***\n";
+          Out_channel.flush stdout;
+          (* Apply automatize to convert sequences to automata *)
+          let automatized_rty = Automatize.do_rty rctx processed_rty in
+          Printf.printf "*** INFER_FORWARD_BACKWARD: calling weaken_pure_forward_backward ***\n";
+          Out_channel.flush stdout;
+          let typecheck_time, res =
+            Sugar.clock (fun () ->
+                (* Use forward-backward weakening *)
+                Weaken.weaken_pure_forward_backward ~unroll_bound ~forward_steps opctx rctx automatized_rty comp)
+          in
           (id, name, res, typecheck_time))
     tasks

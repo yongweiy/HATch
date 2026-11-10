@@ -65,6 +65,22 @@ let[@libRty] elem_lt ?l:(a = (true : [%v: Elem.t]) [@over])
     ?l:(b = (true : [%v: Elem.t]) [@over]) : [%v: bool] =
   iff v (elem_lt a b)
 
+let[@libRty] is_elem ?l:(a = (true : [%v: Elem.t]) [@over])
+    ?l:(b = (true : [%v: CElem.t]) [@over]) : [%v: bool] =
+  iff v (is_elem a b)
+
+let[@libRty] elem_of ?l:(a = (true : ([%v: CElem.t]))[@over]) : [%v: Elem.t] =
+  v == elem_of a
+
+let[@libRty] is_red ?l:(a = (true : ([%v: CElem.t]))[@over]) : [%v: bool] =
+  iff v (is_red a)
+
+let[@libRty] is_leaf ?l:(a = (true : ([%v: CElem.t])) [@over]) : [%v: bool] =
+  iff v (is_leaf a)
+  
+let[@libRty] mk_red ?l:(a = (true : [%v: CElem.t]) [@over]) : [%v: CElem.t] =
+  elem_of a == elem_of v && is_red v
+
 let[@libRty] color_eq ?l:(a = (true : [%v: Color.t]) [@over])
     ?l:(b = (true : [%v: Color.t]) [@over]) : [%v: bool] =
   iff v (a == b)
@@ -130,36 +146,47 @@ let[@libRty] tl ?l:(xs = (not (is_nil v) : [%v: NodeList.t]) [@over]) :
     [%v: NodeList.t] =
   v == tl xs
 
-let[@libRty] is_leaf ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] =
-  iff v (is_leaf x)
+let[@libRty] is_path_nil ?l:(xs = (true : [%v: PathList.t]) [@over]) : [%v: bool] =
+  iff v (is_path_nil xs)
 
-let[@libRty] is_node ?l:(n = (true : [%v: Node.t]) [@over])
-    ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] =
-  is_node n x
+let[@libRty] path_hd ?l:(xs = (not (is_path_nil v) : [%v: PathList.t]) [@over]) :
+    [%v: Path.t] =
+  v == path_hd xs
 
-let[@libRty] node ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: Node.t] =
-  is_node v x
+let[@libRty] path_tl ?l:(xs = (not (is_path_nil v) : [%v: PathList.t]) [@over]) :
+    [%v: PathList.t] =
+  v == path_tl xs
 
-let[@libRty] is_left ?l:(y = (true : [%v: NodeTree.t]) [@over])
-    ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] =
-  is_left y x
+(* let[@libRty] is_leaf ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] = *)
+(*   iff v (is_leaf x) *)
 
-let[@libRty] left ?l:(x = (true : [%v: NodeTree.t]) [@over]) :
-    [%v: NodeTree.t] =
-  is_left v x
+(* let[@libRty] is_node ?l:(n = (true : [%v: Node.t]) [@over]) *)
+(*     ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] = *)
+(*   is_node n x *)
 
-let[@libRty] is_right ?l:(y = (true : [%v: NodeTree.t]) [@over])
-    ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] =
-  is_right y x
+(* let[@libRty] node ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: Node.t] = *)
+(*   is_node v x *)
 
-let[@libRty] right ?l:(x = (true : [%v: NodeTree.t]) [@over]) :
-    [%v: NodeTree.t] =
-  is_right v x
+(* let[@libRty] is_left ?l:(y = (true : [%v: NodeTree.t]) [@over]) *)
+(*     ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] = *)
+(*   is_left y x *)
 
-let[@libRty] mk_tree ?l:(n = (true : [%v: Node.t]) [@over])
-    ?l:(lt = (true : [%v: NodeTree.t]) [@over])
-    ?l:(rt = (true : [%v: NodeTree.t]) [@over]) : [%v: NodeTree.t] =
-  is_node n v && is_left lt v && is_right rt v
+(* let[@libRty] left ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: NodeTree.t] *)
+(*     = *)
+(*   is_left v x *)
 
-let[@libRty] mk_leaf ?l:(u = (true : [%v: unit]) [@over]) : [%v: NodeTree.t] =
-  is_leaf v
+(* let[@libRty] is_right ?l:(y = (true : [%v: NodeTree.t]) [@over]) *)
+(*     ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: bool] = *)
+(*   is_right y x *)
+
+(* let[@libRty] right ?l:(x = (true : [%v: NodeTree.t]) [@over]) : [%v: NodeTree.t] *)
+(*     = *)
+(*   is_right v x *)
+
+(* let[@libRty] mk_tree ?l:(n = (true : [%v: Node.t]) [@over]) *)
+(*     ?l:(lt = (true : [%v: NodeTree.t]) [@over]) *)
+(*     ?l:(rt = (true : [%v: NodeTree.t]) [@over]) : [%v: NodeTree.t] = *)
+(*   is_node n v && is_left lt v && is_right rt v *)
+
+(* let[@libRty] mk_leaf ?l:(u = (true : [%v: unit]) [@over]) : [%v: NodeTree.t] = *)
+(*   is_leaf v *)

@@ -291,7 +291,7 @@ let symb_exec_ (ri_input, s) source_file exec_bound deriv append_bound
         Typecheck.pprint_res_one res)
     @@ DerivEngine.main (setting.oprctx, setting.rctx) code normalized
 
-let type_infer_under_ setting source_files =
+let type_infer_under_ setting source_files unroll_bound =
   (* here automatize only applies on library specification *)
   let setting, code, normalized, interfaceStaic =
     normalized_ @@ automatize_ @@ ntyped_
@@ -303,7 +303,39 @@ let type_infer_under_ setting source_files =
           Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty rty
       | _ -> ());
       Typecheck.pprint_res_one res)
-  @@ Inferincor.infer (setting.oprctx, setting.rctx) code normalized
+  @@ Inferincor.infer ~unroll_bound (setting.oprctx, setting.rctx) code normalized
+
+let type_infer_under_bidirectional_ setting source_files unroll_bound =
+  (* Bidirectional search version *)
+  let setting, code, normalized, interfaceStaic =
+    normalized_ @@ automatize_ @@ ntyped_
+    @@ print_source_code_ setting source_files
+  in
+  Printf.printf "*** Using BIDIRECTIONAL SEARCH ***\n";
+  Out_channel.flush stdout;
+  List.iter ~f:(fun res ->
+      (match res with
+      | _, _, Some rty, _ ->
+          Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty rty
+      | _ -> ());
+      Typecheck.pprint_res_one res)
+  @@ Inferincor.infer_bidirectional ~unroll_bound (setting.oprctx, setting.rctx) code normalized
+
+let type_infer_under_forward_backward_ setting source_files unroll_bound forward_steps =
+  (* Forward-then-backward search version *)
+  let setting, code, normalized, interfaceStaic =
+    normalized_ @@ automatize_ @@ ntyped_
+    @@ print_source_code_ setting source_files
+  in
+  Printf.printf "*** Using FORWARD-BACKWARD SEARCH (forward_steps=%d) ***\n" forward_steps;
+  Out_channel.flush stdout;
+  List.iter ~f:(fun res ->
+      (match res with
+      | _, _, Some rty, _ ->
+          Printf.printf "inferred:\n%s\n" @@ Rty.layout_rty rty
+      | _ -> ());
+      Typecheck.pprint_res_one res)
+  @@ Inferincor.infer_forward_backward ~unroll_bound ~forward_steps (setting.oprctx, setting.rctx) code normalized
 (* Printf.printf "property: %s\n" @@ StructureRaw.layout_structure [ property ]; *)
 
 (* let () = *)
@@ -424,6 +456,70 @@ let prepare_incor s source_file =
     opeffrctx_files = s.opeffrctx_files @ [ librtyfile ];
   }
 
+let prepare_symb_exec_incor s source_file =
+  let source_file' = String.split source_file ~on:'/' in
+  let dir, interface_file =
+    match Zzdatatype.Datatype.List.last_destruct_opt source_file' with
+    | Some (dir, name) -> (String.concat ~sep:"/" dir, name)
+    | None -> failwith "wrong path"
+  in
+  let pred_file = sprintf "%s/automata_preds.ml" dir in
+  let libntyfile = sprintf "%s/lib_nty.ml" dir in
+  let librtyfile = sprintf "%s/lib_rty_old.ml" dir in
+  {
+    s with
+    automata_pred_files = s.automata_pred_files @ [ pred_file ];
+    opeffnctx_files = s.opeffnctx_files @ [ libntyfile ];
+    opeffrctx_files = s.opeffrctx_files @ [ librtyfile ];
+  }
+
+let symb_exec_incor_ s source_file exec_bound deriv append_bound empty_aware
+    look_ahead accel_bound () =
+  let setting, code, normalized, interfaceStaic =
+    normalized_ @@ automatize_ @@ ntyped_ @@ print_source_code_ s source_file
+  in
+  (* Convert Constrain queries to Htriple format, collecting ghost bindings *)
+  let ghost_binds, code = Constrain_to_htriple.convert_structure setting.oprctx code in
+  (* Convert ghost bindings to rxs and extend rctx *)
+  let ghost_rxs = List.map ~f:(fun cx ->
+      let rtyped = Rty.(cx.cx #:: (BaseRty { cty = cx.cty })) in
+      (rtyped.rx, rtyped.rty)
+    ) ghost_binds in
+  let extended_rctx = setting.rctx @ ghost_rxs in
+  let module Engine =
+    Srlexec.Engine.Builder
+      (struct
+        let value = exec_bound
+      end)
+      (struct
+        let value = accel_bound
+      end)
+  in
+  if not deriv then (
+    let module NaiveEngine = Engine (Srlexec.Config.Naive) in
+    MetaConfig.show_log "result" @@ fun _ ->
+    List.iter ~f:(fun res ->
+        Typecheck.pprint_res_one res)
+    @@ NaiveEngine.main (setting.oprctx, extended_rctx) code normalized)
+  else (
+    let module Config =
+      Srlexec.Config.DerivBased
+        (struct
+          let value = append_bound
+        end)
+        (struct
+          let flag = empty_aware
+        end)
+        (struct
+          let value = look_ahead
+        end)
+    in
+    let module DerivEngine = Engine (Config) in
+    MetaConfig.show_log "result" @@ fun _ ->
+    List.iter ~f:(fun res ->
+        Typecheck.pprint_res_one res)
+    @@ DerivEngine.main (setting.oprctx, extended_rctx) code normalized)
+
 let typecheck_cmds =
   [
     ( "print-source-code",
@@ -486,14 +582,34 @@ let typecheck_cmds =
       let ri_input, s, dt_stat = prepare_ri s source_file in
       symb_exec_ (ri_input, s) [ ri_input.ri_file; source_file ] );
     ( "infer-incorrectness",
-      cmd_config_source "infer incorrectness"
-        (fun meta_config_file source_file () ->
+      cmd_infer_incor_config_source "infer incorrectness"
+        (fun meta_config_file source_file unroll_bound () ->
           let s = mk_inputs_setting meta_config_file in
           let s = prepare_incor s source_file in
-          let _ = type_infer_under_ s [ source_file ] in
+          let _ = type_infer_under_ s [ source_file ] unroll_bound in
           (* let dt_stat = { dt_stat with interfaceStatStatic } in *)
           (* let () = update_dt_static_stat dt_stat in *)
           ()) );
+    ( "infer-incorrectness-bidirectional",
+      cmd_infer_incor_config_source "infer incorrectness using bidirectional search"
+        (fun meta_config_file source_file unroll_bound () ->
+          let s = mk_inputs_setting meta_config_file in
+          let s = prepare_incor s source_file in
+          let _ = type_infer_under_bidirectional_ s [ source_file ] unroll_bound in
+          ()) );
+    ( "infer-incorrectness-forward-backward",
+      cmd_infer_incor_config_source_with_forward "infer incorrectness using forward-then-backward search"
+        (fun meta_config_file source_file unroll_bound forward_steps () ->
+          let s = mk_inputs_setting meta_config_file in
+          let s = prepare_incor s source_file in
+          let _ = type_infer_under_forward_backward_ s [ source_file ] unroll_bound forward_steps in
+          ()) );
+    ( "symb-exec-incor",
+      cmd_symb_exec_config_source "symbolic execution with incorrectness queries"
+      @@ fun meta_config_file source_file ->
+      let s = mk_inputs_setting meta_config_file in
+      let s = prepare_symb_exec_incor s source_file in
+      symb_exec_incor_ s [ source_file ] );
     ( "type-check",
       cmd_config_source "type check" (fun meta_config_file source_file () ->
           let s = mk_inputs_setting meta_config_file in

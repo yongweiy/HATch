@@ -68,10 +68,10 @@ let rec process_eff opctx : Eff.t -> Eff.t = function
   | Bind (ctyped, eff) -> Bind (ctyped, process_eff opctx eff)
   | Guard p -> Guard p
   | Seq (eff1, eff2) -> Seq (process_eff opctx eff1, process_eff opctx eff2)
-  | Choice (Seq (Guard phi1, eff1), Seq (Guard phi2, eff2)) ->
+  | Choice (Seq (Guard phi1, eff1), Seq (Guard phi2, eff2)) as eff ->
       if is_true phi1 && is_false phi2 then process_eff opctx eff1
-      else if is_false phi2 && is_true phi1 then process_eff opctx eff2
-      else _failatwith __FILE__ __LINE__ "die"
+      else if is_false phi1 && is_true phi2 then process_eff opctx eff2
+      else _failatwith __FILE__ __LINE__ @@ layout_eff eff
   | Choice _ -> _failatwith __FILE__ __LINE__ "die"
 
 let rec process_hty opctx = function

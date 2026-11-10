@@ -20,6 +20,7 @@
    ctest
    cri
    cgen
+   constrain_to_htriple
  )
  (preprocess (pps ppx_inline_test ppx_assert ppx_jane))
  (inline_tests)

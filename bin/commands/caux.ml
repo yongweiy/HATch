@@ -53,14 +53,14 @@ let cmd_symb_exec_config_source summary f =
       and source_file = anon ("source_code_file" %: regular_file)
       and exec_bound =
         flag "-exec-bound"
-          (optional_with_default 10 int)
+          (optional_with_default 20 int)
           ~doc:
             "<int> Set the bound on the number of reduction steps during \
              symbolic execution"
       and no_derivative = flag "-no-deriv" no_arg ~doc:" Disable derivative"
       and append_bound =
         flag "-eff-append-bound"
-          (optional_with_default 1 int)
+          (optional_with_default 5 int)
           ~doc:
             "<int> Set the bound on the length of event sequences sampled from \
              SFA being appended during symbolic execution"
@@ -83,6 +83,40 @@ let cmd_symb_exec_config_source summary f =
       in
       f meta_config_file source_file exec_bound (not no_derivative) append_bound
         empty_aware look_ahead accel_bound)
+
+let cmd_infer_incor_config_source summary f =
+  Command.basic ~summary
+    Command.Let_syntax.(
+      let%map_open meta_config_file = anon ("meta_config_file" %: regular_file)
+      and source_file = anon ("source_code_file" %: regular_file)
+      and unroll_bound =
+        flag "-unroll-bound"
+          (optional_with_default 1 int)
+          ~doc:
+            "<int> Set the bound on the number of times to unroll recursive \
+             functions during type inference (default: 1)"
+      in
+      f meta_config_file source_file unroll_bound)
+
+let cmd_infer_incor_config_source_with_forward summary f =
+  Command.basic ~summary
+    Command.Let_syntax.(
+      let%map_open meta_config_file = anon ("meta_config_file" %: regular_file)
+      and source_file = anon ("source_code_file" %: regular_file)
+      and unroll_bound =
+        flag "-unroll-bound"
+          (optional_with_default 1 int)
+          ~doc:
+            "<int> Set the bound on the number of times to unroll recursive \
+             functions during type inference (default: 1)"
+      and forward_steps =
+        flag "-forward-steps"
+          (optional_with_default 0 int)
+          ~doc:
+            "<int> Set the number of forward steps to take before backward \
+             reasoning (default: 0, pure backward)"
+      in
+      f meta_config_file source_file unroll_bound forward_steps)
 
 let cmd_config_ir_source summary f =
   Command.basic ~summary

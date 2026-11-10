@@ -220,8 +220,7 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
     not @@ Subtyping.is_bot_cty rctx @@ mk_unit_from_prop mk_true
 
   let reachable { rctx; prefix; _ } =
-    not @@ Subtyping.is_bot_cty rctx @@ mk_unit_from_prop @@ smart_and
-    @@ Tr.fold
+    let path_constraints = Tr.fold
          (function
            | TamperSeal -> Fun.id
            | Atom l -> List.cons @@ L.to_phi l
@@ -240,7 +239,9 @@ module DerivBased (AppendBound : IntT) (EmptyAware : BoolT) (LookAhead : IntT) :
                               | Atom l -> smart_add_to @@ L.to_phi l
                               | _ -> _failatwith __FILE__ __LINE__ "die")
                             tr mk_true ) ))
-         prefix []
+         prefix [] in
+    let combined_phi = smart_and path_constraints in
+    not @@ Subtyping.is_bot_cty rctx @@ mk_unit_from_prop combined_phi
 
   (** CErr if reachable, otherwise safe to prune the path *)
   let abort config =

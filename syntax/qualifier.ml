@@ -95,10 +95,10 @@ module F (L : Lit.T) = struct
       List.map to_disjuncts
       >> List.fold_left (List.sorted_merge_uniq ~cmp:compare_prop) []
       >> fun lits ->
-           let has_contradiction = 
-             List.exists (fun p1 -> List.exists (is_neg p1) lits) lits
-           in
-           if has_contradiction then mk_true else of_disjuncts lits
+      let has_contradiction =
+        List.exists (fun p1 -> List.exists (is_neg p1) lits) lits
+      in
+      if has_contradiction then mk_true else of_disjuncts lits
     in
     (* (A ∧ B) ∨ (C ∧ D) = (A ∨ C) ∧ (A ∨ D) ∧ (B ∨ C) ∧ (B ∨ D) *)
     List.map_product_l to_conjuncts >> List.map build_conjunct >> mk_and_multi
@@ -181,6 +181,44 @@ module F (L : Lit.T) = struct
     | Some false -> mk_true
     | None -> Implies (a, prop)
 
+  type pe = IsT | IsF | IsOthers
+
+  let pe_prop prop =
+    if is_true prop then IsT else if is_false prop then IsF else IsOthers
+
+  let simpl prop =
+    let rec aux e =
+      match e with
+      | Lit _ -> e
+      | Implies (e1, e2) -> (
+          let e1, e2 = map2 aux (e1, e2) in
+          match (pe_prop e1, pe_prop e2) with
+          | IsT, _ -> e2
+          | IsF, _ -> mk_true
+          | _, IsT -> mk_true
+          | _, IsF -> aux (Not e1)
+          | _, _ -> Implies (e1, e2))
+      | Ite (e1, e2, e3) -> (
+          let e1, e2, e3 = map3 aux (e1, e2, e3) in
+          match pe_prop e1 with
+          | IsT -> e2
+          | IsF -> e3
+          | _ -> (
+              match (pe_prop e2, pe_prop e3) with
+              | IsT, IsT -> mk_true
+              | IsT, IsF -> e1
+              | IsF, IsT -> aux (Not e1)
+              | IsF, IsF -> mk_false
+              | _, _ -> Ite (e1, e2, e3)))
+      | Not e -> Not (aux e)
+      | And es -> And (List.map aux es)
+      | Or es -> Or (List.map aux es)
+      | Iff (e1, e2) -> Iff (aux e1, aux e2)
+      | Forall (u, body) -> Forall (u, aux body)
+      | Exists (u, body) -> Exists (u, aux body)
+    in
+    aux prop
+
   let subst_prop (y, f) e =
     let rec aux e =
       match e with
@@ -196,7 +234,7 @@ module F (L : Lit.T) = struct
       | Exists (u, body) ->
           if String.equal u.x y then e else Exists (u, aux body)
     in
-    aux e
+    simpl @@ aux e
 
   let fv_prop e =
     let rec aux e =
@@ -365,42 +403,4 @@ module F (L : Lit.T) = struct
           in
           prop
       | _ -> Exists (x, smart_add_to phix prop)
-
-  type pe = IsT | IsF | IsOthers
-
-  let pe_prop prop =
-    if is_true prop then IsT else if is_false prop then IsF else IsOthers
-
-  let simpl prop =
-    let rec aux e =
-      match e with
-      | Lit _ -> e
-      | Implies (e1, e2) -> (
-          let e1, e2 = map2 aux (e1, e2) in
-          match (pe_prop e1, pe_prop e2) with
-          | IsT, _ -> e2
-          | IsF, _ -> mk_true
-          | _, IsT -> mk_true
-          | _, IsF -> aux (Not e1)
-          | _, _ -> Implies (e1, e2))
-      | Ite (e1, e2, e3) -> (
-          let e1, e2, e3 = map3 aux (e1, e2, e3) in
-          match pe_prop e1 with
-          | IsT -> e2
-          | IsF -> e3
-          | _ -> (
-              match (pe_prop e2, pe_prop e3) with
-              | IsT, IsT -> mk_true
-              | IsT, IsF -> e1
-              | IsF, IsT -> aux (Not e1)
-              | IsF, IsF -> mk_false
-              | _, _ -> Ite (e1, e2, e3)))
-      | Not e -> Not (aux e)
-      | And es -> And (List.map aux es)
-      | Or es -> Or (List.map aux es)
-      | Iff (e1, e2) -> Iff (aux e1, aux e2)
-      | Forall (u, body) -> Forall (u, aux body)
-      | Exists (u, body) -> Exists (u, aux body)
-    in
-    aux prop
 end

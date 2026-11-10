@@ -179,22 +179,22 @@ and union_effty opctx rctx monad1 monad2 =
         Printf.printf "Unhandled constrain pattern: %s\n" @@ layout_eff eff;
         _failatwith __FILE__ __LINE__ "die"
   in
-  print_endline "before union_rty";
   let%bind ret_rty = union_rty opctx rctx monad1.ret.rty monad2.ret.rty in
   let ret = { rx = monad1.ret.rx; rty = ret_rty } in
-  print_endline "after union_rty";
   let%map eff =
     match (monad1.eff, monad2.eff) with
     | Atom Id, Atom Id -> return (Eff.Atom Id)
     | _ ->
         let rxs, pre, post = get_constrain_info [] monad1.eff in
+        (* Sft.print_stats post; *)
+        (* Out_channel.flush stdout; *)
         (* print_endline @@ layout_sft post; *)
         (* [rctx'] includes a variable denoting return value and ghost variables
            within query *)
         let rctx' =
           RTypectx.new_to_rights (RTypectx.new_to_right rctx ret) rxs
         in
-        print_endline @@ layout_hty (Monad monad2);
+        (* print_endline @@ layout_hty (Monad monad2); *)
         (* [rctx''] further includes intermediate variables along the
            execution path explored *)
         let%map rctx'', combined_eff =
@@ -212,4 +212,123 @@ and inter_effty opctx rctx tau1 tau2 =
   let%map t = union_rty opctx rctx tau1.ret.rty tau2.ret.rty in
   let ret = { rx = tau1.ret.rx; rty = t } in
   let eff = Eff.Choice (tau1.eff, tau2.eff) in
+  { ret; eff }
+
+(** Bidirectional versions of union functions *)
+let rec union_rty_bidirectional opctx rctx rty1 rty2 =
+  Printf.printf "\n*** UNION_RTY_BIDIRECTIONAL CALLED ***\n";
+  Out_channel.flush stdout;
+  match (rty1, rty2) with
+  | BaseRty { cty = cty1 }, BaseRty { cty = cty2 } ->
+      let%map cty = inter_cty cty1 cty2 in
+      BaseRty { cty }
+  | ( ArrRty { arr = arr1; rethty = rethty1 },
+      ArrRty { arr = arr2; rethty = rethty2 } ) ->
+      let%bind arr, rctx' = inter_arr opctx rctx arr1 arr2 in
+      let%map rethty = union_hty_bidirectional opctx rctx' rethty1 rethty2 in
+      ArrRty { arr; rethty }
+  | _ -> _failatwith __FILE__ __LINE__ "union_rty_bidirectional"
+
+and union_hty_bidirectional opctx rctx hty1 hty2 =
+  match (hty1, hty2) with
+  | Monad m1, Monad m2 ->
+      let%map m = union_effty_bidirectional opctx rctx m1 m2 in
+      Monad m
+  | Rty r1, Rty r2 ->
+      let%map r = union_rty_bidirectional opctx rctx r1 r2 in
+      Rty r
+  | _ ->
+      _failatwith __FILE__ __LINE__
+        (spf "union_hty_bidirectional fail:\n%s\n%s\n" (layout_hty hty1) (layout_hty hty2))
+
+and union_effty_bidirectional opctx rctx monad1 monad2 =
+  let rec get_constrain_info rxs = function
+    | Eff.Bind (cx, eff) ->
+        let rxs = (cx.cx #:: (BaseRty { cty = cx.cty })) :: rxs in
+        get_constrain_info rxs eff
+    | Eff.Constrain (Atom (Trans (Explicit sft1)), Atom (Trans (Explicit sft2)))
+      ->
+        (List.rev rxs, Sft.mk_dom sft1, Sft.mk_dom sft2)
+    | eff ->
+        Printf.printf "Unhandled constrain pattern: %s\n" @@ layout_eff eff;
+        _failatwith __FILE__ __LINE__ "die"
+  in
+  let%bind ret_rty = union_rty_bidirectional opctx rctx monad1.ret.rty monad2.ret.rty in
+  let ret = { rx = monad1.ret.rx; rty = ret_rty } in
+  let%map eff =
+    match (monad1.eff, monad2.eff) with
+    | Atom Id, Atom Id -> return (Eff.Atom Id)
+    | _ ->
+        Printf.printf "\n*** UNION_EFFTY_BIDIRECTIONAL: calling Forwardbackward.run ***\n";
+        Out_channel.flush stdout;
+        let rxs, pre, post = get_constrain_info [] monad1.eff in
+        let rctx' =
+          RTypectx.new_to_rights (RTypectx.new_to_right rctx ret) rxs
+        in
+        (* Use bidirectional search instead of pure backward *)
+        let%map rctx'', combined_eff =
+          Forwardbackward.run opctx rctx' monad2.eff post pre
+        in
+        let rxs = RTypectx.to_rxs @@ List.drop (List.length rctx + 1) rctx'' in
+        multi_existential_eff rxs combined_eff
+  in
+  { ret; eff }
+
+let rec union_rty_forward_backward ~forward_steps opctx rctx rty1 rty2 =
+  Printf.printf "\n*** UNION_RTY_FORWARD_BACKWARD CALLED ***\n";
+  Out_channel.flush stdout;
+  match (rty1, rty2) with
+  | BaseRty { cty = cty1 }, BaseRty { cty = cty2 } ->
+      let%map cty = inter_cty cty1 cty2 in
+      BaseRty { cty }
+  | ( ArrRty { arr = arr1; rethty = rethty1 },
+      ArrRty { arr = arr2; rethty = rethty2 } ) ->
+      let%bind arr, rctx' = inter_arr opctx rctx arr1 arr2 in
+      let%map rethty = union_hty_forward_backward ~forward_steps opctx rctx' rethty1 rethty2 in
+      ArrRty { arr; rethty }
+  | _ -> _failatwith __FILE__ __LINE__ "union_rty_forward_backward"
+
+and union_hty_forward_backward ~forward_steps opctx rctx hty1 hty2 =
+  match (hty1, hty2) with
+  | Monad m1, Monad m2 ->
+      let%map m = union_effty_forward_backward ~forward_steps opctx rctx m1 m2 in
+      Monad m
+  | Rty r1, Rty r2 ->
+      let%map r = union_rty_forward_backward ~forward_steps opctx rctx r1 r2 in
+      Rty r
+  | _ ->
+      _failatwith __FILE__ __LINE__
+        (spf "union_hty_forward_backward fail:\n%s\n%s\n" (layout_hty hty1) (layout_hty hty2))
+
+and union_effty_forward_backward ~forward_steps opctx rctx monad1 monad2 =
+  let rec get_constrain_info rxs = function
+    | Eff.Bind (cx, eff) ->
+        let rxs = (cx.cx #:: (BaseRty { cty = cx.cty })) :: rxs in
+        get_constrain_info rxs eff
+    | Eff.Constrain (Atom (Trans (Explicit sft1)), Atom (Trans (Explicit sft2)))
+      ->
+        (List.rev rxs, Sft.mk_dom sft1, Sft.mk_dom sft2)
+    | eff ->
+        Printf.printf "Unhandled constrain pattern: %s\n" @@ layout_eff eff;
+        _failatwith __FILE__ __LINE__ "die"
+  in
+  let%bind ret_rty = union_rty_forward_backward ~forward_steps opctx rctx monad1.ret.rty monad2.ret.rty in
+  let ret = { rx = monad1.ret.rx; rty = ret_rty } in
+  let%map eff =
+    match (monad1.eff, monad2.eff) with
+    | Atom Id, Atom Id -> return (Eff.Atom Id)
+    | _ ->
+        Printf.printf "\n*** UNION_EFFTY_FORWARD_BACKWARD: calling Backwards.run_with_forward_steps ***\n";
+        Out_channel.flush stdout;
+        let rxs, pre, post = get_constrain_info [] monad1.eff in
+        let rctx' =
+          RTypectx.new_to_rights (RTypectx.new_to_right rctx ret) rxs
+        in
+        (* Use forward-backward search *)
+        let%map rctx'', combined_eff =
+          Backwards.run_with_forward_steps opctx rctx' monad2.eff post pre forward_steps
+        in
+        let rxs = RTypectx.to_rxs @@ List.drop (List.length rctx + 1) rctx'' in
+        multi_existential_eff rxs combined_eff
+  in
   { ret; eff }

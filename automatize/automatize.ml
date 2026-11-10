@@ -17,6 +17,36 @@ let rec do_eff rctx =
   | Atom (Trans (Admit srl)) ->
       let sft = Transducize.admit_sft @@ Derivative.from_regex ~is_bot srl in
       Atom (Trans (Explicit sft))
+  | Seq (Atom (Trans (Reject pred)), Atom (Trans (Append ev))) ->
+      let open Sft in
+      let before = G.V.create Normal in
+      let before' = G.V.create Final in
+      let after = G.V.create Normal in
+      let after' = G.V.create Final in
+      let loop_before =
+        G.E.create before (Label.Pred (LAlg.mk_not pred, [ IdentityF ])) before
+      in
+      let append_before =
+        G.E.create before (T.Label.Epsilon (P.mk_true, [ ev ])) before'
+      in
+      let loop_after =
+        G.E.create after (Label.Pred (LAlg.mk_top, [ IdentityF ])) after
+      in
+      let append_after =
+        G.E.create after (T.Label.Epsilon (P.mk_true, [ ev ])) after'
+      in
+      let reject = G.E.create before (T.Label.Pred (pred, [])) after in
+      let g =
+        G.add_edge_e
+          (G.add_edge_e
+             (G.add_edge_e
+                (G.add_edge_e (G.add_edge_e G.empty loop_before) append_before)
+                loop_after)
+             append_after)
+          reject
+      in
+      (* let g = G.add_edge_e G.empty append_edge in *)
+      Atom (Trans (Explicit { init = before; g }))
   | Atom (Trans (Append ev)) ->
       let open Sft in
       let init = G.V.create Normal in

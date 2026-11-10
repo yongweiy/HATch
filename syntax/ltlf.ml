@@ -143,6 +143,9 @@ module F (L : Lit.T) = struct
     | UntilL (EventL sevent, a2) -> SeqA (StarA (EventA sevent), to_srl_aux a2)
     | UntilL (NegL (EventL sevent), a2) ->
         SeqA (StarA (SetMinusA (AnyA, EventA sevent)), to_srl_aux a2)
+    | UntilL (LandL (NegL (EventL se1), NegL (EventL se2)), a2) ->
+        SeqA (StarA (SetMinusA (SetMinusA (AnyA, EventA se1), EventA se2)),
+              to_srl_aux a2)
     | UntilL (a, a2) ->
         let a, a2 = map2 to_srl_aux (a, a2) in
         if has_len a 0 then a2

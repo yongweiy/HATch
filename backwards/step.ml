@@ -28,7 +28,9 @@ let rec step opctx (rctx, eff, sfa, path) =
       return (rctx, Atom Id, sfa_pre, path)
   (* SBChoice: Non-deterministic choice *)
   | Choice (eff1, eff2) ->
-      mplus (return (rctx, eff1, sfa, path)) (return (rctx, eff2, sfa, path))
+      (* After forking, continue stepping within each branch so that this
+         function processes one high-level call per invocation. *)
+      mplus (step opctx (rctx, eff1, sfa, path)) (step opctx (rctx, eff2, sfa, path))
   (* SBExist: Existential quantification *)
   | Bind ({ cx; cty }, eff') ->
       (* Generate fresh variable name *)
@@ -39,18 +41,27 @@ let rec step opctx (rctx, eff, sfa, path) =
       in
       (* Substitute x with x' in eff' *)
       let eff_subst = subst_eff (cx, AVar x') eff' in
-      return (rctx', eff_subst, sfa, path)
+      (* Continue stepping after binding so we still process one call per invocation *)
+      step opctx (rctx', eff_subst, sfa, path)
   (* Path unchanged for existential *)
   (* SBIdent: Identity elimination *)
-  | Seq (eff', Atom Id) -> return (rctx, eff', sfa, path)
+  | Seq (eff', Atom Id) -> step opctx (rctx, eff', sfa, path)
+  | Seq (Guard phi, eff') ->
+      let u = Rename.unique "u" in
+      let unit_cty = Cty.mk_unit_from_prop phi in
+      let rctx' =
+        RTypectx.new_to_right rctx { rx = u; rty = BaseRty { cty = unit_cty } }
+      in
+      step opctx (rctx', eff', sfa, path)
+
   (* SBSeq: Sequential composition *)
   | Seq (eff1, eff2) ->
       (* First step eff2, then prepend eff1 to results *)
       let+ rctx', eff2', sfa', path' = step opctx (rctx, eff2, sfa, path) in
       (rctx', Seq (eff1, eff2'), sfa', path')
   (* SBGuard: Assumption/Guard *)
-  | Guard phi ->
-      (* Generate fresh variable for unit type with constraint φ *)
+   | Guard phi -> 
+   (* Generate fresh variable for unit type with constraint φ *)
       let u = Rename.unique "u" in
       let unit_cty = Cty.mk_unit_from_prop phi in
       let rctx' =
@@ -61,7 +72,7 @@ let rec step opctx (rctx, eff, sfa, path) =
   (* These seem to be missing from the current Eff.t definition *)
 
   (* Base cases *)
-  | Atom Id -> _failatwith __FILE__ __LINE__ "todo"
+  | Atom Id -> return (rctx, Atom Id, sfa, path)
   | Atom (Call { op; args; ret = ret_lit }) ->
       let op_rty = Rty (ROpTypectx.get_ty opctx (EffOp op)) in
       let rec extract_params_and_rethty ?(param_substs = []) current_hty
@@ -93,4 +104,7 @@ let rec step opctx (rctx, eff, sfa, path) =
   | Constrain (eff1, eff2) ->
       (* Handle Constrain by processing the post-condition (second effect) *)
       step opctx (rctx, eff2, sfa, path)
-  | Atom (Trans _) -> _failatwith __FILE__ __LINE__ "die"
+  | Atom (Trans (Admit _ | Append _ | Reject _)) ->
+      (* Terminal automata operations: Admit, Append, Reject are already in final form
+         when going backward - they don't decompose further *)
+      return (rctx, Atom Id, sfa, path)

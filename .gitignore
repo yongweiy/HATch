@@ -33,3 +33,29 @@ setup.log
 # Local OPAM switch
 _opam/
 .aider*
+
+# Editor / IDE state
+.dir-locals.el
+.ccls-cache/
+TAGS
+\#*\#
+.#*
+*~
+*.bak
+
+# Profiling and stray binaries
+perf.data*
+/main.exe
+
+# Debug automata dumps (srlexec writes these when the "hatch" debug tag is on)
+*.dot
+
+# Benchmark outputs (regenerate with scripts/run_paper_benchmarks.py)
+/benchmark_results*/
+
+# LaTeX / org-export scratch
+*.aux
+*.out
+*.toc
+/auto/
+/ltximg/

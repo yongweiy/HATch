@@ -18,6 +18,9 @@ let[@axiom] elem4 ((a [@forall]) : Elem.t) ((b [@forall]) : Elem.t)
 let[@axiom] elem5 ((a [@forall]) : Elem.t) ((b [@forall]) : Elem.t) =
   implies ((not (elem_lt a b)) && not (elem_lt b a)) (a == b)
 
+let[@axiom] celem1 ((a [@forall]) : CElem.t) =
+  implies (is_leaf a) (not (is_red a))
+
 let[@axiom] ptr1 ((a [@forall]) : Ptr.t) ((b [@forall]) : Ptr.t) =
   implies (is_nullptr a && a == b) (is_nullptr b)
 
@@ -56,17 +59,17 @@ let[@axiom] ptr2 ((a [@forall]) : Ptr.t) ((b [@forall]) : Ptr.t) =
 (* let[@axiom] list5 ((hd [@forall]) : Node.t) ((tl [@forall]) : NodeList.t) = *)
 (*   tl (cons hd tl) == tl *)
 
-let[@axiom] tree1 ((n [@forall]) : Node.t) ((t [@forall]) : NodeTree.t) =
-  implies (is_node n t) (not (is_leaf t))
+(* let[@axiom] tree1 ((n [@forall]) : Node.t) ((t [@forall]) : NodeTree.t) = *)
+(*   implies (is_node n t) (not (is_leaf t)) *)
 
-let[@axiom] tree2 ((l [@forall]) : NodeTree.t) ((t [@forall]) : NodeTree.t) =
-  implies (is_left l t) (not (is_leaf t))
+(* let[@axiom] tree2 ((l [@forall]) : NodeTree.t) ((t [@forall]) : NodeTree.t) = *)
+(*   implies (is_left l t) (not (is_leaf t)) *)
 
-let[@axiom] tree3 ((r [@forall]) : NodeTree.t) ((t [@forall]) : NodeTree.t) =
-  implies (is_right r t) (not (is_leaf t))
+(* let[@axiom] tree3 ((r [@forall]) : NodeTree.t) ((t [@forall]) : NodeTree.t) = *)
+(*   implies (is_right r t) (not (is_leaf t)) *)
 
-let[@axiom] tree4 ((a [@forall]) : NodeTree.t) ((b [@forall]) : NodeTree.t) =
-  implies (is_leaf a && a == b) (is_leaf b)
+(* let[@axiom] tree4 ((a [@forall]) : NodeTree.t) ((b [@forall]) : NodeTree.t) = *)
+(*   implies (is_leaf a && a == b) (is_leaf b) *)
 
-let[@axiom] tree5 ((a [@forall]) : NodeTree.t) ((b [@forall]) : NodeTree.t) =
-  implies (is_leaf a && not (a == b)) (not (is_leaf b))
+(* let[@axiom] tree5 ((a [@forall]) : NodeTree.t) ((b [@forall]) : NodeTree.t) = *)
+(*   implies (is_leaf a && not (a == b)) (not (is_leaf b)) *)

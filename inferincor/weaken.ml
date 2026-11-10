@@ -8,7 +8,7 @@ open Typing
 (** Interleaved type weakening and inference following updated rules *)
 
 (** Type synthesis for values following Syn* rules *)
-let rec infer_pure opctx rctx (value : value typed) : rty =
+let rec infer_pure ?(unroll_bound = 1) opctx rctx (value : value typed) : rty =
   match value.x with
   | VConst c ->
       (* SynConst rule: Γ ⊢ c ↑ {b | ν = c} *)
@@ -25,14 +25,14 @@ let rec infer_pure opctx rctx (value : value typed) : rty =
       (* SynFun rule modified: takes input type from context *)
       let rx = { rx = lamarg.x; rty = mk_ceil_pure lamarg.ty } in
       let rctx' = RTypectx.new_to_right rctx rx in
-      let { ret; eff } = infer_eff opctx rctx' lambody in
+      let { ret; eff } = infer_eff ~unroll_bound opctx rctx' lambody in
       match ret.rty with
       | ArrRty _ when Eff.is_identity eff ->
           ArrRty { arr = NormalArr rx; rethty = Rty ret.rty }
       | _ -> ArrRty { arr = NormalArr rx; rethty = Monad { ret; eff } })
   | VFix { fixname; fixarg; fixbody } ->
       let func = (VLam { lamarg = fixarg; lambody = fixbody }) #: value.ty in
-      (* Handle recursive functions with zero-depth inlining for under-approximation:
+      (* Handle recursive functions with configurable unrolling for under-approximation:
          Add function to context with bottom return type (no behavior) *)
       let rec make_bottom = function
         | Nt.Ty_arrow (arg_ty, ret_ty) ->
@@ -49,13 +49,13 @@ let rec infer_pure opctx rctx (value : value typed) : rty =
                 eff = Eff.Atom Eff.Id;
               }
       in
-      let rec unroll ?(fuel = 1) fix_type =
+      let rec unroll ?(fuel = unroll_bound) fix_type =
         if fuel < 0 then fix_type
         else
           let rctx' =
             RTypectx.new_to_right rctx { rx = fixname.x; rty = fix_type }
           in
-          unroll ~fuel:(fuel - 1) @@ infer_pure opctx rctx' func
+          unroll ~fuel:(fuel - 1) @@ infer_pure ~unroll_bound opctx rctx' func
       in
       unroll @@ hty_force_rty @@ make_bottom value.ty
       (* let fix_type0 = hty_force_rty @@ make_bottom value.ty in *)
@@ -70,11 +70,11 @@ let rec infer_pure opctx rctx (value : value typed) : rty =
   | VTu _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type synthesis for computations following Syn* rules *)
-and infer_eff opctx rctx (expr : comp typed) : monad =
+and infer_eff ?(unroll_bound = 1) opctx rctx (expr : comp typed) : monad =
   match expr.x with
   | CVal v ->
       (* SynLift rule: Γ ⊢ v ↑ t, FT[r] = ret v ⟹ Γ ⊢ v ↑ M(t, FT[r]) *)
-      let t = infer_pure opctx rctx v #: expr.ty in
+      let t = infer_pure ~unroll_bound opctx rctx v #: expr.ty in
       let ret = { rx = "ret"; rty = t } in
       { ret; eff = Eff.Atom Eff.Id }
   | CLetE { lhs; rhs; letbody } ->
@@ -82,15 +82,15 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
         match rhs.x with
         | CAppOp { op; appopargs } ->
             let arg_rtys =
-              List.map (fun arg -> infer_pure opctx rctx arg) appopargs
+              List.map (fun arg -> infer_pure ~unroll_bound opctx rctx arg) appopargs
             in
-            infer_op_application opctx rctx lhs op arg_rtys
+            infer_op_application ~unroll_bound opctx rctx lhs op arg_rtys
         | CApp { appf; apparg } ->
-            let appf_rty = infer_pure opctx rctx appf in
-            let apparg_rty = infer_pure opctx rctx apparg in
+            let appf_rty = infer_pure ~unroll_bound opctx rctx appf in
+            let apparg_rty = infer_pure ~unroll_bound opctx rctx apparg in
             let func_hty = Rty appf_rty in
-            infer_function_application opctx rctx lhs.x [ apparg_rty ] func_hty
-        | _ -> ([], infer_eff opctx rctx rhs)
+            infer_function_application ~unroll_bound opctx rctx lhs.x [ apparg_rty ] func_hty
+        | _ -> ([], infer_eff ~unroll_bound opctx rctx rhs)
       in
       let rx = { rx = lhs.x; rty = monadx.ret.rty } in
       let rctx' =
@@ -98,7 +98,7 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
       in
       let monad =
         multi_externalize locals @@ externalize rx
-        @@ infer_eff opctx rctx' letbody
+        @@ infer_eff ~unroll_bound opctx rctx' letbody
       in
       {
         monad with
@@ -122,7 +122,7 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
               (Rename.unique "br") #:: (Rty.mk_from_prop Ty_unit @@ fun _ -> phi)
             in
             existential rx
-            @@ infer_eff opctx (RTypectx.new_to_right rctx rx) exp)
+            @@ infer_eff ~unroll_bound opctx (RTypectx.new_to_right rctx rx) exp)
           match_cases
       in
       let[@warning "-8"] aux
@@ -155,7 +155,7 @@ and infer_eff opctx rctx (expr : comp typed) : monad =
   | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Type weakening for values following WK* rules *)
-and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty option =
+and weaken_pure ?(unroll_bound = 1) opctx rctx (rty_in : rty) (value : value typed) : rty option =
   match value.x with
   | VLam { lamarg; lambody } -> (
       (* Handle lambda weakening with input type (updated SynFun rule) *)
@@ -167,33 +167,33 @@ and weaken_pure opctx rctx (rty_in : rty) (value : value typed) : rty option =
           (* SynFun rule: Γ,x:t_x ⊢ τ₁ ↓ e ↑ τ₂ ⟹ Γ ⊢ x:t_x→τ₁ ↓ λx.e ↑ x:t_x→τ₂ *)
           assert (rx.rx = lamarg.x);
           let rctx' = RTypectx.new_to_right rctx rx in
-          let%map hty = weaken_eff opctx rctx' rethty lambody in
+          let%map hty = weaken_eff ~unroll_bound opctx rctx' rethty lambody in
           ArrRty { arr = NormalArr rx; rethty = hty }
           |> tap @@ fun result_rty ->
              assert (not @@ Subtyping.is_bot_rty rctx result_rty))
   | _ ->
       (* WKPure rule: Γ ⊢ v ↑ t, Γ ⊢ t₁ ∨ t = t₂ ⟹ Γ ⊢ t₁ ↓ v ↑ t₂ *)
-      let inferred_rty = infer_pure opctx rctx value in
+      let inferred_rty = infer_pure ~unroll_bound opctx rctx value in
       union_rty opctx rctx rty_in inferred_rty
 
 (** Type weakening for computations following WK* rules *)
-and weaken_eff opctx rctx (hty_in : hty) (expr : comp typed) : hty option =
+and weaken_eff ?(unroll_bound = 1) opctx rctx (hty_in : hty) (expr : comp typed) : hty option =
   match hty_in with
   | Monad monad_in ->
       (* WKEff rule: Γ ⊢ e ↑ τ, Γ ⊢ τ₁ ∨ τ = τ₂ ⟹ Γ ⊢ τ₁ ↓ e ↑ τ₂ *)
       let%map monad_out =
-        union_effty opctx rctx monad_in @@ infer_eff opctx rctx expr
+        union_effty opctx rctx monad_in @@ infer_eff ~unroll_bound opctx rctx expr
       in
       Monad monad_out
   | Rty rty_in ->
       let%map rty_out =
-        union_rty opctx rctx rty_in @@ infer_pure opctx rctx @@ to_v expr
+        union_rty opctx rctx rty_in @@ infer_pure ~unroll_bound opctx rctx @@ to_v expr
       in
       Rty rty_out
   | _ -> _failatwith __FILE__ __LINE__ "die"
 
 (** Generic function application logic *)
-and infer_function_application opctx rctx lhs_name arg_rtys func_hty :
+and infer_function_application ?(unroll_bound = 1) opctx rctx lhs_name arg_rtys func_hty :
     string rtyped list * monad =
   let rec multi_app rxs arg_rtys hty =
     match arg_rtys with
@@ -221,11 +221,11 @@ and infer_function_application opctx rctx lhs_name arg_rtys func_hty :
   (rxs, monad)
 
 (** Operator application inference *)
-and infer_op_application opctx rctx lhs (op : Op.t typed) arg_rtys :
+and infer_op_application ?(unroll_bound = 1) opctx rctx lhs (op : Op.t typed) arg_rtys :
     string rtyped list * monad =
   let func_hty = Rty (ROpTypectx.get_ty opctx op.x) in
   let rxs, base_monad =
-    infer_function_application opctx rctx lhs.x arg_rtys func_hty
+    infer_function_application ~unroll_bound opctx rctx lhs.x arg_rtys func_hty
   in
   let monad =
     match op.x with
@@ -243,3 +243,145 @@ and infer_op_application opctx rctx lhs (op : Op.t typed) arg_rtys :
     | Op.DtOp _ -> _failatwith __FILE__ __LINE__ "die"
   in
   (rxs, monad)
+
+(** Bidirectional version of weaken_pure - uses bidirectional search in union_rty *)
+let rec weaken_pure_bidirectional ?(unroll_bound = 1) opctx rctx (rty_in : rty) (value : value typed) : rty option =
+  (* The bidirectional search is triggered in Typing.union_effty_bidirectional *)
+  (* For pure types, we use the same logic as regular weakening *)
+  (* but the effect union will use bidirectional search *)
+  match rty_in with
+  | BaseRty _ -> union_rty_bidirectional opctx rctx rty_in @@ infer_pure ~unroll_bound opctx rctx value
+  | ArrRty _ -> (
+      match value.x with
+      | VLam { lamarg; lambody } ->
+          let arr, rethty = rty_destruct_arr __FILE__ __LINE__ rty_in in
+          let rx =
+            match arr with
+            | NormalArr rx -> rx
+            | GhostArr _ | ArrArr _ -> _failatwith __FILE__ __LINE__ "die"
+          in
+          let rctx' = RTypectx.new_to_right rctx rx in
+          let%map rethty' = weaken_eff_bidirectional ~unroll_bound opctx rctx' rethty lambody in
+          ArrRty { arr; rethty = rethty' }
+      | VFix { fixname; fixarg; fixbody } ->
+          let arr, rethty = rty_destruct_arr __FILE__ __LINE__ rty_in in
+          let rx_arg =
+            match arr with
+            | NormalArr rx -> rx
+            | GhostArr _ | ArrArr _ -> _failatwith __FILE__ __LINE__ "die"
+          in
+          let rctx' =
+            RTypectx.new_to_right
+              (RTypectx.new_to_right rctx { rx = fixname.x; rty = rty_in })
+              rx_arg
+          in
+          let%map rethty' = weaken_eff_bidirectional ~unroll_bound opctx rctx' rethty fixbody in
+          ArrRty { arr; rethty = rethty' }
+      | _ -> None)
+
+and weaken_eff_bidirectional ?(unroll_bound = 1) opctx rctx (hty_in : hty) (expr : comp typed) : hty option =
+  Printf.printf "\n*** WEAKEN_EFF_BIDIRECTIONAL CALLED ***\n";
+  Printf.printf "hty_in = %s\n" (Rty.layout_hty hty_in);
+  Out_channel.flush stdout;
+  match hty_in with
+  | Monad monad_in ->
+      Printf.printf "Matched Monad case\n";
+      Out_channel.flush stdout;
+      let monad_inferred = infer_eff ~unroll_bound opctx rctx expr in
+      Printf.printf "monad_in.eff = %s\n" (Rty.layout_eff monad_in.eff);
+      Printf.printf "monad_inferred.eff = %s\n" (Rty.layout_eff monad_inferred.eff);
+      Out_channel.flush stdout;
+      let%map monad_out =
+        union_effty_bidirectional opctx rctx monad_in monad_inferred
+      in
+      Monad monad_out
+  | Rty rty_in ->
+      Printf.printf "Matched Rty case\n";
+      Out_channel.flush stdout;
+      let%map rty_out =
+        union_rty_bidirectional opctx rctx rty_in @@ infer_pure ~unroll_bound opctx rctx @@ to_v expr
+      in
+      Rty rty_out
+  | _ ->
+      Printf.printf "Matched other case\n";
+      Out_channel.flush stdout;
+      _failatwith __FILE__ __LINE__ "die"
+
+and union_rty_bidirectional opctx rctx rty1 rty2 =
+  (* Use bidirectional version from Typing module *)
+  Typing.union_rty_bidirectional opctx rctx rty1 rty2
+
+and union_effty_bidirectional opctx rctx monad1 monad2 =
+  (* Use the bidirectional version from Typing module *)
+  Typing.union_effty_bidirectional opctx rctx monad1 monad2
+
+(** Forward-backward weakening *)
+let rec weaken_pure_forward_backward ?(unroll_bound = 1) ~forward_steps opctx rctx (rty_in : rty) (value : value typed) : rty option =
+  Printf.printf "\n*** WEAKEN_PURE_FORWARD_BACKWARD CALLED (forward_steps=%d) ***\n" forward_steps;
+  Printf.printf "rty_in = %s\n" (Rty.layout_rty rty_in);
+  Out_channel.flush stdout;
+  match rty_in with
+  | BaseRty _ -> union_rty_bidirectional opctx rctx rty_in @@ infer_pure ~unroll_bound opctx rctx value
+  | ArrRty _ -> (
+      match value.x with
+      | VLam { lamarg; lambody } ->
+          let arr, rethty = rty_destruct_arr __FILE__ __LINE__ rty_in in
+          let rx =
+            match arr with
+            | NormalArr rx -> rx
+            | GhostArr _ | ArrArr _ -> _failatwith __FILE__ __LINE__ "die"
+          in
+          let rctx' = RTypectx.new_to_right rctx rx in
+          let%map rethty' = weaken_eff_forward_backward ~unroll_bound ~forward_steps opctx rctx' rethty lambody in
+          ArrRty { arr; rethty = rethty' }
+      | VFix { fixname; fixarg; fixbody } ->
+          let arr, rethty = rty_destruct_arr __FILE__ __LINE__ rty_in in
+          let rx_arg =
+            match arr with
+            | NormalArr rx -> rx
+            | GhostArr _ | ArrArr _ -> _failatwith __FILE__ __LINE__ "die"
+          in
+          let rctx' =
+            RTypectx.new_to_right
+              (RTypectx.new_to_right rctx { rx = fixname.x; rty = rty_in })
+              rx_arg
+          in
+          let%map rethty' = weaken_eff_forward_backward ~unroll_bound ~forward_steps opctx rctx' rethty fixbody in
+          ArrRty { arr; rethty = rethty' }
+      | _ -> None)
+
+and weaken_eff_forward_backward ?(unroll_bound = 1) ~forward_steps opctx rctx (hty_in : hty) (expr : comp typed) : hty option =
+  Printf.printf "\n*** WEAKEN_EFF_FORWARD_BACKWARD CALLED ***\n";
+  Printf.printf "hty_in = %s\n" (Rty.layout_hty hty_in);
+  Out_channel.flush stdout;
+  match hty_in with
+  | Monad monad_in ->
+      Printf.printf "Matched Monad case\n";
+      Out_channel.flush stdout;
+      let monad_inferred = infer_eff ~unroll_bound opctx rctx expr in
+      Printf.printf "monad_in.eff = %s\n" (Rty.layout_eff monad_in.eff);
+      Printf.printf "monad_inferred.eff = %s\n" (Rty.layout_eff monad_inferred.eff);
+      Out_channel.flush stdout;
+      let%map monad_out =
+        union_effty_forward_backward ~forward_steps opctx rctx monad_in monad_inferred
+      in
+      Monad monad_out
+  | Rty rty_in ->
+      Printf.printf "Matched Rty case\n";
+      Out_channel.flush stdout;
+      let%map rty_out =
+        union_rty_forward_backward ~forward_steps opctx rctx rty_in @@ infer_pure ~unroll_bound opctx rctx @@ to_v expr
+      in
+      Rty rty_out
+  | _ ->
+      Printf.printf "Matched other case\n";
+      Out_channel.flush stdout;
+      _failatwith __FILE__ __LINE__ "die"
+
+and union_rty_forward_backward ~forward_steps opctx rctx rty1 rty2 =
+  (* Use forward-backward version from Typing module *)
+  Typing.union_rty_forward_backward ~forward_steps opctx rctx rty1 rty2
+
+and union_effty_forward_backward ~forward_steps opctx rctx monad1 monad2 =
+  (* Use the forward-backward version from Typing module *)
+  Typing.union_effty_forward_backward ~forward_steps opctx rctx monad1 monad2
