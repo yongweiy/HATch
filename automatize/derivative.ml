@@ -19,7 +19,7 @@ let from_regex ~is_bot =
     let rec aux = function
       | EmptyA | EpsilonA _ -> EmptyA
       | AnyA -> mk_epsilon_true
-      | EventA sev when LAlg.entails_sevent ~check:(not << is_bot) l sev ->
+      | EventA sev when LAlg.entails_sevent ~check:(fun p -> is_bot (Language.Rty.P.mk_not p)) l sev ->
           mk_epsilon_true
       | EventA _ -> EmptyA
       | LorA (r, s) -> mk_orA (aux r, aux s)
