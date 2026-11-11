@@ -33,7 +33,12 @@
 
     [Reach] has no counterpart in the surface syntax, which only offers the
     query form [Constrain (pre, post)]; inside it, [k] is a Boolean query in
-    the same notation as the components of [Constrain].
+    the same notation as the components of [Constrain]: the residual of the
+    query, i.e. its steps that the call does not establish, tested on the
+    trace before the call (see [presumptions]).  The incoming trace that the
+    search found is printed after the witness, as a comment.
+
+    Set [WITNESS_DEBUG] to see how each step of the query was classified.
 
     Every rewrite preserves the behaviors the witness claims: binders and
     assumptions do not touch the trace, so they commute with library calls;
@@ -604,6 +609,253 @@ let mk_seqs (es : Eff.t list) : Eff.t =
   | [] -> Eff.Atom Eff.Id
   | e :: rest -> List.fold_left (fun acc e' -> Eff.Seq (e', acc)) e rest
 
+(** The witness's constraints as a typing context: parameters, return value,
+    the query's binders, the locals, and the assumptions. *)
+let witness_ctx (st : state) : RTypectx.ctx =
+  let base h = BaseRty { cty = { v = Nt.{ x = v_name; ty = h.hty }; phi = h.hphi } } in
+  let ctx = List.fold_left RTypectx.new_to_right RTypectx.empty st.params in
+  let ctx = RTypectx.new_to_right ctx { rx = st.ret_x; rty = BaseRty { cty = st.ret_cty } } in
+  let ctx =
+    List.fold_left
+      (fun ctx h -> RTypectx.new_to_right ctx { rx = h.hx; rty = base h })
+      ctx (st.ghosts @ st.locals)
+  in
+  snd
+  @@ List.fold_left
+       (fun (i, ctx) a ->
+         ( i + 1,
+           RTypectx.new_to_right ctx
+             { rx = spf "_assume%i" i; rty = BaseRty { cty = Cty.mk_unit_from_prop a.p } } ))
+       (0, ctx) st.assumes
+
+(* ------------------------------------------------------------------------ *)
+(* Certified simplification of the residual query                            *)
+
+(** The SFT of a call, its library spec instantiated at the call's arguments
+    and result, when the spec reduces to one transducer (a Boolean result
+    selects its case).  With [~exact:false], existentials of the spec become
+    free variables of the SFT, which then over-approximates the call. *)
+let call_sft ?(exact = true) ~is_bot opctx (ev : Sft.ev) : Sft.sft option =
+  let rec to_sft (e : Eff.t) =
+    match e with
+    | Eff.Bind ({ cx; _ }, e) when not exact ->
+        (* an existential of the spec, free in the SFT and without its
+           refinement: the SFT over-approximates the call, which is safe
+           for the emptiness checks below *)
+        let cx' = Rename.unique cx in
+        to_sft (subst_eff (cx, P.AVar cx') e)
+    | Eff.Atom (Eff.Trans (Trans.Explicit sft)) -> Some sft
+    | Eff.Atom Eff.Id -> Some Sft.mk_ident
+    | Eff.Seq (Eff.Guard g, e) ->
+        let g = simp g in
+        if P.is_true g then to_sft e else None
+    | Eff.Seq (e1, e2) -> (
+        match (to_sft e1, to_sft e2) with
+        | Some s1, Some s2 -> Some (Sft.mk_compose ~is_bot s1 s2)
+        | _ -> None)
+    | Eff.Choice (e1, e2) -> (
+        let infeasible = function
+          | Eff.Seq (Eff.Guard g, _) | Eff.Guard g -> P.is_false (simp g)
+          | _ -> false
+        in
+        match (infeasible e1, infeasible e2) with
+        | true, false -> to_sft e2
+        | false, true -> to_sft e1
+        | _ -> None)
+    | _ -> None
+  in
+  try
+    let rxs, final_ret, eff =
+      Rty_processor.extract_op_params_and_effect opctx ev.op ev.args
+    in
+    let substs =
+      (final_ret.rx, ev.ret.x)
+      :: List.map2 (fun (rx : string rtyped) (a : P.lit typed) -> (rx.rx, a.x)) rxs ev.args
+    in
+    to_sft (List.fold_left (fun e yz -> subst_eff yz e) eff substs)
+  with _ -> None
+
+(** Complement of a filter SFT (echoes every event, appends nothing), as a
+    filter accepting exactly the traces the original rejects.  Requires the
+    outgoing predicates of every state to be pairwise disjoint in every
+    valuation (as the derivative construction produces them), which is
+    checked; the missing predicates of each state lead to an accepting sink,
+    and acceptance is flipped. *)
+let complement_filter ~is_bot (sft : Sft.sft) : Sft.sft option =
+  let bot = is_bot in
+  let open Sft in
+  let disjoint p1 p2 = Option.is_none (LAlg.simp_opt ~is_bot:bot (LAlg.mk_and p1 p2)) in
+  let ok = ref true in
+  let vertices = G.fold_vertex List.cons sft.g [] in
+  let labels v =
+    G.fold_succ_e
+      (fun e acc ->
+        match G.E.label e with
+        | Label.Pred (p, [ IdentityF ]) -> p :: acc
+        | _ ->
+            ok := false;
+            acc)
+      sft.g v []
+  in
+  List.iter
+    (fun v ->
+      let ps = labels v in
+      List.iteri
+        (fun i p1 ->
+          List.iteri (fun j p2 -> if i < j && not (disjoint p1 p2) then ok := false) ps)
+        ps)
+    vertices;
+  if not !ok then None
+  else
+    let flip = Hashtbl.create 16 in
+    List.iter
+      (fun v ->
+        Hashtbl.replace flip v
+          (G.V.create (match G.V.label v with Final -> Normal | Normal -> Final)))
+      vertices;
+    let nv v = Hashtbl.find flip v in
+    let sink = G.V.create Final in
+    let g = G.add_edge_e G.empty (G.E.create sink (Label.Pred (LAlg.mk_top, [ IdentityF ])) sink) in
+    let g =
+      G.fold_edges_e
+        (fun e g -> G.add_edge_e g (G.E.create (nv (G.E.src e)) (G.E.label e) (nv (G.E.dst e))))
+        sft.g g
+    in
+    let g =
+      List.fold_left
+        (fun g v ->
+          let g = G.add_vertex g (nv v) in
+          let rest = LAlg.mk_not (LAlg.mk_or_list (labels v)) in
+          match LAlg.simp_opt ~is_bot:bot rest with
+          | None -> g
+          | Some rest -> G.add_edge_e g (G.E.create (nv v) (Label.Pred (rest, [ IdentityF ])) sink))
+        g vertices
+    in
+    Some { init = nv sft.init; g }
+
+let is_empty_sft ~is_bot sft = Option.is_none (fst (Sft.find_witness ~is_bot sft))
+
+let debug = Option.is_some (Sys.getenv_opt "WITNESS_DEBUG")
+let pp_call_dbg (ev : Sft.ev) = layout_eff (Eff.Atom (Eff.Call ev))
+let dbg fmt = Printf.ksprintf (fun s -> if debug then prerr_endline ("[witness] " ^ s)) fmt
+
+(** The residual query in the form of the paper's worked example: the steps
+    of the query continuation that the call does not establish, as tests of
+    the trace before the call ("The second step, get ys returning xs, is not
+    established by concat.  It becomes a residual precondition on the
+    interaction state before concat runs", Sec. 2).
+
+    For the path [P] (its calls composed into one SFT) and a query step [q]
+    that only tests the trace:
+    - [q] is established when no trace in the domain of [P] is taken outside
+      [q]: [Compose (P, not q)] is empty; the step is dropped;
+    - [q] is framed when [P] can neither make it true nor false:
+      [Compose (q, P, not q)] and [Compose (not q, P, q)] are empty; the step
+      is tested on the trace before the call.
+    Both are equivalences on the traces the path accepts, under the
+    witness's constraints, and the witness performs the path, so the
+    simplified presumption claims the same behaviors.  [None] if a step is neither, or
+    a check cannot be built (a step that changes the trace, a spec that does
+    not reduce to one filter, a non-deterministic automaton). *)
+let certified_residual ~ctx opctx ~(pre : Eff.t option) (path : Sft.ev list)
+    (post : Eff.t) : Eff.t list option =
+  let is_bot = Subtyping.is_bot_cty ctx << Cty.mk_unit_from_prop in
+  let ( >> ) a b = Sft.mk_compose ~is_bot a b in
+  let calls_sft calls =
+    List.fold_left
+      (fun acc ev ->
+        match call_sft ~exact:false ~is_bot opctx ev with
+        | Some t -> ( match acc with None -> Some t | Some a -> Some (a >> t))
+        | None ->
+            dbg "no single SFT for %s" ev.op;
+            raise Exit)
+      None calls
+  in
+  let calls_of e =
+    List.map
+      (function Eff.Atom (Eff.Call ev) -> ev | _ -> raise Exit)
+      (flatten_seq e)
+  in
+  (* the traces the witness claims behaviors from: those the query's input
+     test and the path accept (an over-approximation is safe) *)
+  let pre_sft () =
+    match pre with
+    | Some pre when preserves_trace opctx pre -> (
+        try calls_sft (calls_of pre) with Exit -> None)
+    | _ -> None
+  in
+  let relative p = match pre_sft () with Some f -> f >> p | None -> p in
+  try
+    if not (List.for_all (function Eff.Atom (Eff.Call ev) -> call_preserves_trace opctx ev | _ -> false) (flatten_seq post))
+    then (
+      (* a query that changes the trace (e.g. consuming reads) is checked as a
+         whole: established when the path never leaves its domain *)
+      dbg "query %s changes the trace; checking it as a whole" (layout_eff post);
+      let qs =
+        List.map
+          (fun ev ->
+            match call_sft ~is_bot opctx ev with
+            | Some q -> q
+            | None ->
+                dbg "no single SFT for query step %s" ev.op;
+                raise Exit)
+          (calls_of post)
+      in
+      let q = match qs with [] -> raise Exit | q :: qs -> List.fold_left ( >> ) q qs in
+      let nq =
+        match complement_filter ~is_bot (Sft.mk_dom q) with
+        | Some n -> n
+        | None ->
+            dbg "no complement for the domain of the query";
+            raise Exit
+      in
+      match calls_sft path with
+      | Some p when is_empty_sft ~is_bot (relative p >> nq) ->
+          dbg "query established as a whole";
+          Some []
+      | _ -> raise Exit)
+    else
+    let steps = calls_of post in
+    match calls_sft path with
+    | None -> Some (List.map (fun ev -> Eff.Atom (Eff.Call ev)) steps)
+    | Some p ->
+        let p = relative p in
+        let keep =
+          List.filter_map
+            (fun ev ->
+              let q =
+                match call_sft ~is_bot opctx ev with
+                | Some q -> q
+                | None ->
+                    dbg "no single SFT for query step %s" ev.op;
+                    raise Exit
+              in
+              let nq =
+                match complement_filter ~is_bot q with
+                | Some n -> n
+                | None ->
+                    dbg "no complement for query step %s" ev.op;
+                    raise Exit
+              in
+              if is_empty_sft ~is_bot (p >> nq) then (
+                dbg "step %s: established" (pp_call_dbg ev);
+                None)
+              else if
+                is_empty_sft ~is_bot (q >> (p >> nq))
+                && is_empty_sft ~is_bot (nq >> (p >> q))
+              then (
+                dbg "step %s: framed" (pp_call_dbg ev);
+                Some (Eff.Atom (Eff.Call ev)))
+              else (
+                dbg "query step %s neither established nor framed" (pp_call_dbg ev);
+                raise Exit))
+            steps
+        in
+        Some keep
+  with e ->
+    dbg "residual not simplified (%s)" (Printexc.to_string e);
+    None
+
 (** The presumption: the may-tests of the trace before the application.
 
     The rules give the residual query at the function entry as the query for
@@ -611,28 +863,41 @@ let mk_seqs (es : Eff.t list) : Eff.t =
     the witness of the rest of the body composed with the query (Rules
     QLetExpFO and QLetAppFOFO, through JoinEffFO at the return).  Read
     declaratively, [DOM(exists r:t. FT)] is the may-test of "the path, then
-    the query continuation at the returned value".  Calls that only test the
-    trace are left out of it, since the path itself performs them on the same
-    traces; what remains are the calls that change the trace, followed by
-    the query.  Because a library call is a partial function on traces once
-    its arguments and result are fixed, [path; reach k v] equals
-    [reach (fun () -> path; k v) (); path], the presumption-first form of the
-    paper's witnesses.
+    the query continuation at the returned value".  Because a library call
+    is a partial function on traces once its arguments and result are fixed,
+    [path; reach k v] equals [reach (fun () -> path; k v) (); path], the
+    presumption-first form of the paper's witnesses.
+
+    What goes inside is simplified as in the worked example: query steps the
+    path establishes are dropped and those it leaves alone are tested on the
+    trace before the call ([certified_residual]).  When that cannot be
+    certified, the residual keeps the calls of the path that change the
+    trace, followed by the query (calls that only test the trace are left
+    out, since the path performs them on the same traces).
 
     The implementation's queries also test the incoming trace
     ([Constrain (pre, post)]); [pre] is part of the presumption, merged with
     the residual when it only tests the trace. *)
-let presumptions opctx (st : state) : Eff.t list =
+let presumptions ~ctx opctx (st : state) : Eff.t list =
   let changes =
     List.filter (fun ev -> not (call_preserves_trace opctx ev)) st.calls
   in
   let residual =
     match st.post with
     | None -> []
-    | Some post -> List.map (fun ev -> Eff.Atom (Eff.Call ev)) changes @ [ post ]
+    | Some post -> (
+        match certified_residual ~ctx opctx ~pre:st.pre st.calls post with
+        | Some steps -> steps
+        | None -> List.map (fun ev -> Eff.Atom (Eff.Call ev)) changes @ [ post ])
+  in
+  let dedup es =
+    List.fold_left
+      (fun acc e -> if List.exists (fun e' -> String.equal (layout_eff e) (layout_eff e')) acc then acc else acc @ [ e ])
+      [] es
   in
   match st.pre with
-  | Some pre when preserves_trace opctx pre -> [ mk_seqs (pre :: residual) ]
+  | Some pre when preserves_trace opctx pre ->
+      [ mk_seqs (dedup (flatten_seq pre @ residual)) ]
   | Some pre -> pre :: (if residual = [] then [] else [ mk_seqs residual ])
   | None -> if residual = [] then [] else [ mk_seqs residual ]
 
@@ -950,7 +1215,7 @@ let synthesize ~opctx ~name ~(query : rty) ~(result : rty) : t =
     name;
     params = st.params;
     ret = (st.ret_x, st.ret_cty);
-    steps = place st (presumptions opctx st);
+    steps = place st (presumptions ~ctx:(witness_ctx st) opctx st);
     found_trace = st.trace;
   }
 
