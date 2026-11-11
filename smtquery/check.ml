@@ -60,7 +60,7 @@ module F (P : PROP) (MT : MINTERM) (R : REGEX) = struct
     stat_max_inclusion_automaton_size := 0
 
   let stat_get_cur () =
-    ( !stat_smt_query_time_record,
+    ( List.rev !stat_smt_query_time_record,
       !stat_inclusion_query_time_record,
       !stat_max_inclusion_alphabet,
       !stat_max_inclusion_automaton_size,
@@ -90,9 +90,9 @@ module F (P : PROP) (MT : MINTERM) (R : REGEX) = struct
     (* in *)
     let _ = Solver.add solver (get_formulas g) in
     let runtime, res = Sugar.clock (fun () -> solver_result solver) in
-    let _ =
-      stat_smt_query_time_record := !stat_smt_query_time_record @ [ runtime ]
-    in
+    (* kept newest first: appending made every query linear in the number
+       of queries so far *)
+    stat_smt_query_time_record := runtime :: !stat_smt_query_time_record;
     let () = Stat.numQueryPlus1 () in
     res
 

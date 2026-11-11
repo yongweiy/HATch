@@ -18,28 +18,44 @@ module F (P : PROP) (MT : MINTERM) (R : REGEX with type mt = MT.mt) = struct
   let check_implies_with_pre a b = _check P.(mk_implies a b)
   let check vc = _check vc
   let check_sat vc = Check.(handle_check_res (fun () -> smt_sat_solve ctx vc))
-  let cache_size = 6000
-  let check_bool_cache = Hashtbl.create cache_size
+  let cache_size = 200_000
+
+  (* The polymorphic [Hashtbl.hash] looks at no more than 256 nodes,
+     breadth first.  The queries reaching [cached_check_bool] are closed
+     universally over the whole typing context, so they share a long
+     prefix and all fell into one bucket: every lookup became a linear scan
+     with deep structural comparisons, which dominated the run time of
+     large compositions.  Hash the whole query instead. *)
+  module Cache = Hashtbl.Make (struct
+    type t = P.prop
+
+    let equal = ( = )
+    let hash (vc : t) = Hashtbl.hash (Marshal.to_string vc [ Marshal.No_sharing ])
+  end)
+
+  let check_bool_cache : (bool * int) Cache.t = Cache.create 4096
 
   let layout_cache cache =
-    let counters = List.map snd @@ List.of_seq @@ Hashtbl.to_seq_values cache in
+    let counters = List.map snd @@ List.of_seq @@ Cache.to_seq_values cache in
     let counters, l = List.partition (fun x -> x > 1) counters in
     Printf.sprintf "%s\n(hit: %i, miss: %i)\n"
       (Zzdatatype.Datatype.IntList.to_string counters)
       (List.length counters) (List.length l)
 
-  let cached (cache : (P.prop, bool * int) Hashtbl.t) (check : P.prop -> bool)
+  (* A full cache is emptied rather than bypassed: queries mention the
+     fresh names of the current search configuration, so recent entries are
+     the useful ones. *)
+  let cached (cache : (bool * int) Cache.t) (check : P.prop -> bool)
       (vc : P.prop) =
-    if Hashtbl.length cache >= cache_size - 1 then check vc
-    else
-      match Hashtbl.find_opt cache vc with
-      | Some (result, counter) ->
-          Hashtbl.replace cache vc (result, counter + 1);
-          result
-      | None ->
-          let res = check vc in
-          Hashtbl.add cache vc (res, 1);
-          res
+    match Cache.find_opt cache vc with
+    | Some (result, counter) ->
+        Cache.replace cache vc (result, counter + 1);
+        result
+    | None ->
+        let res = check vc in
+        if Cache.length cache >= cache_size then Cache.reset cache;
+        Cache.add cache vc (res, 1);
+        res
 
   let check_bool vc =
     let runtime, res = Sugar.clock (fun () -> check vc) in
