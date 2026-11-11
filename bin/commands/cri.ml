@@ -310,7 +310,7 @@ let type_infer_under_ ?(witness = true) setting source_files unroll_bound =
             List.Assoc.find queries ~equal:String.equal name
           with
           | Some query when witness -> (
-              match Inferincor.Witness.render ~name ~query ~result:rty with
+              match Inferincor.Witness.render ~opctx:setting.oprctx ~name ~query ~result:rty with
               | Ok s -> Printf.printf "witness:\n%s\n" s
               | Error msg -> Printf.printf "witness: not available (%s)\n" msg)
           | _ -> ())

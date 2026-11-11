@@ -1,17 +1,26 @@
-(** Witness types in the surface effect language.
+(** Witness types in the surface effect language, in the form of the paper.
 
     [Weaken.weaken_pure] answers a query type with an algorithmic witness: the
     query's input refinements, a return refinement, and an effect that binds
     every intermediate value existentially in front of [Admit (pre); path].
     Here [path] is the sequence of library calls along the execution that the
-    backward search ([Backwards.run]) chose, and [pre] is one path of the
-    composed (program ; query) SFT, restricted to the query's input condition,
-    that [Sft.find_witness] found: a concrete shape of the incoming trace.
+    backward search ([Backwards.run]) chose (one case of the inferred ⊕), and
+    [pre] is one path of the composed (program ; query) SFT that
+    [Sft.find_witness] found: an incoming trace from which the query is
+    reached.
 
     This module reads that result back as a witness type of the declarative
-    system (paper, Sec. 4) and prints it in the surface syntax of
-    [{ ret = ...; eff = ... }] specifications, so that the query and the
-    witness are written in one language:
+    system in the shape of the paper's witnesses (Sec. 2, [type:else-refined]
+    in Sec. 4):
+
+    {v
+      x1:{..} -> ... -> {v:b | v = e} !
+        reach (fun () -> k) ();   (* test of the trace before the call *)
+        <path>                    (* the trace the application produces *)
+    v}
+
+    and prints it in the surface syntax of [{ ret = ...; eff = ... }]
+    specifications, so that the query and the witness share one language:
 
     {v
       surface                             paper
@@ -19,25 +28,18 @@
       Guard (phi)                         assume phi
       Op (a1, ..., an, r)                 y <- op a1 ... an; assume (y = r)
       e1; e2                              sequencing (bind, result discarded)
-      Admit (regex)                       may-test of the incoming trace
-                                          against a regular trace language
-      May (q)                             may-test <q> of the Boolean query q
-      Reach (q)                           reach (fun ret -> q) ret
+      Reach (fun () -> k) ()              reach (fun () -> k) ()  = <k>
     v}
 
-    [Admit] uses the regular-expression syntax of [libSRLRty] specifications
-    (sequencing is concatenation and the trace must match exactly), hence the
-    [witnessSRLRty] attribute.  [May] and [Reach] have no counterpart in the
-    surface syntax, which only offers their fused form [Constrain (pre, post)]
-    (= [May (pre)], then the angelic unknown, then [Reach (post)]); the
-    witness replaces that unknown computation by a concrete path.
+    [Reach] has no counterpart in the surface syntax, which only offers the
+    query form [Constrain (pre, post)]; inside it, [k] is a Boolean query in
+    the same notation as the components of [Constrain].
 
-    Every rewrite below preserves the behaviors the witness claims: binders
-    and assumptions do not touch the trace, so they commute with library
-    calls; an existential determined by an equality is replaced by its
-    definition (the Skolem step of Rule JoinEffFO); an equality that fixes
-    the return value to a term over the parameters becomes the return
-    refinement (ibid.). *)
+    Every rewrite preserves the behaviors the witness claims: binders and
+    assumptions do not touch the trace, so they commute with library calls;
+    an existential fixed by an equality is replaced by its definition (the
+    Skolem step of Rule JoinEffFO), and so is the return value when it is
+    fixed to a term over the parameters (ibid.). *)
 
 open Sugar
 open Language
@@ -53,15 +55,17 @@ type step =
   | Havoc of havoc
   | Assume of prop
   | Call of Sft.ev
-  | TraceTest of regex list  (** chronological; concatenated *)
-  | May of Eff.t
-  | Reach of Eff.t
+  | Presume of Eff.t
+      (** [reach (fun () -> k) ()]: the may-test of [k] on the current trace *)
 
 type t = {
   name : string;
   params : string rtyped list;
   ret : string * cty;
   steps : step list;
+  found_trace : regex list;
+      (** the incoming trace the search found (chronological), which
+          discharges the presumption *)
 }
 
 exception Unsupported of string
@@ -560,16 +564,201 @@ let rec skolemize st =
       | None -> st)
 
 (* ------------------------------------------------------------------------ *)
+(* Library calls that do not change the trace                               *)
+
+(** An effect that only tests the trace: every transition of its SFTs echoes
+    the event it reads and appends nothing (Admit), as opposed to Reject
+    (deletes an event) and Append. *)
+let rec preserves_trace opctx (e : Eff.t) =
+  match e with
+  | Eff.Atom Eff.Id | Eff.Guard _ | Eff.Atom (Eff.Trans (Trans.Admit _)) -> true
+  | Eff.Atom (Eff.Trans (Trans.Explicit sft)) ->
+      Sft.G.fold_edges_e
+        (fun edge ok ->
+          ok
+          &&
+          match Sft.G.E.label edge with
+          | Sft.Label.Pred (_, [ Sft.IdentityF ]) | Sft.Label.Epsilon (_, []) -> true
+          | Sft.Label.Pred _ | Sft.Label.Epsilon _ -> false)
+        sft.g true
+  | Eff.Atom (Eff.Trans (Trans.Append _ | Trans.Reject _)) | Eff.Constrain _ ->
+      false
+  | Eff.Atom (Eff.Call ev) -> call_preserves_trace opctx ev
+  | Eff.Seq (e1, e2) | Eff.Choice (e1, e2) ->
+      preserves_trace opctx e1 && preserves_trace opctx e2
+  | Eff.Bind (_, e) -> preserves_trace opctx e
+
+and call_preserves_trace opctx (ev : Sft.ev) =
+  let rec spec = function
+    | ArrRty { rethty = Rty rty; _ } -> spec rty
+    | ArrRty { rethty = Monad m; _ } -> preserves_trace opctx m.eff
+    | ArrRty _ -> false
+    | BaseRty _ -> true
+  in
+  match ROpTypectx.get_ty_opt opctx (Op.EffOp ev.op) with
+  | Some rty -> spec rty
+  | None -> false
+
+let mk_seqs (es : Eff.t list) : Eff.t =
+  match List.rev es with
+  | [] -> Eff.Atom Eff.Id
+  | e :: rest -> List.fold_left (fun acc e' -> Eff.Seq (e', acc)) e rest
+
+(** The presumption: the may-tests of the trace before the application.
+
+    The rules give the residual query at the function entry as the query for
+    the computation before it, [Tall ; DOM(exists r:t. FT)], where [FT] is
+    the witness of the rest of the body composed with the query (Rules
+    QLetExpFO and QLetAppFOFO, through JoinEffFO at the return).  Read
+    declaratively, [DOM(exists r:t. FT)] is the may-test of "the path, then
+    the query continuation at the returned value".  Calls that only test the
+    trace are left out of it, since the path itself performs them on the same
+    traces; what remains are the calls that change the trace, followed by
+    the query.  Because a library call is a partial function on traces once
+    its arguments and result are fixed, [path; reach k v] equals
+    [reach (fun () -> path; k v) (); path], the presumption-first form of the
+    paper's witnesses.
+
+    The implementation's queries also test the incoming trace
+    ([Constrain (pre, post)]); [pre] is part of the presumption, merged with
+    the residual when it only tests the trace. *)
+let presumptions opctx (st : state) : Eff.t list =
+  let changes =
+    List.filter (fun ev -> not (call_preserves_trace opctx ev)) st.calls
+  in
+  let residual =
+    match st.post with
+    | None -> []
+    | Some post -> List.map (fun ev -> Eff.Atom (Eff.Call ev)) changes @ [ post ]
+  in
+  match st.pre with
+  | Some pre when preserves_trace opctx pre -> [ mk_seqs (pre :: residual) ]
+  | Some pre -> pre :: (if residual = [] then [] else [ mk_seqs residual ])
+  | None -> if residual = [] then [] else [ mk_seqs residual ]
+
+(* ------------------------------------------------------------------------ *)
+(* Conditions on the inputs                                                  *)
+
+let ctx_of_params (params : string rtyped list) : RTypectx.ctx =
+  List.fold_left RTypectx.new_to_right RTypectx.empty params
+
+(** [Gamma |-NV {v:b | phi}] (Rule NVBase): [phi] holds of some [v] in every
+    valuation of [Gamma]. *)
+let non_vacuous ctx (cty : cty) =
+  Subtyping.is_bot_cty ctx
+    (Cty.mk_unit_from_prop (P.mk_not (P.Exists (cty.v, cty.phi))))
+
+(** An assumption about the parameters only becomes a refinement of the last
+    parameter it mentions, as in the paper's witnesses ([xs:{v <> nil}],
+    [ys:{v <> xs}]): Rule RNarrowPure narrows the query's argument type and
+    Rule RSubEff then drops the filter that holds in every valuation
+    (Example ex:match-false).  The narrowed argument type must stay
+    non-vacuous (Rule NVBase); otherwise the assumption stays a filter. *)
+let narrow_params st =
+  let names () = List.map (fun rx -> rx.rx) st.params in
+  let params = ref st.params in
+  let assumes =
+    List.filter
+      (fun a ->
+        let fvs = P.fv_prop a.p in
+        let pnames = names () in
+        if fvs = [] || not (List.for_all (fun y -> List.mem y pnames) fvs) then
+          true
+        else
+          let k =
+            List.fold_left
+              (fun k y ->
+                match List.find_index (String.equal y) pnames with
+                | Some i -> max k i
+                | None -> k)
+              0 fvs
+          in
+          let rx = List.nth !params k in
+          match rx.rty with
+          | BaseRty { cty } ->
+              let cty' =
+                {
+                  cty with
+                  phi =
+                    mk_conj
+                      (conjuncts cty.phi
+                      @ [ P.subst_prop_id (rx.rx, cty.v.x) a.p ]);
+                }
+              in
+              let earlier = List.filteri (fun i _ -> i < k) !params in
+              if non_vacuous (ctx_of_params earlier) cty' then (
+                params :=
+                  List.mapi
+                    (fun i rx' ->
+                      if i = k then { rx' with rty = BaseRty { cty = cty' } }
+                      else rx')
+                    !params;
+                false)
+              else true
+          | ArrRty _ -> true)
+      st.assumes
+  in
+  { st with params = !params; assumes }
+
+(** A local that nothing but assumptions mentions, and whose constraints are
+    satisfiable whatever the other variables are, claims nothing: drop it
+    (Rule RSubEff in both directions). *)
+let rec drop_implied st =
+  let used =
+    List.concat_map fv_call st.calls
+    @ List.concat_map fv_eff (Option.to_list st.pre @ Option.to_list st.post)
+    @ List.concat_map (fun h -> P.fv_prop h.hphi) (st.ghosts @ st.locals)
+    @ P.fv_prop st.ret_cty.phi
+  in
+  let candidate =
+    List.find_opt
+      (fun h ->
+        (not (List.mem h.hx used))
+        &&
+        let mine, _ =
+          List.partition (fun a -> List.mem h.hx (P.fv_prop a.p)) st.assumes
+        in
+        let others = List.filter (fun h' -> h' != h) (st.ghosts @ st.locals) in
+        let ctx =
+          List.fold_left RTypectx.new_to_right (ctx_of_params st.params)
+            (List.map
+               (fun h' ->
+                 {
+                   rx = h'.hx;
+                   rty =
+                     BaseRty
+                       { cty = { v = Nt.{ x = v_name; ty = h'.hty }; phi = h'.hphi } };
+                 })
+               others)
+        in
+        let v = Nt.{ x = h.hx; ty = h.hty } in
+        let phi = mk_conj (havoc_fact h @ List.map (fun a -> a.p) mine) in
+        non_vacuous ctx { v; phi })
+      st.locals
+  in
+  match candidate with
+  | None -> st
+  | Some h ->
+      drop_implied
+        {
+          st with
+          locals = List.filter (fun h' -> h' != h) st.locals;
+          assumes =
+            List.filter (fun a -> not (List.mem h.hx (P.fv_prop a.p))) st.assumes;
+        }
+
+(* ------------------------------------------------------------------------ *)
 (* Placement                                                                 *)
 
-(** Lay the witness out in program order: the query's binders, the tests of
-    the incoming trace, the calls, and the query continuation.  A call binds
-    its result right before it; any other binder goes to the earliest point
+(** Lay the witness out as in the paper: the query's binders, the
+    presumption (tests of the trace before the call), then the trace the
+    application produces, i.e. the calls in program order.  A call binds its
+    result right before it; any other binder goes to the earliest point
     where the variables of its refinement are bound; an assumption goes to
     the earliest point where its variables are bound and after the call that
     introduced it, except that an assumption about the return value goes
     last. *)
-let place st : step list =
+let place st (presume : Eff.t list) : step list =
   let bound = Hashtbl.create 16 in
   List.iter (fun x -> Hashtbl.replace bound x ()) (st.ret_x :: param_names st);
   let is_bound x = Hashtbl.mem bound x in
@@ -630,21 +819,19 @@ let place st : step list =
       progress := true);
     if !progress then flush ()
   in
-  let item deps s =
-    List.iter need deps;
-    flush ();
-    emit s;
-    flush ()
-  in
   List.iter
     (fun h ->
       Hashtbl.replace bound h.hx ();
       emit (Havoc h))
     st.ghosts;
   flush ();
-  Option.iter (fun pre -> item (fv_eff pre) (May pre)) st.pre;
-  if st.trace <> [] then
-    item (List.concat_map SRL.fv st.trace) (TraceTest st.trace);
+  List.iter
+    (fun k ->
+      List.iter need (fv_eff k);
+      flush ();
+      emit (Presume k);
+      flush ())
+    presume;
   List.iter
     (fun ev ->
       List.iter need (fv_call ev);
@@ -658,7 +845,6 @@ let place st : step list =
   flush ();
   if !pending_a <> [] then
     emit (Assume (mk_conj (List.map (fun a -> a.p) !pending_a)));
-  Option.iter (fun post -> item (fv_eff post) (Reach post)) st.post;
   List.rev !out
 
 (* ------------------------------------------------------------------------ *)
@@ -668,7 +854,7 @@ let place st : step list =
     type keeps the query's name for it, which may differ (e.g. [res]). *)
 let inferred_ret_name = "ret"
 
-let synthesize ~name ~(query : rty) ~(result : rty) : t =
+let synthesize ~opctx ~name ~(query : rty) ~(result : rty) : t =
   let params, m = split_params result in
   let ret_x, ret_cty =
     match m.ret.rty with
@@ -759,7 +945,14 @@ let synthesize ~name ~(query : rty) ~(result : rty) : t =
     @ List.map (fun p -> { p; anchor = -1 }) lifted
   in
   let st = skolemize { st with assumes } in
-  { name; params; ret = (st.ret_x, st.ret_cty); steps = place st }
+  let st = drop_implied (narrow_params st) in
+  {
+    name;
+    params = st.params;
+    ret = (st.ret_x, st.ret_cty);
+    steps = place st (presumptions opctx st);
+    found_trace = st.trace;
+  }
 
 (* ------------------------------------------------------------------------ *)
 (* Printing in the surface syntax                                            *)
@@ -910,9 +1103,47 @@ let pp_step = function
       `Let (spf "let (%s : %s) = %s in" h.hx (Nt.layout h.hty) (pp_cty h.hty h.hphi))
   | Assume p -> `Do (spf "Guard %s" (paren (pp_prop p)))
   | Call ev -> `Do (pp_call ev)
-  | TraceTest rs -> `Do (spf "Admit %s" (paren (pp_regexes rs)))
-  | May q -> `Do (spf "May (%s)" (pp_eff q))
-  | Reach q -> `Do (spf "Reach (%s)" (pp_eff q))
+  | Presume k -> `Do (spf "Reach (fun () -> %s) ()" (pp_eff k))
+
+(** an event of a trace, in the notation of the paper's traces *)
+let pp_trace_event (r : regex) =
+  match r with
+  | EventA (EffEvent ev) ->
+      let cs = conjuncts ev.phi in
+      let evars = ev_vars ev in
+      let used = ref [] in
+      let value (x : string typed) =
+        match
+          List.find_map
+            (fun c ->
+              if List.memq c !used then None
+              else
+                match
+                  List.find_opt
+                    (fun (y, t) ->
+                      String.equal x.x y
+                      && List.for_all (fun z -> not (List.mem z evars)) (P.fv_lit t))
+                    (definitions_of c)
+                with
+                | Some (_, t) ->
+                    used := c :: !used;
+                    Some t
+                | None -> None)
+            cs
+        with
+        | Some t -> paren (pp_lit t)
+        | None -> x.x
+      in
+      let args = List.map value ev.vs in
+      let ret =
+        match ev.v.ty with Nt.Ty_unit -> "" | _ -> " = " ^ value ev.v
+      in
+      let rest = List.filter (fun c -> not (List.memq c !used)) cs in
+      spf "<%s%s%s%s>" ev.op
+        (String.concat "" (List.map (fun a -> " " ^ a) args))
+        ret
+        (if rest = [] then "" else " | " ^ pp_prop (mk_conj rest))
+  | r -> pp_regex r
 
 let layout (w : t) =
   let params =
@@ -940,15 +1171,22 @@ let layout (w : t) =
   let body = if n = 0 then [ "      ()" ] else body in
   String.concat "\n"
     ([
-       spf "let[@witnessSRLRty] %s %s =" w.name params;
+       spf "let[@witnessRty] %s %s =" w.name params;
        "  {";
        spf "    %s = %s;" ret_x (pp_cty ret_cty.v.ty ret_cty.phi);
        "    eff =";
      ]
-    @ body @ [ "  }" ])
+    @ body @ [ "  }" ]
+    @
+    if w.found_trace = [] then []
+    else
+      [
+        spf "(* an incoming trace satisfying the presumption, found by the search: [%s] *)"
+          (String.concat "; " (List.map pp_trace_event w.found_trace));
+      ])
 
 (** Witness of a successful task, or the reason it cannot be printed. *)
-let render ~name ~query ~result =
-  try Ok (layout (synthesize ~name ~query ~result)) with
+let render ~opctx ~name ~query ~result =
+  try Ok (layout (synthesize ~opctx ~name ~query ~result)) with
   | Unsupported msg -> Error msg
   | e -> Error (Printexc.to_string e)
