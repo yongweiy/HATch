@@ -83,3 +83,4 @@ val path_tl : PathList.t -> PathList.t
 (* val right : NodeTree.t -> NodeTree.t *)
 (* val mk_leaf : unit -> NodeTree.t *)
 (* val mk_tree : Node.t -> NodeTree.t -> NodeTree.t -> NodeTree.t *)
+val set_of : Iter.t -> Set.t

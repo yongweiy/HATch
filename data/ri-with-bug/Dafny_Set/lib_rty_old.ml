@@ -48,11 +48,11 @@ let[@libRty] isEmpty ?l:(s = (true : [%v: Set.t])) =
     };
   |]
 
-(* the new iterator is fresh *)
+(* the new iterator is fresh; its set is recorded as set_of *)
 let[@libRty] getIter ((it : Iter.t) [@ghost]) ?l:(s = (true : [%v: Set.t])) =
   {
     pre = _G (not (GetIter (r, (it [@d]), true)));
-    res = (v == it : [%v: Iter.t]);
+    res = (v == it && set_of v == s : [%v: Iter.t]);
     newadding = lastL && GetIter ((s [@d]), v, v == it);
   }
 
@@ -75,54 +75,29 @@ let[@libRty] hasIter ?l:(it = (true : [%v: Iter.t])) ?l:(s = (true : [%v: Set.t]
     };
   |]
 
-(* the element added to [s] right after [last], the element [it] returned last *)
-let[@libRty] next ((s : Set.t) [@ghost]) ((last : Elem.t) [@ghost])
-    ((e : Elem.t) [@ghost]) ?l:(it = (true : [%v: Iter.t])) =
+(* As lib_rty.ml: [e] is the first element added to set_of it (fresh
+   iterator), or the element added right after [last], the element [it]
+   returned last; the elements involved were added exactly once. *)
+let[@libRty] next ((last : Elem.t) [@ghost]) ((e : Elem.t) [@ghost])
+    ?l:(it = (true : [%v: Iter.t])) =
   {
     pre =
-      _F
-        (Add ((last [@d]), (s [@d]), u, true)
-        && _X
-             (_U
-                (not (Add (b, (s [@d]), u, true)))
-                (Add ((e [@d]), (s [@d]), u, true)
-                && _X
-                     (_F
-                        (GetIter ((s [@d]), (it [@d]), true)
-                        && _X
-                             (_F
-                                (Next ((it [@d]), (last [@d]), true)
-                                && _X (_G (not (Next ((it [@d]), b, true)))))))))));
+      (_U (not (Add ((e [@d]), y, u, y == set_of it))) (Add ((e [@d]), y, u, y == set_of it) && _X (_G (not (Add ((e [@d]), y, u, y == set_of it))))))
+      && ((_U (not (Add (b, y, u, y == set_of it))) (Add ((e [@d]), y, u, y == set_of it) && _X (_F (GetIter (y, (it [@d]), y == set_of it) && _X (_G (not (Next ((it [@d]), b, true))))))))
+         || ((_U (not (Add ((last [@d]), y, u, y == set_of it))) (Add ((last [@d]), y, u, y == set_of it) && _X (_G (not (Add ((last [@d]), y, u, y == set_of it)))))) && (_F (Add ((last [@d]), y, u, y == set_of it) && _X (_U (not (Add (b, y, u, y == set_of it))) (Add ((e [@d]), y, u, y == set_of it) && _X (_F (GetIter (y, (it [@d]), y == set_of it) && _X (_F (Next ((it [@d]), (last [@d]), true) && _X (_G (not (Next ((it [@d]), b, true))))))))))))));
     res = (v == e : [%v: Elem.t]);
     newadding = lastL && Next ((it [@d]), v, v == e);
   }
 
-let[@libRty] hasNext ((last : Elem.t) [@ghost]) ((s : Set.t) [@ghost])
-    ?l:(it = (true : [%v: Iter.t])) =
+let[@libRty] hasNext ((last : Elem.t) [@ghost]) ?l:(it = (true : [%v: Iter.t])) =
   [|
     {
-      pre =
-        _F
-          (Add ((last [@d]), (s [@d]), u, true)
-          && _X
-               (_F
-                  (GetIter ((s [@d]), (it [@d]), true)
-                  && _X (_G (not (Next ((it [@d]), (last [@d]), true)))))));
+      pre = _F (Add ((last [@d]), y, u, y == set_of it) && _X (_F (GetIter (y, (it [@d]), y == set_of it) && _X (_G (not (Next ((it [@d]), (last [@d]), true)))))));
       res = (v : [%v: bool]);
       newadding = lastL && HasNext ((it [@d]), v, v);
     };
     {
-      pre =
-        _F
-          (Add ((last [@d]), (s [@d]), u, true)
-          && _X
-               (_U
-                  (not (Add (b, (s [@d]), u, true)))
-                  (GetIter ((s [@d]), (it [@d]), true)
-                  && _X
-                       (_F
-                          (Next ((it [@d]), (last [@d]), true)
-                          && _X (_G (not (Next ((it [@d]), b, true)))))))));
+      pre = (_U (not (Add (b, y, u, y == set_of it))) (GetIter (y, (it [@d]), y == set_of it))) || ((_U (not (Add ((last [@d]), y, u, y == set_of it))) (Add ((last [@d]), y, u, y == set_of it) && _X (_G (not (Add ((last [@d]), y, u, y == set_of it)))))) && (_F (Add ((last [@d]), y, u, y == set_of it) && _X (_U (not (Add (b, y, u, y == set_of it))) (GetIter (y, (it [@d]), y == set_of it) && _X (_F (Next ((it [@d]), (last [@d]), true) && _X (_G (not (Next ((it [@d]), b, true)))))))))));
       res = (not v : [%v: bool]);
       newadding = lastL && HasNext ((it [@d]), v, not v);
     };

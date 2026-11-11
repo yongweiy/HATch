@@ -50,9 +50,9 @@ library behaviour as `lib_rty.ml`.
 | Heap_LinkedList, LinkedList_KVStore | `hasPrev` false case: "never linked" (ignores overwritten links). |
 | FileSystem_KVStore | `hasNext` / `isDir` false cases: "no child added before" (ignore `DelChild`); no cross-event "every child was deleted". |
 | JS_Magnifier | FIFO event queue by position, exact for ≤ 2 consumed events. |
-| Dafny_Queue | FIFO queue and stream by position, exact for ≤ 5 dequeued elements; values may repeat. |
+| Dafny_Queue | FIFO queue and stream by position, exact for ≤ 2 dequeued elements (what the query needs; HATch's cost grows sharply with this bound); values may repeat. |
 | Dafny_Graph_List_Variants | FIFO queue by successor (the head is the value added right after the last one taken). `add` requires a fresh value and `connect` a fresh edge. BFS satisfies both. |
-| Dafny_Set | `add` does not drop duplicates (`lib_rty.ml` `Reject`s them). |
+| Dafny_Set | `add` does not drop duplicates (`lib_rty.ml` `Reject`s them); as in `lib_rty.ml`, `next`/`hasNext` only reason about elements added once, and the iterator's set is the pure function `set_of it`. |
 | RedBlackTree_CElem, JS_Facebook | none beyond the last-write rule |
 
 ## Queries the adapter cannot express
@@ -62,4 +62,5 @@ when its `lib_rty.ml` spec `Reject`s. Such a benchmark gets a HATch-only client
 whose query is a hand-written Htriple, registered in `HATCH_CLIENT_OVERRIDE` in
 `scripts/run_paper_benchmarks.py`:
 
-- `Dafny_Queue/to_stream_hatch.ml` (five consuming `GetChar`s).
+- `Dafny_Queue/to_stream_hatch.ml` (two consuming `GetChar`s).
+- `Dafny_Set/iterate_hatch.ml` (the query's pre contains `Admit (...)` conditions, which the adapter does not translate).

@@ -40,7 +40,7 @@ let[@libRty] isEmpty ?l:(s = (true : [%v: Set.t])) =
 
 let[@libRty] getIter ?l:(s = (true : [%v: Set.t])) =
   {
-    ret = (true : [%v: Iter.t]);
+    ret = (set_of v == s : [%v: Iter.t]);
     eff =
       (Admit (_G (not (GetIter (r, (ret [@d]), true))));
        Append (GetIter (s, ret)));
@@ -66,23 +66,8 @@ let[@libRty] next ?l:(it = (true : [%v: Iter.t])) =
   {
     ret = (true : [%v: Elem.t]);
     eff =
-      (let (s : Set.t) = (true : [%v: Set.t]) in
-       let (last : Elem.t) = (true : [%v: Elem.t]) in
-       Admit
-         (_F
-            (Add ((last [@d]), (s [@d]), u, true)
-            && _X
-                 (_U
-                    (not (Add (b, (s [@d]), u, true)))
-                    (Add ((ret [@d]), (s [@d]), u, true)
-                    && _X
-                         (_F
-                            (GetIter ((s [@d]), (it [@d]), true)
-                            && _X
-                                 (_F
-                                    (Next ((it [@d]), (last [@d]), true)
-                                    && _X (_G (not (Next ((it [@d]), b, true))))
-                                    ))))))));
+      (       let (last : Elem.t) = (true : [%v: Elem.t]) in
+       Admit ((_U (not (Add ((ret [@d]), x, u, x == set_of it))) (Add ((ret [@d]), x, u, x == set_of it) && _X (_G (not (Add ((ret [@d]), x, u, x == set_of it)))))) && ((_U (not (Add (b, x, u, x == set_of it))) (Add ((ret [@d]), x, u, x == set_of it) && _X (_F (GetIter (x, (it [@d]), x == set_of it) && _X (_G (not (Next ((it [@d]), b, true)))))))) || ((_U (not (Add ((last [@d]), x, u, x == set_of it))) (Add ((last [@d]), x, u, x == set_of it) && _X (_G (not (Add ((last [@d]), x, u, x == set_of it)))))) && (_F (Add ((last [@d]), x, u, x == set_of it) && _X (_U (not (Add (b, x, u, x == set_of it))) (Add ((ret [@d]), x, u, x == set_of it) && _X (_F (GetIter (x, (it [@d]), x == set_of it) && _X (_F (Next ((it [@d]), (last [@d]), true) && _X (_G (not (Next ((it [@d]), b, true)))))))))))))));
        Append (Next (it, ret)));
   }
 
@@ -91,28 +76,9 @@ let[@libRty] hasNext ?l:(it = (true : [%v: Iter.t])) =
     ret = (true : [%v: bool]);
     eff =
       (let (last : Elem.t) = (true : [%v: Elem.t]) in
-       let (s : Set.t) = (true : [%v: Set.t]) in
        Choice
          ( (Guard ret;
-            Admit
-              (_F
-                 (Add ((last [@d]), (s [@d]), u, true)
-                 && _X
-                      (_F
-                         (GetIter ((s [@d]), (it [@d]), true)
-                         && _X (_G (not (Next ((it [@d]), (last [@d]), true))))
-                         ))))),
+            Admit (_F (Add ((last [@d]), x, u, x == set_of it) && _X (_F (GetIter (x, (it [@d]), x == set_of it) && _X (_G (not (Next ((it [@d]), (last [@d]), true))))))))),
            (Guard (not ret);
-            Admit
-              (_F
-                 (Add ((last [@d]), (s [@d]), u, true)
-                 && _X
-                      (_U
-                         (not (Add (b, (s [@d]), u, true)))
-                         (GetIter ((s [@d]), (it [@d]), true)
-                         && _X
-                              (_F
-                                 (Next ((it [@d]), (last [@d]), true)
-                                 && _X (_G (not (Next ((it [@d]), b, true))))))
-                         ))))) ));
+            Admit ((_U (not (Add (b, x, u, x == set_of it))) (GetIter (x, (it [@d]), x == set_of it))) || ((_U (not (Add ((last [@d]), x, u, x == set_of it))) (Add ((last [@d]), x, u, x == set_of it) && _X (_G (not (Add ((last [@d]), x, u, x == set_of it)))))) && (_F (Add ((last [@d]), x, u, x == set_of it) && _X (_U (not (Add (b, x, u, x == set_of it))) (GetIter (x, (it [@d]), x == set_of it) && _X (_F (Next ((it [@d]), (last [@d]), true) && _X (_G (not (Next ((it [@d]), b, true))))))))))))) ));
   }

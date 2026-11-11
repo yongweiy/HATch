@@ -123,6 +123,7 @@ HATCH_FLAGS = []  # set in main()
 # runs a sibling client with a hand-written Htriple instead.
 HATCH_CLIENT_OVERRIDE = {
     "Dafny_Queue/to_stream.ml": "Dafny_Queue/to_stream_hatch.ml",
+    "Dafny_Set/iterate.ml": "Dafny_Set/iterate_hatch.ml",
 }
 
 

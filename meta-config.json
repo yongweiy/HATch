@@ -36,6 +36,8 @@
         "add_node",
         "del_node",
         "is_empty",
+        // Iter.t
+        "set_of",
         // NodeList.t
         "is_nil",
         "hd",

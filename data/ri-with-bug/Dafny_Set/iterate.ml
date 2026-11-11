@@ -16,27 +16,24 @@ let copy (it : Iter.t) : Set.t =
     res)
   else res
 
+(* The skip bug: copy stops at the first element that is not larger than the
+   current maximum, so an element of the source set can be missing from the
+   copy.  The iterator must not have been advanced yet and vl must already be
+   in s when the iterator is created; otherwise a shallow witness exists
+   (an iterator that already passed vl, or vl added after it was created). *)
 let[@assertRty] copy ?l:(it = (true : [%v: Iter.t])) =
   {
     ret = (true : [%v: Set.t]);
     eff =
-      (let (v1 : Elem.t) = (true : [%v: Elem.t]) in
-       let (v2 : Elem.t) = (not (v == v1) : [%v: Elem.t]) in
+      (let (s : Set.t) = (true : [%v: Set.t]) in
+       let (vl : Elem.t) = (true : [%v: Elem.t]) in
        Constrain
-         ( (),
-           (Mem (v1, ret, true);
-            Mem (v2, ret, true)) ));
+         ( (HasIter (it, s, true);
+            Admit
+              (_F
+                 (Add ((vl [@d]), (s [@d]), u, true)
+                 && _X (_F (GetIter ((s [@d]), (it [@d]), true)))));
+            Admit (_G (not (Next ((it [@d]), b, true))))),
+           (Mem (vl, s, true);
+            Mem (vl, ret, false)) ));
   }
-(* let[@assertRty] copy ?l:(it1 = (true : [%v: Iter.t])) *)
-(*     ?l:(s2 = (true : [%v: Set.t])) = *)
-(*   { *)
-(*     ret = (true : [%v: unit]); *)
-(*     eff = *)
-(*       (let (s1 : Set.t) = (true : [%v: Set.t]) in *)
-(*        let (vl : Elem.t) = (true : [%v: Elem.t]) in *)
-(*        Constrain *)
-(*          ( (HasIter (it1, s1, true); *)
-(*             IsEmpty (s2, true)), *)
-(*            (Mem (vl, s1, true); *)
-(*             Mem (vl, s2, false)) )); *)
-(* } *)

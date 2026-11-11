@@ -12,18 +12,8 @@ let[@assertRty] write_chars ?l:(q = (true : [%v: Queue.t]))
     ret = (true : [%v: unit]);
     eff =
       (let (h : Char.t) = (true : [%v: Char.t]) in
-       let (e : Char.t) = (not (v == h) : [%v: Char.t]) in
-       let (l : Char.t) = ((not (v == h)) && not (v == e) : [%v: Char.t]) in
-       let (o : Char.t) =
-         ((not (v == h)) && (not (v == e)) && not (v == l) : [%v: Char.t])
-       in
-       Constrain
-         ( AtEOS (s, true),
-           (GetChar (s, h);
-            GetChar (s, e);
-            GetChar (s, l);
-            GetChar (s, l);
-            GetChar (s, o)) ));
+       let (i : Char.t) = (not (v == h) : [%v: Char.t]) in
+       Constrain (AtEOS (s, true), (GetChar (s, h); GetChar (s, i))));
   }
 
 (* let write_chars (u : unit) : unit = *)
