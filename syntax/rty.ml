@@ -123,9 +123,13 @@ module F (L : Lit.T) = struct
     | Atom eff_atom -> Atom (subst_eff_atom yz eff_atom)
     | Constrain (eff1, eff2) -> Constrain (subst_eff yz eff1, subst_eff yz eff2)
     | Bind ({ cx; cty }, eff) ->
-        Bind
-          ( { cx; cty = Cty.subst yz cty },
-            if String.equal (fst yz) cx then eff else subst_eff yz eff )
+        let cty = Cty.subst yz cty in
+        if String.equal (fst yz) cx then Bind ({ cx; cty }, eff)
+        else if List.mem cx (fv_lit (snd yz)) then
+          (* rename the binder apart: the substituted value mentions it *)
+          let cx' = Rename.unique cx in
+          Bind ({ cx = cx'; cty }, subst_eff yz (subst_eff (cx, AVar cx') eff))
+        else Bind ({ cx; cty }, subst_eff yz eff)
     | Guard p -> Guard (subst_prop yz p)
     | Seq (eff1, eff2) -> Seq (subst_eff yz eff1, subst_eff yz eff2)
     | Choice (eff1, eff2) -> Choice (subst_eff yz eff1, subst_eff yz eff2)
