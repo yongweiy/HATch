@@ -501,28 +501,34 @@ module F (A : ELA) = struct
       let vertex_constraints : (G.V.t, A.P.prop list) Hashtbl.t =
         Hashtbl.create 100
       in
-      let rec bfs queue =
-        let queue_size = List.length queue in
+      let report () =
+        Printf.printf
+          "  [find_witness stats] max_queue_size=%d, max_path_length=%d, \
+           pruned_by_subsumption=%d\n"
+          !max_queue_size !max_path_length !pruned_by_subsumption;
+        Out_channel.flush stdout
+      in
+      (* breadth first, in the order of the former list-based version
+         ([bfs (rest @ successors)]), with a constant-time queue *)
+      let queue = Queue.create () in
+      let push x = Queue.add x queue in
+      let take () = Queue.take_opt queue in
+      let length () = Queue.length queue in
+      push (init, [], A.P.mk_true, []);
+      let rec bfs () =
+        let queue_size = length () in
         if queue_size > !max_queue_size then max_queue_size := queue_size;
-        match queue with
-        | [] ->
-            Printf.printf
-              "  [find_witness stats] max_queue_size=%d, max_path_length=%d, \
-               pruned_by_subsumption=%d\n"
-              !max_queue_size !max_path_length !pruned_by_subsumption;
-            Out_channel.flush stdout;
+        match take () with
+        | None ->
+            report ();
             (None, !paths_explored)
-        | (curr_vertex, path, accumulated_constraint, visited) :: rest ->
+        | Some (curr_vertex, path, accumulated_constraint, visited) ->
             incr paths_explored;
             let path_len = List.length path in
             if path_len > !max_path_length then max_path_length := path_len;
             if G.is_final curr_vertex then (
               assert (not @@ is_bot accumulated_constraint);
-              Printf.printf
-                "  [find_witness stats] max_queue_size=%d, max_path_length=%d, \
-                 pruned_by_subsumption=%d\n"
-                !max_queue_size !max_path_length !pruned_by_subsumption;
-              Out_channel.flush stdout;
+              report ();
               (Some path, !paths_explored))
             else
               (* Check if this vertex was reached with a weaker constraint *)
@@ -543,8 +549,8 @@ module F (A : ELA) = struct
               in
               if should_prune then (
                 incr pruned_by_subsumption;
-                bfs rest)
-              else
+                bfs ())
+              else (
                 (* Add this constraint to the cache for this vertex *)
                 let existing =
                   Hashtbl.find_opt vertex_constraints curr_vertex
@@ -577,9 +583,10 @@ module F (A : ELA) = struct
                         :: acc)
                     g curr_vertex []
                 in
-                bfs (rest @ successors)
+                List.iter push successors;
+                bfs ())
       in
-      bfs [ (init, [], A.P.mk_true, []) ]
+      bfs ()
 
   (** Compute actual width based on witness path length *)
   let actual_width_of ~is_bot sft =
