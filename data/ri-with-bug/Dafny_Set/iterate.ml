@@ -21,7 +21,7 @@ let[@assertRty] copy ?l:(it = (true : [%v: Iter.t])) =
     ret = (true : [%v: Set.t]);
     eff =
       (let (v1 : Elem.t) = (true : [%v: Elem.t]) in
-       let (v2 : Elem.t) = (true : [%v: Elem.t]) in
+       let (v2 : Elem.t) = (not (v == v1) : [%v: Elem.t]) in
        Constrain
          ( (),
            (Mem (v1, ret, true);

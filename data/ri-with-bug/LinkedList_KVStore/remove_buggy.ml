@@ -51,9 +51,11 @@ let[@assertRty] remove ?l:(hd = (not (is_nullptr v) : [%v: Ptr.t]))
   {
     ret = (true : [%v: Ptr.t]);
     eff =
-      (let (a : Ptr.t) = (true : [%v: Ptr.t]) in
-       let (b : Ptr.t) = (true : [%v: Ptr.t]) in
-       let (c : Ptr.t) = (true : [%v: Ptr.t]) in
+      (let (a : Ptr.t) = (not (v == hd) : [%v: Ptr.t]) in
+       let (b : Ptr.t) = ((not (v == hd)) && not (v == a) : [%v: Ptr.t]) in
+       let (c : Ptr.t) =
+         ((not (v == hd)) && (not (v == a)) && not (v == b) : [%v: Ptr.t])
+       in
        Constrain
          ( (),
            (GetNext (ret, a);

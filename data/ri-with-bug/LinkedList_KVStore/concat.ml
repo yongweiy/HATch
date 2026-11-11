@@ -16,9 +16,11 @@ let[@assertRty] concat ?l:(xs = (not (is_nullptr v) : [%v: Ptr.t]))
   {
     ret = (true : [%v: Ptr.t]);
     eff =
-      (let (zs : Ptr.t) = (true : [%v: Ptr.t]) in
-       let (bs : Ptr.t) = (true : [%v: Ptr.t]) in
-       let (cs : Ptr.t) = (true : [%v: Ptr.t]) in
+      (let (zs : Ptr.t) = (not (v == xs) : [%v: Ptr.t]) in
+       let (bs : Ptr.t) = ((not (v == xs)) && not (v == zs) : [%v: Ptr.t]) in
+       let (cs : Ptr.t) =
+         ((not (v == xs)) && (not (v == zs)) && not (v == bs) : [%v: Ptr.t])
+       in
        Constrain
          ( (),
            (GetNext (ret, zs);

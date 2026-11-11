@@ -12,8 +12,8 @@ let rec write_chars (q : Queue.t) (s : Stream.t) : unit =
    history, which is wrong for to_stream.ml's five consuming GetChar's.
    Reachability reading (srlexec reach_mode): a witness ends outside [post],
    i.e. the stream, initially empty (AtEOS (s, true)), starts with
-   h, e, ll, ll, o (GetChar (s, h); GetChar (s, e); GetChar (s, l);
-   GetChar (s, l); GetChar (s, o)). *)
+   distinct letters h, e, ll, ll, o (GetChar (s, h); GetChar (s, e);
+   GetChar (s, l); GetChar (s, l); GetChar (s, o)). *)
 let[@assertRty] write_chars ((h : Char.t) [@ghost]) ((e : Char.t) [@ghost])
     ((ll : Char.t) [@ghost]) ((o : Char.t) [@ghost])
     ?l:(q = (true : [%v: Queue.t])) ?l:(s = (true : [%v: Stream.t])) =
@@ -22,5 +22,5 @@ let[@assertRty] write_chars ((h : Char.t) [@ghost]) ((e : Char.t) [@ghost])
     res = (true : [%v: unit]);
     post =
       not
-        (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (h [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (e [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (ll [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (ll [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (o [@d]), u, true)))))))))));
+        (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (h [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (e [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (ll [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (ll [@d]), u, true) && _X (_U (not (PutChar ((s [@d]), b, u, true))) (PutChar ((s [@d]), (o [@d]), u, (not (e == h)) && (not (ll == h)) && (not (ll == e)) && (not (o == h)) && (not (o == e)) && not (o == ll))))))))))));
   }
