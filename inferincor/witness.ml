@@ -448,9 +448,6 @@ let rank st x =
   | KRet, _ -> (2, 0)
   | KParam, _ -> (3, 0)
 
-(** An elimination [x := t] is admissible when [x] is an existential of the
-    witness and does not occur in [t], or when [x] is the return value and
-    [t] mentions parameters only. *)
 let occurs st x =
   List.mem x
     (List.concat_map (fun a -> P.fv_prop a.p) st.assumes
@@ -459,6 +456,9 @@ let occurs st x =
     @ List.concat_map SRL.fv st.trace
     @ List.concat_map fv_eff (Option.to_list st.pre @ Option.to_list st.post))
 
+(** An elimination [x := t] is admissible when [x] is an existential of the
+    witness and does not occur in [t], or when [x] is the return value, still
+    occurs in the effect, and [t] mentions parameters only. *)
 let admissible st (x, t) =
   (not (List.mem x (P.fv_lit t)))
   &&
