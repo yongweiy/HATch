@@ -508,12 +508,85 @@ module F (A : ELA) = struct
           !max_queue_size !max_path_length !pruned_by_subsumption;
         Out_channel.flush stdout
       in
-      (* breadth first, in the order of the former list-based version
-         ([bfs (rest @ successors)]), with a constant-time queue *)
+      (* Frontier.  Default: best first on (events consumed so far +
+         fewest events still needed to reach a final state), FIFO among
+         ties.  HATCH_WITNESS=bfs: breadth first, in the order of the former
+         list-based version ([bfs (rest @ successors)]).  The order only
+         decides which feasible path is reported first: every reported path
+         is a path of [g] whose constraint is satisfiable, and the pruning
+         below is the same in both orders.  Breadth first enumerates all
+         short simple paths of a product automaton before reaching a final
+         state (Set Copy: still at depth 3 after 700 paths, ~15 ms of SMT
+         each), best first goes straight for a final state (38 paths). *)
+      let astar =
+        not
+        @@ Option.equal String.equal (Sys.getenv_opt "HATCH_WITNESS") (Some "bfs")
+      in
+      let dist =
+        let module VH = Hashtbl.Make (G.V) in
+        let d = VH.create (G.nb_vertex g) in
+        let dq = ref [] and later = ref [] in
+        List.iter (fun f -> VH.replace d f 0; dq := f :: !dq) finals;
+        (* shortest distances to a final state on the reversed graph,
+           epsilon moves cost 0; a vertex is re-expanded whenever its
+           distance improves *)
+        let rec go () =
+          match (!dq, !later) with
+          | [], [] -> ()
+          | [], l ->
+              dq := List.rev l;
+              later := [];
+              go ()
+          | v :: rest, _ ->
+              dq := rest;
+              let dv = VH.find d v in
+              G.iter_pred_e
+                (fun e ->
+                  let u = G.E.src e in
+                  let w = match G.E.label e with Epsilon _ -> 0 | Pred _ -> 1 in
+                  match VH.find_opt d u with
+                  | Some du when du <= dv + w -> ()
+                  | _ ->
+                      VH.replace d u (dv + w);
+                      if w = 0 then dq := u :: !dq else later := u :: !later)
+                g v;
+              go ()
+        in
+        go ();
+        fun v -> Option.value ~default:max_int (VH.find_opt d v)
+      in
+      let module PQ = Map.Make (struct
+        type t = int * int
+
+        let compare = Stdlib.compare
+      end) in
+      let pq = ref PQ.empty and stamp = ref 0 and pq_size = ref 0 in
       let queue = Queue.create () in
-      let push x = Queue.add x queue in
-      let take () = Queue.take_opt queue in
-      let length () = Queue.length queue in
+      let nconsumed path =
+        List.fold_left
+          (fun n -> function Label.Pred _ -> n + 1 | Label.Epsilon _ -> n)
+          0 path
+      in
+      let push ((v, path, _, _) as x) =
+        if astar then (
+          incr stamp;
+          let h = dist v in
+          if h < max_int then (
+            pq := PQ.add (nconsumed path + h, !stamp) x !pq;
+            incr pq_size))
+        else Queue.add x queue
+      in
+      let take () =
+        if astar then (
+          match PQ.min_binding_opt !pq with
+          | None -> None
+          | Some (k, x) ->
+              pq := PQ.remove k !pq;
+              decr pq_size;
+              Some x)
+        else Queue.take_opt queue
+      in
+      let length () = if astar then !pq_size else Queue.length queue in
       push (init, [], A.P.mk_true, []);
       let rec bfs () =
         let queue_size = length () in
