@@ -15,12 +15,16 @@ and prints a side-by-side comparison with the numbers currently in the paper.
 Usage:
   scripts/run_paper_benchmarks.py                 # everything
   scripts/run_paper_benchmarks.py --only "Set"    # substring filter
-  scripts/run_paper_benchmarks.py --no-hatch      # skip the baseline
+  scripts/run_paper_benchmarks.py --no-hatch      # only our tool (HATch cells kept from the last run)
+  scripts/run_paper_benchmarks.py --no-ours       # only the baseline
+The two tools run as parallel streams (each one process at a time, so per-run
+timings are unaffected); --sequential runs them one after the other.
 Outputs go to benchmark_results/ (git-ignored): results.json, summary.md,
 table.tex, and one log per run.
 """
 
 import argparse
+import concurrent.futures
 import json
 import re
 import subprocess
@@ -83,7 +87,7 @@ def run(cmd, timeout, log_path):
     }
 
 
-def run_ours(bench, max_bound, timeout):
+def run_ours(bench, max_bound, timeout, stop_on_timeout=False):
     attempts = []
     for k in range(1, max_bound + 1):
         log = OUT / f"ours_{bench.replace('/', '_')[:-3]}_k{k}.log"
@@ -92,7 +96,7 @@ def run_ours(bench, max_bound, timeout):
         t = r["exec_time"] if r["exec_time"] is not None else r["wall"]
         attempts.append({"bound": k, "ok": ok, "timed_out": r["timed_out"], "time": t,
                          "crashed": (r["rc"] not in (0, None))})
-        if ok:
+        if ok or (stop_on_timeout and r["timed_out"]):
             break
     ok = attempts[-1]["ok"]
     return {
@@ -163,6 +167,12 @@ def main():
     ap.add_argument("--hatch-exec-bound", type=int, default=HATCH_EXEC_BOUND,
                     help="HATch -exec-bound (reduction steps explored)")
     ap.add_argument("--no-hatch", action="store_true")
+    ap.add_argument("--no-ours", action="store_true")
+    ap.add_argument("--sequential", action="store_true",
+                    help="run the two tools one after the other (default: two parallel streams, "
+                         "each running one process at a time)")
+    ap.add_argument("--stop-on-timeout", action="store_true",
+                    help="stop our iterative deepening at the first bound that times out")
     args = ap.parse_args()
     HATCH_EXEC_BOUND = args.hatch_exec_bound
     HATCH_FLAGS[:] = ["-exec-bound", str(HATCH_EXEC_BOUND), "-mem-limit-gb", str(HATCH_MEM_LIMIT_GB)]
@@ -173,19 +183,50 @@ def main():
 
     benches = [b for b in BENCHMARKS
                if not args.only or args.only.lower() in (b[0] + b[1]).lower()]
-    results = []
-    for name, bench, paper_ours, paper_hatch in benches:
-        print(f"[{name}] {bench}", flush=True)
-        ours = run_ours(bench, args.max_bound, args.timeout)
-        print(f"   ours : {ours['status']} bound={ours['bound']} "
-              f"cumulative={fmt(ours['cumulative'])}s (paper {paper_ours})", flush=True)
-        hatch = None
-        if not args.no_hatch:
-            hatch = run_hatch(bench, args.hatch_timeout)
-            print(f"   hatch: {hatch['status']} {fmt(hatch['time'])}s (paper {paper_hatch or 'empty'})",
+    def ours_stream():
+        out = {}
+        for name, bench, paper_ours, _ in benches:
+            o = run_ours(bench, args.max_bound, args.timeout, args.stop_on_timeout)
+            print(f"[{name}] ours : {o['status']} bound={o['bound']} "
+                  f"cumulative={fmt(o['cumulative'])}s (paper {paper_ours})", flush=True)
+            out[bench] = o
+        return out
+
+    def hatch_stream():
+        out = {}
+        for name, bench, _, paper_hatch in benches:
+            h = run_hatch(bench, args.hatch_timeout)
+            print(f"[{name}] hatch: {h['status']} {fmt(h['time'])}s (paper {paper_hatch or 'empty'})",
                   flush=True)
-        results.append({"name": name, "file": bench, "paper_ours": paper_ours,
-                        "paper_hatch": paper_hatch, "ours": ours, "hatch": hatch})
+            out[bench] = h
+        return out
+
+    # A tool that is not run keeps its results from the previous run, if any.
+    prev = {}
+    if (OUT / "results.json").exists():
+        prev = {r["file"]: r for r in json.loads((OUT / "results.json").read_text())}
+    streams = ([] if args.no_ours else [("ours", ours_stream)]) + \
+              ([] if args.no_hatch else [("hatch", hatch_stream)])
+    got = {}
+    if args.sequential:
+        for tool, f in streams:
+            got[tool] = f()
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max(1, len(streams))) as ex:
+            futs = {tool: ex.submit(f) for tool, f in streams}
+            got = {tool: fut.result() for tool, fut in futs.items()}
+    # Benchmarks outside --only keep their previous results, so the table stays complete.
+    results = []
+    selected = {b[1] for b in benches}
+    for name, bench, paper_ours, paper_hatch in BENCHMARKS:
+        p = prev.get(bench, {})
+        if bench not in selected:
+            if p:
+                results.append(p)
+            continue
+        results.append({"name": name, "file": bench, "paper_ours": paper_ours, "paper_hatch": paper_hatch,
+                        "ours": got["ours"][bench] if "ours" in got else p.get("ours"),
+                        "hatch": got["hatch"][bench] if "hatch" in got else p.get("hatch")})
 
     (OUT / "results.json").write_text(json.dumps(results, indent=2))
 
@@ -205,7 +246,7 @@ def main():
         "|---|---|---:|---:|---:|---:|---:|",
     ]
     for r in results:
-        o = r["ours"]
+        o = r["ours"] or {"status": "skipped", "bound": None}
         ours_cell = fmt(o["cumulative"]) if o["status"] == "ok" else o["status"]
         lines.append(f"| {r['name']} | `{r['file']}` | {o['bound'] or '—'} | {ours_cell} | "
                      f"{r['paper_ours']} | {hatch_cell(r['hatch'])} | {r['paper_hatch'] or '(empty)'} |")
@@ -214,7 +255,7 @@ def main():
     tex = ["    \\begin{tabular}{lrc}", "         Client&  Our time&  HATch time\\\\"]
     for r in results:
         o = r["ours"]
-        ours_cell = fmt(o["cumulative"]) if o["status"] == "ok" else "T/O"
+        ours_cell = "" if o is None else (fmt(o["cumulative"]) if o["status"] == "ok" else "T/O")
         h = r["hatch"]
         note = ""
         if h is None:
