@@ -1341,11 +1341,6 @@ let rec pp_regex (r : regex) =
   | StarA a -> spf "starA %s" (paren (pp_regex a))
   | ComplementA a -> spf "not %s" (paren (pp_regex a))
 
-let pp_regexes = function
-  | [] -> "epsilonA"
-  | [ r ] -> pp_regex r
-  | rs -> spf "(%s)" (String.concat "; " (List.map pp_regex rs))
-
 (** surface syntax of the effects users write in queries *)
 let rec pp_eff (e : Eff.t) =
   match e with
